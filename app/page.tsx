@@ -10,35 +10,72 @@ type KeywordGroup = {
   variants: string[];
 };
 type Scholar = {
+  subscriptionId: string;
   label: string;
+  aliases?: string[];
   openAlexIds: string[];
+  semanticScholarIds?: string[];
   institution: string;
+  institutions?: string[];
   profileUrl?: string;
+  profileUrls?: string[];
   orcid?: string;
   worksCount?: number;
   researchAreas?: string[];
+  verifiedWorkDois?: string[];
+  sources?: string[];
+  trackingStatus?: "verified" | "limited";
 };
 type Subscriptions = {
   journal: Journal[];
   scholar: Scholar[];
   keyword: KeywordGroup[];
 };
+type ScholarWork = {
+  id: string;
+  doi?: string;
+  title: string;
+  year?: number;
+  venue?: string;
+  url?: string;
+};
 type SearchResult = {
+  candidateId?: string;
   label: string;
   value: string;
   detail?: string;
   institution?: string;
+  institutions?: string[];
+  aliases?: string[];
   profileUrl?: string;
+  profileUrls?: string[];
   orcid?: string;
   worksCount?: number;
   researchAreas?: string[];
+  representativeWorks?: ScholarWork[];
+  externalIds?: {
+    openAlex?: string;
+    semanticScholar?: string;
+    orcid?: string;
+  };
+  openAlexIds?: string[];
+  semanticScholarIds?: string[];
+  sources?: string[];
+  scoreReasons?: string[];
+  trackingStatus?: "verified" | "limited";
 };
 
+type ArticleAuthor = {
+  name: string;
+  openAlexId?: string;
+  semanticScholarId?: string;
+  orcid?: string;
+};
 type Article = {
   id: string;
   doi?: string;
   title: string;
-  authors: string[];
+  authors: ArticleAuthor[];
   venue: string;
   publisher?: string;
   publishedAt: string;
@@ -47,6 +84,11 @@ type Article = {
   abstract?: string;
   keywords?: string[];
   matches: Match[];
+};
+
+type ScholarProfile = {
+  candidate: SearchResult;
+  works: ScholarWork[];
 };
 
 type FeedResponse = {
@@ -60,7 +102,11 @@ type FeedResponse = {
 
 type ArticleState = { saved: boolean; read: boolean; ignored: boolean };
 type Filter = "all" | MatchKind | "saved";
-type SubscriptionSelection = { kind: MatchKind; label: string } | null;
+type SubscriptionSelection = {
+  kind: MatchKind;
+  label: string;
+  id?: string;
+} | null;
 type LocalData = {
   subscriptions: Subscriptions;
   states: Record<string, ArticleState>;
@@ -125,6 +171,72 @@ function defaultLocalData(): LocalData {
     states: {},
     feed: null,
     translations: {},
+  };
+}
+
+function cleanExternalId(value: unknown, prefix?: RegExp) {
+  if (typeof value !== "string") return "";
+  const id = value.trim().split("/").filter(Boolean).at(-1) || "";
+  return !prefix || prefix.test(id) ? id : "";
+}
+
+function cleanOrcid(value: unknown) {
+  if (typeof value !== "string") return "";
+  const id = value
+    .trim()
+    .replace(/^https?:\/\/orcid\.org\//i, "")
+    .toUpperCase();
+  return /^\d{4}-\d{4}-\d{4}-[\dX]{4}$/.test(id) ? id : "";
+}
+
+function normalizeScholarName(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .toLowerCase();
+}
+
+function scholarIdentityKey(value: Partial<Scholar> & Partial<SearchResult>) {
+  const orcid = cleanOrcid(value.orcid || value.externalIds?.orcid);
+  const openAlex =
+    value.openAlexIds?.map((id) => cleanExternalId(id, /^A\d+$/)).find(Boolean) ||
+    cleanExternalId(value.externalIds?.openAlex, /^A\d+$/) ||
+    "";
+  const semantic =
+    value.semanticScholarIds?.find(Boolean) ||
+    value.externalIds?.semanticScholar ||
+    "";
+  return (
+    value.subscriptionId ||
+    value.candidateId ||
+    (orcid && `orcid:${orcid}`) ||
+    (openAlex && `openalex:${openAlex}`) ||
+    (semantic && `semantic:${semantic}`) ||
+    `limited:${(value.label || "").toLowerCase()}:${(
+      value.institution || ""
+    ).toLowerCase()}`
+  );
+}
+
+function safeArticleAuthor(value: unknown): ArticleAuthor | null {
+  const candidate =
+    typeof value === "string"
+      ? { name: value }
+      : value && typeof value === "object"
+        ? (value as Partial<ArticleAuthor>)
+        : null;
+  if (!candidate || typeof candidate.name !== "string") return null;
+  const name = candidate.name.trim();
+  if (!name) return null;
+  return {
+    name,
+    openAlexId: cleanExternalId(candidate.openAlexId, /^A\d+$/) || undefined,
+    semanticScholarId:
+      typeof candidate.semanticScholarId === "string"
+        ? candidate.semanticScholarId.trim() || undefined
+        : undefined,
+    orcid: cleanOrcid(candidate.orcid) || undefined,
   };
 }
 
@@ -284,19 +396,18 @@ function safeSubscriptions(value: unknown): Subscriptions {
         Boolean(item && typeof item.label === "string" && typeof item.issn === "string"),
     ),
     scholar: candidate.scholar
-      .map((item) => {
+      .flatMap((item): Scholar[] => {
         if (typeof item === "string") {
-          const normalized = item.toLowerCase().replace(/^c\.\s*/, "");
-          return (
-            DEFAULT_SUBSCRIPTIONS.scholar.find(
-              (known) =>
-                known.label.toLowerCase().replace(/^c\.\s*/, "") === normalized,
-            ) || {
-              label: item,
-              openAlexIds: [],
-              institution: "单位待确认",
-            }
-          );
+          return [{
+            subscriptionId: `legacy:${item.toLowerCase()}`,
+            label: item,
+            aliases: [],
+            openAlexIds: [],
+            semanticScholarIds: [],
+            institution: "单位待确认",
+            institutions: [],
+            trackingStatus: "limited" as const,
+          }];
         }
         if (
           item &&
@@ -304,25 +415,78 @@ function safeSubscriptions(value: unknown): Subscriptions {
           typeof (item as Scholar).label === "string"
         ) {
           const scholar = item as Scholar;
-          return {
+          const openAlexIds = Array.isArray(scholar.openAlexIds)
+            ? scholar.openAlexIds
+                .map((id) => cleanExternalId(id, /^A\d+$/))
+                .filter(Boolean)
+            : [];
+          const semanticScholarIds = Array.isArray(
+            scholar.semanticScholarIds,
+          )
+            ? scholar.semanticScholarIds
+                .filter((id): id is string => typeof id === "string")
+                .map((id) => id.trim())
+                .filter(Boolean)
+            : [];
+          const orcid = cleanOrcid(scholar.orcid) || undefined;
+          const institutions = Array.isArray(scholar.institutions)
+            ? scholar.institutions.filter(
+                (item): item is string => typeof item === "string",
+              )
+            : [];
+          const institution =
+            scholar.institution || institutions[0] || "单位待确认";
+          return [{
+            subscriptionId:
+              scholar.subscriptionId ||
+              (orcid && `orcid:${orcid}`) ||
+              (openAlexIds[0] && `openalex:${openAlexIds[0]}`) ||
+              (semanticScholarIds[0] &&
+                `semantic:${semanticScholarIds[0]}`) ||
+              `legacy:${scholar.label.toLowerCase()}:${institution.toLowerCase()}`,
             label: scholar.label,
-            openAlexIds: Array.isArray(scholar.openAlexIds)
-              ? scholar.openAlexIds
+            aliases: Array.isArray(scholar.aliases)
+              ? scholar.aliases.filter(
+                  (item): item is string => typeof item === "string",
+                )
               : [],
-            institution: scholar.institution || "单位待确认",
+            openAlexIds,
+            semanticScholarIds,
+            institution,
+            institutions: [
+              ...new Set([institution, ...institutions].filter(Boolean)),
+            ],
             profileUrl: scholar.profileUrl,
-            orcid: scholar.orcid,
+            profileUrls: Array.isArray(scholar.profileUrls)
+              ? scholar.profileUrls.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : undefined,
+            orcid,
             worksCount: scholar.worksCount,
             researchAreas: Array.isArray(scholar.researchAreas)
               ? scholar.researchAreas.filter(
                   (item): item is string => typeof item === "string",
                 )
               : undefined,
-          };
+            verifiedWorkDois: Array.isArray(scholar.verifiedWorkDois)
+              ? scholar.verifiedWorkDois.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : undefined,
+            sources: Array.isArray(scholar.sources)
+              ? scholar.sources.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : undefined,
+            trackingStatus:
+              openAlexIds.length || semanticScholarIds.length || orcid
+                ? ("verified" as const)
+                : ("limited" as const),
+          }];
         }
-        return null;
-      })
-      .filter((item): item is Scholar => Boolean(item)),
+        return [];
+      }),
     keyword: candidate.keyword
       .map(safeKeywordGroup)
       .filter((item): item is KeywordGroup => Boolean(item))
@@ -362,16 +526,25 @@ function safeFeed(value: unknown): FeedResponse | null {
   const feed = value as Partial<FeedResponse>;
   if (!Array.isArray(feed.items)) return null;
   return {
-    items: feed.items.filter(
-      (item): item is Article =>
-        Boolean(
-          item &&
-            typeof item === "object" &&
-            typeof (item as Article).id === "string" &&
-            typeof (item as Article).title === "string" &&
-            Array.isArray((item as Article).matches),
-        ),
-    ),
+    items: feed.items
+      .filter(
+        (item): item is Article =>
+          Boolean(
+            item &&
+              typeof item === "object" &&
+              typeof (item as Article).id === "string" &&
+              typeof (item as Article).title === "string" &&
+              Array.isArray((item as Article).matches),
+          ),
+      )
+      .map((article) => ({
+        ...article,
+        authors: Array.isArray(article.authors)
+          ? article.authors
+              .map(safeArticleAuthor)
+              .filter((item): item is ArticleAuthor => Boolean(item))
+          : [],
+      })),
     updatedAt:
       typeof feed.updatedAt === "string"
         ? feed.updatedAt
@@ -379,7 +552,13 @@ function safeFeed(value: unknown): FeedResponse | null {
     source: feed.source === "fallback" ? "fallback" : "live",
     historyScholar:
       typeof feed.historyScholar === "string" ? feed.historyScholar : undefined,
-    scholars: Array.isArray(feed.scholars) ? feed.scholars : [],
+    scholars: Array.isArray(feed.scholars)
+      ? safeSubscriptions({
+          journal: [],
+          scholar: feed.scholars,
+          keyword: [],
+        }).scholar
+      : [],
     warnings: Array.isArray(feed.warnings)
       ? feed.warnings.filter((item): item is string => typeof item === "string")
       : [],
@@ -494,10 +673,20 @@ export default function Home() {
   const [translating, setTranslating] = useState<string | null>(null);
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [addOpen, setAddOpen] = useState(false);
-  const [addKind, setAddKind] = useState<MatchKind>("journal");
+  const [addKind, setAddKind] = useState<MatchKind>("scholar");
   const [addQuery, setAddQuery] = useState("");
+  const [scholarSearchMode, setScholarSearchMode] =
+    useState<"name" | "work">("name");
+  const [scholarInstitution, setScholarInstitution] = useState("");
+  const [scholarTopic, setScholarTopic] = useState("");
+  const [manualScholarName, setManualScholarName] = useState("");
+  const [authorContextName, setAuthorContextName] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchWarnings, setSearchWarnings] = useState<string[]>([]);
+  const [queryVariants, setQueryVariants] = useState<string[]>([]);
+  const [profile, setProfile] = useState<ScholarProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   const localDataRef = useRef<LocalData>(defaultLocalData());
   const saveQueueRef = useRef(Promise.resolve());
   const keywordSuggestion = useMemo(
@@ -507,7 +696,22 @@ export default function Home() {
   const searchActive =
     addOpen && addKind !== "keyword" && addQuery.trim().length >= 2;
   const visibleSearching = searchActive && searching;
-  const visibleSearchResults = searchActive ? searchResults : [];
+  const visibleSearchResults = searchActive
+    ? authorContextName
+      ? [
+          ...searchResults.filter(
+            (item) =>
+              normalizeScholarName(item.label) ===
+              normalizeScholarName(authorContextName),
+          ),
+          ...searchResults.filter(
+            (item) =>
+              normalizeScholarName(item.label) !==
+              normalizeScholarName(authorContextName),
+          ),
+        ]
+      : searchResults
+    : [];
 
   function applyLocalData(data: LocalData) {
     localDataRef.current = data;
@@ -603,20 +807,46 @@ export default function Home() {
     const timer = window.setTimeout(async () => {
       setSearching(true);
       try {
+        const params = new URLSearchParams({
+          kind: addKind,
+          q: addQuery.trim(),
+        });
+        if (addKind === "scholar") {
+          params.set("mode", scholarSearchMode);
+          if (scholarInstitution.trim()) {
+            params.set("institution", scholarInstitution.trim());
+          }
+          if (scholarTopic.trim()) params.set("topic", scholarTopic.trim());
+        }
         const response = await fetch(
-          `/api/search?kind=${addKind}&q=${encodeURIComponent(addQuery.trim())}`,
+          `/api/search?${params.toString()}`,
           { cache: "no-store" },
         );
-        const data = (await response.json()) as { results?: SearchResult[] };
+        const data = (await response.json()) as {
+          results?: SearchResult[];
+          warnings?: string[];
+          queryVariants?: string[];
+        };
         setSearchResults(data.results || []);
+        setSearchWarnings(data.warnings || []);
+        setQueryVariants(data.queryVariants || []);
       } catch {
         setSearchResults([]);
+        setSearchWarnings(["暂时无法连接公开学术索引。"]);
+        setQueryVariants([]);
       } finally {
         setSearching(false);
       }
-    }, 360);
+    }, 480);
     return () => window.clearTimeout(timer);
-  }, [addKind, addQuery, searchActive]);
+  }, [
+    addKind,
+    addQuery,
+    scholarInstitution,
+    scholarSearchMode,
+    scholarTopic,
+    searchActive,
+  ]);
 
   async function loadFeed(
     force = false,
@@ -679,6 +909,238 @@ export default function Home() {
     void persistLocalData({ states: next });
   }
 
+  function scholarFromResult(result: SearchResult): Scholar {
+    const openAlexIds = [
+      ...(result.openAlexIds || []),
+      ...(result.externalIds?.openAlex
+        ? [result.externalIds.openAlex]
+        : []),
+    ]
+      .map((id) => cleanExternalId(id, /^A\d+$/))
+      .filter((id, index, all) => Boolean(id) && all.indexOf(id) === index);
+    const semanticScholarIds = [
+      ...(result.semanticScholarIds || []),
+      ...(result.externalIds?.semanticScholar
+        ? [result.externalIds.semanticScholar]
+        : []),
+    ].filter((id, index, all) => Boolean(id) && all.indexOf(id) === index);
+    const orcid =
+      cleanOrcid(result.orcid || result.externalIds?.orcid) || undefined;
+    const institutions = [
+      ...(result.institutions || []),
+      ...(result.institution ? [result.institution] : []),
+    ].filter(
+      (item, index, all) => Boolean(item) && all.indexOf(item) === index,
+    );
+    const subscriptionId =
+      result.candidateId ||
+      (orcid && `orcid:${orcid}`) ||
+      (openAlexIds[0] && `openalex:${openAlexIds[0]}`) ||
+      (semanticScholarIds[0] &&
+        `semantic:${semanticScholarIds[0]}`) ||
+      `limited:${result.label.toLowerCase()}:${
+        (result.institution || "").toLowerCase()
+      }`;
+    return {
+      subscriptionId,
+      label: result.label,
+      aliases: result.aliases || [],
+      openAlexIds,
+      semanticScholarIds,
+      institution:
+        result.institution || institutions[0] || "单位待确认",
+      institutions,
+      profileUrl: result.profileUrl || result.profileUrls?.[0],
+      profileUrls: result.profileUrls,
+      orcid,
+      worksCount: result.worksCount,
+      researchAreas: result.researchAreas,
+      verifiedWorkDois: (result.representativeWorks || [])
+        .map((work) => work.doi || "")
+        .filter(Boolean),
+      sources: result.sources,
+      trackingStatus:
+        openAlexIds.length || semanticScholarIds.length || orcid
+          ? "verified"
+          : "limited",
+    };
+  }
+
+  function isScholarFollowed(result: SearchResult | Scholar) {
+    const key = scholarIdentityKey(result);
+    return subscriptions.scholar.some(
+      (item) => scholarIdentityKey(item) === key,
+    );
+  }
+
+  function followScholar(result: SearchResult, closeModal = true) {
+    if (isScholarFollowed(result)) {
+      showNotice("这位学者已经在关注列表中");
+      return;
+    }
+    const scholar = scholarFromResult(result);
+    const next = {
+      ...subscriptions,
+      scholar: [...subscriptions.scholar, scholar],
+    };
+    saveSubscriptions(next);
+    void loadFeed(false, undefined, next);
+    if (closeModal) {
+      setAddOpen(false);
+      setAddQuery("");
+      setSearchResults([]);
+    }
+    showNotice(
+      scholar.trackingStatus === "verified"
+        ? "已添加到你的关注"
+        : "档案已保存；自动更新可能不完整",
+    );
+  }
+
+  function saveManualScholar() {
+    const name = manualScholarName.trim();
+    const homepage = addQuery.trim();
+    if (name.length < 2 || !/^https?:\/\//i.test(homepage)) {
+      showNotice("请填写学者姓名和完整主页网址");
+      return;
+    }
+    followScholar({
+      candidateId: `limited:${name.toLowerCase()}:${
+        scholarInstitution.trim().toLowerCase()
+      }`,
+      label: name,
+      value: homepage,
+      institution: scholarInstitution.trim() || "单位待确认",
+      institutions: scholarInstitution.trim()
+        ? [scholarInstitution.trim()]
+        : [],
+      researchAreas: scholarTopic.trim() ? [scholarTopic.trim()] : [],
+      profileUrl: homepage,
+      profileUrls: [homepage],
+      sources: ["人工核验主页"],
+      trackingStatus: "limited",
+    });
+  }
+
+  async function openScholarProfile(result: SearchResult) {
+    setProfileLoading(true);
+    setAddOpen(false);
+    setError("");
+    try {
+      const params = new URLSearchParams();
+      const openAlexId =
+        result.openAlexIds?.[0] || result.externalIds?.openAlex;
+      const semanticScholarId =
+        result.semanticScholarIds?.[0] ||
+        result.externalIds?.semanticScholar;
+      if (openAlexId) params.set("openAlexId", openAlexId);
+      if (semanticScholarId) {
+        params.set("semanticScholarId", semanticScholarId);
+      }
+      if (result.orcid || result.externalIds?.orcid) {
+        params.set(
+          "orcid",
+          result.orcid || result.externalIds?.orcid || "",
+        );
+      }
+      if (![...params.keys()].length) params.set("name", result.label);
+      const response = await fetch(
+        `/api/scholar-profile?${params.toString()}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) throw new Error("profile unavailable");
+      const data = (await response.json()) as {
+        candidate?: SearchResult | null;
+        candidates?: SearchResult[];
+        works?: ScholarWork[];
+        needsConfirmation?: boolean;
+      };
+      if (data.candidate) {
+        setProfile({
+          candidate: data.candidate,
+          works: data.works || data.candidate.representativeWorks || [],
+        });
+        setActiveSubscription(null);
+        setHistoryScholar(undefined);
+        setFilter("scholar");
+      } else if (data.candidates?.length) {
+        setAddKind("scholar");
+        setScholarSearchMode("name");
+        setAddQuery(result.label);
+        setSearchResults(data.candidates);
+        setAuthorContextName(result.label);
+        setAddOpen(true);
+      } else {
+        setProfile({
+          candidate: result,
+          works: result.representativeWorks || [],
+        });
+        setFilter("scholar");
+      }
+    } catch {
+      setProfile({
+        candidate: result,
+        works: result.representativeWorks || [],
+      });
+      setFilter("scholar");
+      setError("暂时无法补充学者档案，正在显示已有身份信息。");
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  function closeAddModal() {
+    setAddOpen(false);
+    setAddQuery("");
+    setSearchResults([]);
+    setSearchWarnings([]);
+    setQueryVariants([]);
+    setAuthorContextName("");
+    setManualScholarName("");
+  }
+
+  async function openArticleAuthor(author: ArticleAuthor, article: Article) {
+    const hasStableIdentity =
+      author.openAlexId || author.semanticScholarId || author.orcid;
+    if (hasStableIdentity) {
+      await openScholarProfile({
+        candidateId:
+          (author.orcid && `orcid:${cleanOrcid(author.orcid)}`) ||
+          (author.openAlexId && `openalex:${author.openAlexId}`) ||
+          (author.semanticScholarId &&
+            `semantic:${author.semanticScholarId}`) ||
+          undefined,
+        label: author.name,
+        value:
+          author.openAlexId ||
+          author.semanticScholarId ||
+          author.orcid ||
+          author.name,
+        openAlexIds: author.openAlexId ? [author.openAlexId] : [],
+        semanticScholarIds: author.semanticScholarId
+          ? [author.semanticScholarId]
+          : [],
+        orcid: author.orcid,
+        externalIds: {
+          openAlex: author.openAlexId,
+          semanticScholar: author.semanticScholarId,
+          orcid: author.orcid,
+        },
+        trackingStatus: "verified",
+      });
+      return;
+    }
+
+    setAddKind("scholar");
+    setScholarSearchMode("work");
+    setAuthorContextName(author.name);
+    setManualScholarName(author.name);
+    setAddQuery(article.doi || article.title);
+    setSearchResults([]);
+    setSearchWarnings([]);
+    setAddOpen(true);
+  }
+
   function addSubscription(result?: SearchResult) {
     if (addKind === "keyword") {
       if (!keywordSuggestion) return;
@@ -711,31 +1173,8 @@ export default function Home() {
       saveSubscriptions(next);
       void loadFeed(false, undefined, next);
     } else if (addKind === "scholar" && result) {
-      if (
-        subscriptions.scholar.some(
-          (item) => item.label.toLowerCase() === result.label.toLowerCase(),
-        )
-      ) {
-        showNotice("这位学者已经在关注列表中");
-        return;
-      }
-      const next = {
-        ...subscriptions,
-        scholar: [
-          ...subscriptions.scholar,
-          {
-            label: result.label,
-            openAlexIds: [result.value],
-            institution: result.institution || "单位待确认",
-            profileUrl: result.profileUrl,
-            orcid: result.orcid,
-            worksCount: result.worksCount,
-            researchAreas: result.researchAreas,
-          },
-        ],
-      };
-      saveSubscriptions(next);
-      void loadFeed(false, undefined, next);
+      followScholar(result);
+      return;
     } else {
       return;
     }
@@ -745,7 +1184,7 @@ export default function Home() {
     showNotice("已添加到你的关注");
   }
 
-  function removeSubscription(kind: MatchKind, label: string) {
+  function removeSubscription(kind: MatchKind, label: string, id?: string) {
     const next: Subscriptions =
       kind === "journal"
         ? {
@@ -756,7 +1195,10 @@ export default function Home() {
           ? {
               ...subscriptions,
               scholar: subscriptions.scholar.filter(
-                (item) => item.label !== label,
+                (item) =>
+                  id
+                    ? item.subscriptionId !== id
+                    : item.label !== label,
               ),
             }
           : {
@@ -768,7 +1210,9 @@ export default function Home() {
     saveSubscriptions(next);
     if (
       activeSubscription?.kind === kind &&
-      activeSubscription.label === label
+      (activeSubscription.id
+        ? activeSubscription.id === id
+        : activeSubscription.label === label)
     ) {
       setActiveSubscription(null);
       setFilter("all");
@@ -778,12 +1222,18 @@ export default function Home() {
     showNotice("已从关注列表移除");
   }
 
-  async function selectSubscription(kind: MatchKind, label: string) {
+  async function selectSubscription(
+    kind: MatchKind,
+    label: string,
+    id?: string,
+  ) {
+    setProfile(null);
     setFilter(kind);
-    setActiveSubscription({ kind, label });
+    setActiveSubscription({ kind, label, id });
     if (kind === "scholar") {
-      setHistoryScholar(label);
-      await loadFeed(false, label);
+      const scholarKey = id || label;
+      setHistoryScholar(scholarKey);
+      await loadFeed(false, scholarKey);
     } else if (historyScholar) {
       setHistoryScholar(undefined);
       await loadFeed();
@@ -791,6 +1241,7 @@ export default function Home() {
   }
 
   async function selectFilter(nextFilter: Filter) {
+    setProfile(null);
     setFilter(nextFilter);
     setActiveSubscription(null);
     if (historyScholar) {
@@ -860,7 +1311,7 @@ export default function Home() {
       return [
         article.title,
         article.venue,
-        article.authors.join(" "),
+        article.authors.map((author) => author.name).join(" "),
         article.abstract || "",
         ...(article.keywords || []),
         article.matches.map((match) => match.label).join(" "),
@@ -879,6 +1330,7 @@ export default function Home() {
         const scholar =
           feed?.scholars?.find(
             (item) =>
+              item.subscriptionId === savedScholar.subscriptionId ||
               item.label.toLowerCase() === savedScholar.label.toLowerCase(),
           ) || savedScholar;
         const articles = (feed?.items || [])
@@ -907,7 +1359,7 @@ export default function Home() {
           ...articles.flatMap((article) => [
             article.title,
             article.abstract || "",
-            article.authors.join(" "),
+            article.authors.map((author) => author.name).join(" "),
             ...(article.keywords || []),
           ]),
         ]
@@ -931,17 +1383,37 @@ export default function Home() {
   ).length;
   const savedCount = Object.values(states).filter((state) => state.saved).length;
   const currentScholar =
-    activeSubscription?.kind === "scholar"
+    profile
+      ? scholarFromResult(profile.candidate)
+      : activeSubscription?.kind === "scholar"
       ? subscriptions.scholar.find(
-          (item) => item.label === activeSubscription.label,
+          (item) =>
+            (activeSubscription.id &&
+              item.subscriptionId === activeSubscription.id) ||
+            (!activeSubscription.id &&
+              item.label === activeSubscription.label),
         ) ||
         feed?.scholars?.find(
-          (item) => item.label === activeSubscription.label,
+          (item) =>
+            (activeSubscription.id &&
+              item.subscriptionId === activeSubscription.id) ||
+            (!activeSubscription.id &&
+              item.label === activeSubscription.label),
         )
       : undefined;
+  const currentProfileFollowed = profile
+    ? subscriptions.scholar.find(
+        (item) =>
+          scholarIdentityKey(item) === scholarIdentityKey(profile.candidate),
+      )
+    : currentScholar;
 
-  async function openScholar(label: string) {
-    await selectSubscription("scholar", label);
+  async function openScholar(scholar: Scholar) {
+    await selectSubscription(
+      "scholar",
+      scholar.label,
+      scholar.subscriptionId,
+    );
   }
 
   return (
@@ -1004,27 +1476,48 @@ export default function Home() {
             </div>
             <SubscriptionGroup
               title="学者"
-              items={subscriptions.scholar.map((item) => item.label)}
+              items={subscriptions.scholar.map((item) => ({
+                id: item.subscriptionId,
+                label: item.label,
+              }))}
               kind="scholar"
-              activeLabel={activeSubscription?.label}
-              onSelect={(label) => void selectSubscription("scholar", label)}
-              onRemove={(label) => removeSubscription("scholar", label)}
+              activeId={activeSubscription?.id}
+              onSelect={(item) =>
+                void selectSubscription("scholar", item.label, item.id)
+              }
+              onRemove={(item) =>
+                removeSubscription("scholar", item.label, item.id)
+              }
             />
             <SubscriptionGroup
               title="期刊"
-              items={subscriptions.journal.map((item) => item.label)}
+              items={subscriptions.journal.map((item) => ({
+                id: item.label,
+                label: item.label,
+              }))}
               kind="journal"
-              activeLabel={activeSubscription?.label}
-              onSelect={(label) => void selectSubscription("journal", label)}
-              onRemove={(label) => removeSubscription("journal", label)}
+              activeId={activeSubscription?.label}
+              onSelect={(item) =>
+                void selectSubscription("journal", item.label)
+              }
+              onRemove={(item) =>
+                removeSubscription("journal", item.label)
+              }
             />
             <SubscriptionGroup
               title="关键词"
-              items={subscriptions.keyword.map(keywordGroupLabel)}
+              items={subscriptions.keyword.map((item) => ({
+                id: keywordGroupLabel(item),
+                label: keywordGroupLabel(item),
+              }))}
               kind="keyword"
-              activeLabel={activeSubscription?.label}
-              onSelect={(label) => void selectSubscription("keyword", label)}
-              onRemove={(label) => removeSubscription("keyword", label)}
+              activeId={activeSubscription?.label}
+              onSelect={(item) =>
+                void selectSubscription("keyword", item.label)
+              }
+              onRemove={(item) =>
+                removeSubscription("keyword", item.label)
+              }
             />
           </section>
 
@@ -1048,7 +1541,8 @@ export default function Home() {
                 }).format(new Date())}
               </p>
               <h1>
-                {activeSubscription?.label ||
+                {profile?.candidate.label ||
+                  activeSubscription?.label ||
                   (filter === "all"
                     ? "学者动态"
                     : filter === "journal"
@@ -1066,7 +1560,9 @@ export default function Home() {
                     ? `仅显示该${kindLabel(activeSubscription.kind)}下的内容，共 `
                     : "从你的关注网络中发现 "}
                 <strong>
-                  {feed
+                  {profile
+                    ? profile.works.length
+                    : feed
                     ? isScholarOverview
                       ? scholarCards.length
                       : visibleItems.length
@@ -1090,8 +1586,12 @@ export default function Home() {
                   .slice(0, 2)
                   .join("")}
               </div>
-              <div>
-                <p>身份已确认</p>
+              <div className="scholar-profile-content">
+                <p>
+                  {currentScholar.trackingStatus === "verified"
+                    ? "身份已确认"
+                    : "身份仍需核验"}
+                </p>
                 <h2>{currentScholar.label}</h2>
                 <strong>{currentScholar.institution}</strong>
                 <small>
@@ -1099,26 +1599,41 @@ export default function Home() {
                   {currentScholar.worksCount?.toLocaleString("zh-CN") || "—"}{" "}
                   条成果；下方合并展示历史发表与近期更新。
                 </small>
+                {currentScholar.trackingStatus === "limited" && (
+                  <small className="tracking-warning">
+                    档案已保存，但尚未确认学术索引 ID 或可解析代表作，自动更新可能不完整。
+                  </small>
+                )}
                 {currentScholar.researchAreas?.length ? (
                   <small>
                     研究方向：{currentScholar.researchAreas.join("、")}
                   </small>
                 ) : null}
                 <nav>
-                  {currentScholar.profileUrl && (
-                    <a
-                      href={currentScholar.profileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {currentScholar.profileUrl.includes("openalex.org")
-                        ? "OpenAlex 档案 ↗"
-                        : "官方个人主页 ↗"}
-                    </a>
-                  )}
+                  {[
+                    ...(currentScholar.profileUrls || []),
+                    ...(currentScholar.profileUrl
+                      ? [currentScholar.profileUrl]
+                      : []),
+                  ]
+                    .filter(
+                      (url, index, all) =>
+                        /^https?:\/\//i.test(url) &&
+                        all.indexOf(url) === index,
+                    )
+                    .slice(0, 4)
+                    .map((url) => (
+                      <a href={url} target="_blank" rel="noreferrer" key={url}>
+                        {url.includes("openalex.org")
+                          ? "OpenAlex ↗"
+                          : url.includes("semanticscholar.org")
+                            ? "Semantic Scholar ↗"
+                            : "外部档案 ↗"}
+                      </a>
+                    ))}
                   {currentScholar.orcid && (
                     <a
-                      href={currentScholar.orcid}
+                      href={`https://orcid.org/${cleanOrcid(currentScholar.orcid)}`}
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -1127,6 +1642,31 @@ export default function Home() {
                   )}
                 </nav>
               </div>
+              {profile && (
+                <div className="scholar-profile-actions">
+                  {currentProfileFollowed ? (
+                    <button
+                      className="secondary-button"
+                      onClick={() =>
+                        removeSubscription(
+                          "scholar",
+                          currentProfileFollowed.label,
+                          currentProfileFollowed.subscriptionId,
+                        )
+                      }
+                    >
+                      取消关注
+                    </button>
+                  ) : (
+                    <button
+                      className="primary-button"
+                      onClick={() => followScholar(profile.candidate, false)}
+                    >
+                      关注
+                    </button>
+                  )}
+                </div>
+              )}
             </section>
           )}
 
@@ -1135,7 +1675,53 @@ export default function Home() {
             <div className="error-banner" key={warning}>{warning}</div>
           ))}
 
-          {loading && !feed ? (
+          {profileLoading ? (
+            <div className="loading-list" aria-label="正在载入学者档案">
+              {[0, 1, 2].map((item) => (
+                <div className="loading-card" key={item}>
+                  <span /><span /><span />
+                </div>
+              ))}
+            </div>
+          ) : profile ? (
+            profile.works.length ? (
+              <section className="profile-publications">
+                <div className="profile-publications-heading">
+                  <div>
+                    <p>聚合档案</p>
+                    <h2>最新发表与历史成果</h2>
+                  </div>
+                  <span>{profile.works.length} 条</span>
+                </div>
+                <ol>
+                  {profile.works.map((work, index) => (
+                    <li key={work.id || `${work.title}-${index}`}>
+                      <div>
+                        <span>{work.year || "年份待确认"}</span>
+                        {work.venue && <em>{work.venue}</em>}
+                      </div>
+                      <h3>
+                        {work.url ? (
+                          <a href={work.url} target="_blank" rel="noreferrer">
+                            {work.title}
+                          </a>
+                        ) : (
+                          work.title
+                        )}
+                      </h3>
+                      {work.doi && <small>DOI: {work.doi}</small>}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            ) : (
+              <div className="empty-state">
+                <span>◎</span>
+                <h2>已找到身份档案，暂未取得可展示的发表</h2>
+                <p>可使用代表作、DOI 或外部档案链接再次核验。</p>
+              </div>
+            )
+          ) : loading && !feed ? (
             <div className="loading-list" aria-label="正在加载">
               {[0, 1, 2].map((item) => (
                 <div className="loading-card" key={item}>
@@ -1180,15 +1766,15 @@ export default function Home() {
                   return (
                     <article
                       className="scholar-card"
-                      key={scholar.label}
+                      key={scholar.subscriptionId}
                       role="button"
                       tabIndex={0}
                       aria-label={`查看 ${scholar.label} 的全部发表`}
-                      onClick={() => void openScholar(scholar.label)}
+                      onClick={() => void openScholar(scholar)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
-                          void openScholar(scholar.label);
+                          void openScholar(scholar);
                         }
                       }}
                     >
@@ -1322,11 +1908,28 @@ export default function Home() {
                       </a>
                     </h2>
 
-                    <p className="authors">
-                      {article.authors.length
-                        ? article.authors.slice(0, 8).join(", ")
-                        : "作者信息暂缺"}
-                    </p>
+                    <div className="authors" aria-label="作者">
+                      {article.authors.length ? (
+                        article.authors.slice(0, 8).map((author, index) => (
+                          <span key={`${author.name}-${index}`}>
+                            <button
+                              className="author-link"
+                              onClick={() =>
+                                void openArticleAuthor(author, article)
+                              }
+                              title={`查看 ${author.name} 的学者档案`}
+                            >
+                              {author.name}
+                            </button>
+                            {index < Math.min(article.authors.length, 8) - 1
+                              ? ","
+                              : ""}
+                          </span>
+                        ))
+                      ) : (
+                        <span>作者信息暂缺</span>
+                      )}
+                    </div>
 
                     <div className="match-row">
                       <span>收录原因</span>
@@ -1488,7 +2091,7 @@ export default function Home() {
       </div>
 
       {addOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setAddOpen(false)}>
+        <div className="modal-backdrop" role="presentation" onMouseDown={closeAddModal}>
           <section
             className="add-modal"
             role="dialog"
@@ -1501,7 +2104,7 @@ export default function Home() {
                 <p>添加关注</p>
                 <h2>搜索期刊、学者或关键词</h2>
               </div>
-              <button aria-label="关闭" onClick={() => setAddOpen(false)}>×</button>
+              <button aria-label="关闭" onClick={closeAddModal}>×</button>
             </header>
             <div className="add-tabs">
               {(["scholar", "journal", "keyword"] as MatchKind[]).map((kind) => (
@@ -1512,12 +2115,41 @@ export default function Home() {
                     setAddKind(kind);
                     setAddQuery("");
                     setSearchResults([]);
+                    setSearchWarnings([]);
+                    setQueryVariants([]);
+                    setAuthorContextName("");
+                    setManualScholarName("");
                   }}
                 >
                   {kindLabel(kind)}
                 </button>
               ))}
             </div>
+            {addKind === "scholar" && (
+              <div className="scholar-search-modes" aria-label="学者搜索方式">
+                <button
+                  className={scholarSearchMode === "name" ? "active" : ""}
+                  onClick={() => {
+                    setScholarSearchMode("name");
+                    setAddQuery("");
+                    setSearchResults([]);
+                    setAuthorContextName("");
+                  }}
+                >
+                  按姓名
+                </button>
+                <button
+                  className={scholarSearchMode === "work" ? "active" : ""}
+                  onClick={() => {
+                    setScholarSearchMode("work");
+                    setAddQuery("");
+                    setSearchResults([]);
+                  }}
+                >
+                  按代表作
+                </button>
+              </div>
+            )}
             <label className="add-search">
               <span>⌕</span>
               <input
@@ -1528,7 +2160,9 @@ export default function Home() {
                   addKind === "journal"
                     ? "输入期刊名，例如 Medical Anthropology"
                     : addKind === "scholar"
-                      ? "输入学者姓名"
+                      ? scholarSearchMode === "name"
+                        ? "输入中文名或罗马字姓名"
+                        : "输入论文标题、DOI、ORCID 或学术档案链接"
                       : "输入需要重点标注的关键词"
                 }
                 onKeyDown={(event) => {
@@ -1538,6 +2172,35 @@ export default function Home() {
                 }}
               />
             </label>
+            {addKind === "scholar" && (
+              <>
+                <div className="scholar-search-filters">
+                  <label>
+                    <span>单位（可选）</span>
+                    <input
+                      value={scholarInstitution}
+                      onChange={(event) =>
+                        setScholarInstitution(event.target.value)
+                      }
+                      placeholder="例如 浙江大学"
+                    />
+                  </label>
+                  <label>
+                    <span>研究方向（可选）</span>
+                    <input
+                      value={scholarTopic}
+                      onChange={(event) => setScholarTopic(event.target.value)}
+                      placeholder="例如 人类学"
+                    />
+                  </label>
+                </div>
+                <p className="scholar-search-help">
+                  {scholarSearchMode === "name"
+                    ? "会自动尝试拼音、姓名顺序、标点和轻微拼写差异；单位与方向会影响排序。"
+                    : "先解析作品，再列出作者供确认；适合重名或姓名写法不确定的情况。"}
+                </p>
+              </>
+            )}
 
             {addKind === "keyword" ? (
               <div className="keyword-add">
@@ -1563,32 +2226,134 @@ export default function Home() {
             ) : (
               <div className="search-results">
                 {visibleSearching && <p className="search-hint">正在搜索公开学术索引…</p>}
+                {addKind === "scholar" && queryVariants.length > 1 && (
+                  <p className="query-variants">
+                    已同时尝试：{queryVariants.slice(0, 6).join(" · ")}
+                  </p>
+                )}
+                {searchWarnings.map((warning) => (
+                  <p className="search-warning" key={warning}>
+                    {warning}
+                  </p>
+                ))}
                 {!visibleSearching && addQuery.trim().length < 2 && (
                   <p className="search-hint">输入至少两个字符开始搜索。</p>
                 )}
                 {!visibleSearching &&
                   addQuery.trim().length >= 2 &&
                   visibleSearchResults.length === 0 && (
-                    <p className="search-hint">没有找到结果，请换一种写法。</p>
+                    <p className="search-hint">
+                      没有找到结果。可补充单位或研究方向，或切换到“按代表作”。
+                    </p>
                   )}
-                {visibleSearchResults.map((result) => (
-                  <button
-                    className="search-result"
-                    key={`${result.label}-${result.value}`}
-                    onClick={() => addSubscription(result)}
-                  >
-                    <span>
-                      <strong>{result.label}</strong>
-                      <small>{result.detail || result.value}</small>
-                      {addKind === "scholar" && result.researchAreas?.length ? (
-                        <small className="research-preview">
-                          研究方向：{result.researchAreas.join("、")}
-                        </small>
+                {visibleSearchResults.map((result) =>
+                  addKind === "scholar" ? (
+                    <article
+                      className="scholar-search-result"
+                      key={result.candidateId || `${result.label}-${result.value}`}
+                    >
+                      <div className="scholar-result-heading">
+                        <div>
+                          <strong>{result.label}</strong>
+                          {result.aliases?.length ? (
+                            <small>
+                              别名：{result.aliases.slice(0, 5).join("、")}
+                            </small>
+                          ) : null}
+                        </div>
+                        <span>
+                          {result.trackingStatus === "limited"
+                            ? "需进一步核验"
+                            : "可自动追踪"}
+                        </span>
+                      </div>
+                      <p>
+                        {(result.institutions?.length
+                          ? result.institutions
+                          : [result.institution || result.detail]
+                        )
+                          .filter(Boolean)
+                          .slice(0, 3)
+                          .join(" · ") || "单位待确认"}
+                      </p>
+                      {result.researchAreas?.length ? (
+                        <p className="research-preview">
+                          研究方向：{result.researchAreas.slice(0, 6).join("、")}
+                        </p>
                       ) : null}
-                    </span>
-                    <em>添加</em>
-                  </button>
-                ))}
+                      {result.representativeWorks?.length ? (
+                        <ol className="representative-works">
+                          {result.representativeWorks.slice(0, 3).map((work) => (
+                            <li key={work.id || work.title}>
+                              <span>{work.title}</span>
+                              {work.year && <time>{work.year}</time>}
+                            </li>
+                          ))}
+                        </ol>
+                      ) : null}
+                      <div className="scholar-result-meta">
+                        <span>
+                          {typeof result.worksCount === "number"
+                            ? `${result.worksCount.toLocaleString("zh-CN")} 项成果`
+                            : "成果数待确认"}
+                        </span>
+                        <span>
+                          来源：{result.sources?.join("、") || "公开索引"}
+                        </span>
+                      </div>
+                      <div className="scholar-result-actions">
+                        <button
+                          className="secondary-button"
+                          onClick={() => void openScholarProfile(result)}
+                        >
+                          查看档案
+                        </button>
+                        <button
+                          className="primary-button"
+                          disabled={isScholarFollowed(result)}
+                          onClick={() => followScholar(result)}
+                        >
+                          {isScholarFollowed(result) ? "已关注" : "关注"}
+                        </button>
+                      </div>
+                    </article>
+                  ) : (
+                    <button
+                      className="search-result"
+                      key={`${result.label}-${result.value}`}
+                      onClick={() => addSubscription(result)}
+                    >
+                      <span>
+                        <strong>{result.label}</strong>
+                        <small>{result.detail || result.value}</small>
+                      </span>
+                      <em>添加</em>
+                    </button>
+                  ),
+                )}
+                {addKind === "scholar" &&
+                  scholarSearchMode === "work" &&
+                  /^https?:\/\//i.test(addQuery.trim()) &&
+                  !visibleSearching &&
+                  visibleSearchResults.length === 0 && (
+                    <section className="manual-scholar">
+                      <strong>保存人工核验主页</strong>
+                      <p>
+                        如果这是机构主页，可先保存；未确认索引 ID 或代表作时，自动更新可能不完整。
+                      </p>
+                      <label>
+                        <span>学者姓名</span>
+                        <input
+                          value={manualScholarName}
+                          onChange={(event) =>
+                            setManualScholarName(event.target.value)
+                          }
+                          placeholder="请输入姓名"
+                        />
+                      </label>
+                      <button onClick={saveManualScholar}>保存档案</button>
+                    </section>
+                  )}
               </div>
             )}
             <footer>
@@ -1607,16 +2372,16 @@ function SubscriptionGroup({
   title,
   items,
   kind,
-  activeLabel,
+  activeId,
   onSelect,
   onRemove,
 }: {
   title: string;
-  items: string[];
+  items: { id: string; label: string }[];
   kind: MatchKind;
-  activeLabel?: string;
-  onSelect: (label: string) => void;
-  onRemove: (label: string) => void;
+  activeId?: string;
+  onSelect: (item: { id: string; label: string }) => void;
+  onRemove: (item: { id: string; label: string }) => void;
 }) {
   return (
     <details open className="subscription-group">
@@ -1626,17 +2391,17 @@ function SubscriptionGroup({
       </summary>
       <ul>
         {items.map((item) => (
-          <li key={item}>
+          <li key={item.id}>
             <button
-              className={`subscription-name ${activeLabel === item ? "active" : ""}`}
+              className={`subscription-name ${activeId === item.id ? "active" : ""}`}
               onClick={() => onSelect(item)}
-              title={`只看 ${item}`}
+              title={`只看 ${item.label}`}
             >
-              {item}
+              {item.label}
             </button>
             <button
               className="subscription-remove"
-              aria-label={`移除 ${item}`}
+              aria-label={`移除 ${item.label}`}
               title="移除"
               onClick={() => onRemove(item)}
             >

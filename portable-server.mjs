@@ -87,13 +87,36 @@ function clean(value, max = 2000) {
 
 function emptyLocalData() {
   return {
-    version: 2,
+    version: 3,
     savedAt: new Date().toISOString(),
     subscriptions: { journal: [], scholar: [], keyword: [] },
     states: {},
     feed: null,
     translations: {},
   };
+}
+
+function cleanOrcid(value) {
+  const id = clean(value, 160)
+    .replace(/^https?:\/\/orcid\.org\//i, "")
+    .toUpperCase();
+  return /^\d{4}-\d{4}-\d{4}-[\dX]{4}$/.test(id) ? id : "";
+}
+
+function cleanOpenAlexId(value) {
+  const id = clean(value, 100).split("/").filter(Boolean).at(-1) || "";
+  return /^A\d+$/.test(id) ? id : "";
+}
+
+function scholarSubscriptionId(item, label, openAlexIds, semanticScholarIds, orcid) {
+  const stored = clean(item?.subscriptionId, 220);
+  return (
+    stored ||
+    (orcid && `orcid:${orcid}`) ||
+    (openAlexIds[0] && `openalex:${openAlexIds[0]}`) ||
+    (semanticScholarIds[0] && `semantic:${semanticScholarIds[0]}`) ||
+    `legacy:${label.toLowerCase()}:${clean(item?.institution, 240).toLowerCase()}`
+  );
 }
 
 function cleanArticleState(value) {
@@ -178,24 +201,90 @@ function cleanSubscriptions(value = {}) {
     ? value.scholar
         .slice(0, 60)
         .map((item) => {
-          const label = clean(item?.label, 180);
+          const candidate =
+            typeof item === "string" ? { label: item } : item;
+          const label = clean(candidate?.label, 180);
           if (!label) return null;
+          const openAlexIds = Array.isArray(candidate?.openAlexIds)
+            ? candidate.openAlexIds
+                .map(cleanOpenAlexId)
+                .filter(Boolean)
+            : [];
+          const semanticScholarIds = Array.isArray(candidate?.semanticScholarIds)
+            ? candidate.semanticScholarIds
+                .map((id) => clean(id, 160))
+                .filter(Boolean)
+            : [];
+          const orcid = cleanOrcid(candidate?.orcid) || undefined;
+          const institutions = Array.isArray(candidate?.institutions)
+            ? candidate.institutions
+                .slice(0, 12)
+                .map((value) => clean(value, 240))
+                .filter(Boolean)
+            : [];
+          const institution =
+            clean(candidate?.institution, 240) ||
+            institutions[0] ||
+            "单位待确认";
           return {
+            subscriptionId: scholarSubscriptionId(
+              candidate,
+              label,
+              openAlexIds,
+              semanticScholarIds,
+              orcid,
+            ),
             label,
-            openAlexIds: Array.isArray(item?.openAlexIds)
-              ? item.openAlexIds.map((id) => clean(id, 80)).filter(Boolean)
+            aliases: Array.isArray(candidate?.aliases)
+              ? candidate.aliases
+                  .slice(0, 16)
+                  .map((value) => clean(value, 180))
+                  .filter(Boolean)
               : [],
-            institution: clean(item?.institution, 240) || "单位待确认",
-            profileUrl: clean(item?.profileUrl, 500) || undefined,
-            orcid: clean(item?.orcid, 160) || undefined,
+            openAlexIds,
+            semanticScholarIds,
+            institution,
+            institutions: [
+              ...new Set([institution, ...institutions].filter(Boolean)),
+            ],
+            profileUrl: clean(candidate?.profileUrl, 500) || undefined,
+            profileUrls: Array.isArray(candidate?.profileUrls)
+              ? candidate.profileUrls
+                  .slice(0, 12)
+                  .map((value) => clean(value, 800))
+                  .filter(Boolean)
+              : undefined,
+            orcid,
             worksCount:
-              typeof item?.worksCount === "number" ? item.worksCount : undefined,
-            researchAreas: Array.isArray(item?.researchAreas)
-              ? item.researchAreas
+              typeof candidate?.worksCount === "number"
+                ? candidate.worksCount
+                : undefined,
+            researchAreas: Array.isArray(candidate?.researchAreas)
+              ? candidate.researchAreas
                   .slice(0, 8)
                   .map((area) => clean(area, 160))
                   .filter(Boolean)
               : undefined,
+            verifiedWorkDois: Array.isArray(candidate?.verifiedWorkDois)
+              ? candidate.verifiedWorkDois
+                  .slice(0, 20)
+                  .map((doi) =>
+                    clean(doi, 300)
+                      .replace(/^https?:\/\/doi\.org\//i, "")
+                      .toLowerCase(),
+                  )
+                  .filter(Boolean)
+              : undefined,
+            sources: Array.isArray(candidate?.sources)
+              ? candidate.sources
+                  .slice(0, 8)
+                  .map((source) => clean(source, 80))
+                  .filter(Boolean)
+              : undefined,
+            trackingStatus:
+              openAlexIds.length || semanticScholarIds.length || orcid
+                ? "verified"
+                : "limited",
           };
         })
         .filter(Boolean)
@@ -245,7 +334,22 @@ function cleanArticle(value) {
     doi: clean(value?.doi, 300) || undefined,
     title,
     authors: Array.isArray(value?.authors)
-      ? value.authors.slice(0, 40).map((item) => clean(item, 220)).filter(Boolean)
+      ? value.authors
+          .slice(0, 40)
+          .map((item) => {
+            const candidate =
+              typeof item === "string" ? { name: item } : item;
+            const name = clean(candidate?.name, 220);
+            if (!name) return null;
+            return {
+              name,
+              openAlexId: cleanOpenAlexId(candidate?.openAlexId) || undefined,
+              semanticScholarId:
+                clean(candidate?.semanticScholarId, 160) || undefined,
+              orcid: cleanOrcid(candidate?.orcid) || undefined,
+            };
+          })
+          .filter(Boolean)
       : [],
     venue: clean(value?.venue, 400),
     publisher: clean(value?.publisher, 400) || undefined,
@@ -305,7 +409,7 @@ function cleanLocalData(value = {}, refreshSavedAt = false) {
   }
 
   return {
-    version: 2,
+    version: 3,
     savedAt: refreshSavedAt ? new Date().toISOString() : cleanSavedAt(value.savedAt),
     subscriptions: cleanSubscriptions(value.subscriptions),
     states,

@@ -1,6 +1,6 @@
 {
   "name": "anthropology-canteen",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "author": "YZYanthrop",
   "license": "MIT",
@@ -12,13 +12,14 @@
     "dev": "vinext dev --host 0.0.0.0",
     "build": "vinext build",
     "start": "vinext start --host 0.0.0.0",
-    "test": "pnpm run build && node --test tests/rendered-html.test.mjs",
+    "test": "pnpm run build && node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
+    "pinyin-pro": "^3.28.2",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },

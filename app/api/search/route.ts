@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { searchScholars } from "../../lib/scholar-search";
 
 export const dynamic = "force-dynamic";
 
@@ -9,20 +10,6 @@ type OpenAlexSource = {
   type?: string;
   works_count?: number;
   host_organization_name?: string;
-};
-
-type OpenAlexAuthor = {
-  id?: string;
-  display_name?: string;
-  orcid?: string;
-  works_count?: number;
-  last_known_institutions?: { display_name?: string }[];
-  topics?: {
-    display_name?: string;
-    count?: number;
-    subfield?: { display_name?: string };
-  }[];
-  x_concepts?: { display_name?: string; score?: number }[];
 };
 
 type CrossrefJournal = {
@@ -37,11 +24,6 @@ type CrossrefJournal = {
 
 function clean(value: unknown = "") {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
-}
-
-function entityId(value: unknown = "") {
-  if (typeof value !== "string") return "";
-  return value.split("/").at(-1) || value;
 }
 
 function isIssn(value: unknown = "") {
@@ -231,30 +213,11 @@ function mergeResults<T extends { value: string; label: string }>(
   return merged.slice(0, limit);
 }
 
-function researchAreas(author: OpenAlexAuthor) {
-  const topics = (author.topics || [])
-    .slice()
-    .sort((a, b) => (b.count || 0) - (a.count || 0))
-    .map((item) => clean(item.display_name))
-    .filter(Boolean);
-  if (topics.length) return [...new Set(topics)].slice(0, 4);
-
-  return [
-    ...new Set(
-      (author.x_concepts || [])
-        .slice()
-        .sort((a, b) => (b.score || 0) - (a.score || 0))
-        .map((item) => clean(item.display_name))
-        .filter(Boolean),
-    ),
-  ].slice(0, 4);
-}
-
 async function openAlex<T>(url: URL): Promise<T> {
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/0.6",
+      "user-agent": "AnthropologyCanteen/1.1",
     },
     signal: AbortSignal.timeout(15_000),
   });
@@ -269,7 +232,7 @@ async function crossrefJournals(query: string) {
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/0.6",
+      "user-agent": "AnthropologyCanteen/1.1",
     },
     signal: AbortSignal.timeout(15_000),
   });
@@ -345,38 +308,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const url = new URL("https://api.openalex.org/authors");
-    url.searchParams.set("search", query);
-    url.searchParams.set("per-page", "12");
-    const data = await openAlex<{ results?: OpenAlexAuthor[] }>(url);
-    const results = (data.results || [])
-      .map((item) => {
-        const institutions = (item.last_known_institutions || [])
-          .map((institution) => clean(institution.display_name))
-          .filter(Boolean);
-        const id = entityId(item.id);
-        const areas = researchAreas(item);
-        return {
-          label: clean(item.display_name),
-          value: id,
-          institution: institutions.join("；") || "未收录单位",
-          detail: [
-            institutions.join("；") || "未收录单位",
-            typeof item.works_count === "number"
-              ? `约 ${item.works_count.toLocaleString("zh-CN")} 条成果`
-              : "",
-            item.orcid ? `ORCID ${entityId(item.orcid)}` : "",
-          ]
-            .filter(Boolean)
-            .join(" · "),
-          profileUrl: item.id,
-          orcid: item.orcid,
-          worksCount: item.works_count,
-          researchAreas: areas,
-        };
-      })
-      .filter((item) => item.label && item.value);
-    return NextResponse.json({ results });
+    const mode =
+      request.nextUrl.searchParams.get("mode") === "work" ? "work" : "name";
+    const institution = clean(
+      request.nextUrl.searchParams.get("institution") || "",
+    ).slice(0, 120);
+    const topic = clean(
+      request.nextUrl.searchParams.get("topic") || "",
+    ).slice(0, 120);
+    const result = await searchScholars({
+      query,
+      mode,
+      institution,
+      topic,
+    });
+    return NextResponse.json(result, {
+      headers: { "cache-control": "no-store" },
+    });
   } catch {
     return NextResponse.json(
       { results: [], message: "暂时无法连接学术索引，请稍后再试。" },
