@@ -7,13 +7,21 @@ type Match = { kind: MatchKind; label: string; terms?: string[] };
 type Journal = { label: string; issn: string };
 type KeywordGroup = { root: string; variants: string[] };
 type Scholar = {
+  subscriptionId: string;
   label: string;
+  aliases?: string[];
   openAlexIds: string[];
+  semanticScholarIds?: string[];
   institution: string;
+  institutions?: string[];
   profileUrl?: string;
+  profileUrls?: string[];
   orcid?: string;
   worksCount?: number;
   researchAreas?: string[];
+  verifiedWorkDois?: string[];
+  sources?: string[];
+  trackingStatus?: "verified" | "limited";
 };
 type Subscriptions = {
   journal: Journal[];
@@ -32,7 +40,11 @@ type OpenAlexWork = {
   type_crossref?: string;
   abstract_inverted_index?: Record<string, number[]>;
   authorships?: {
-    author?: { id?: string; display_name?: string };
+    author?: {
+      id?: string;
+      display_name?: string;
+      orcid?: string;
+    };
   }[];
   primary_location?: {
     source?: { display_name?: string; issn_l?: string };
@@ -64,6 +76,7 @@ type CrossrefWork = {
     given?: string;
     family?: string;
     name?: string;
+    ORCID?: string;
   }[];
   published?: { "date-parts"?: number[][] };
   issued?: { "date-parts"?: number[][] };
@@ -74,7 +87,7 @@ type Article = {
   id: string;
   doi?: string;
   title: string;
-  authors: string[];
+  authors: ArticleAuthor[];
   venue: string;
   publisher?: string;
   publishedAt: string;
@@ -83,6 +96,31 @@ type Article = {
   abstract?: string;
   keywords?: string[];
   matches: Match[];
+};
+
+type ArticleAuthor = {
+  name: string;
+  openAlexId?: string;
+  semanticScholarId?: string;
+  orcid?: string;
+};
+
+type SemanticScholarPaper = {
+  paperId?: string;
+  title?: string;
+  abstract?: string;
+  year?: number;
+  publicationDate?: string;
+  venue?: string;
+  url?: string;
+  publicationTypes?: string[];
+  externalIds?: { DOI?: string };
+  fieldsOfStudy?: string[];
+  authors?: {
+    authorId?: string;
+    name?: string;
+    externalIds?: { ORCID?: string };
+  }[];
 };
 
 const DEFAULT_SCHOLARS: Scholar[] = [];
@@ -167,15 +205,49 @@ function openAlexId(value: unknown) {
   return /^A\d+$/.test(id) ? id : "";
 }
 
+function semanticScholarId(value: unknown) {
+  return clean(value, 160);
+}
+
+function orcidId(value: unknown) {
+  const id = clean(value, 160)
+    .replace(/^https?:\/\/orcid\.org\//i, "")
+    .toUpperCase();
+  return /^\d{4}-\d{4}-\d{4}-[\dX]{4}$/.test(id) ? id : "";
+}
+
+function scholarSubscriptionId(value: Partial<Scholar>, label: string) {
+  const stored = clean(value.subscriptionId, 220);
+  if (stored) return stored;
+  const openAlex = Array.isArray(value.openAlexIds)
+    ? value.openAlexIds.map(openAlexId).find(Boolean)
+    : "";
+  const semantic = Array.isArray(value.semanticScholarIds)
+    ? value.semanticScholarIds.map(semanticScholarId).find(Boolean)
+    : "";
+  const orcid = orcidId(value.orcid);
+  return (
+    (orcid && `orcid:${orcid}`) ||
+    (openAlex && `openalex:${openAlex}`) ||
+    (semantic && `semantic:${semantic}`) ||
+    `legacy:${label.toLowerCase()}:${clean(value.institution).toLowerCase()}`
+  );
+}
+
 function legacyScholar(name: string): Scholar {
   const known = DEFAULT_SCHOLARS.find((item) => {
     const normalized = name.toLowerCase().replace(/^c\.\s*/, "");
     return item.label.toLowerCase().replace(/^c\.\s*/, "") === normalized;
   });
   return known || {
+    subscriptionId: `legacy:${name.toLowerCase()}`,
     label: name,
     openAlexIds: [],
+    semanticScholarIds: [],
     institution: "单位待确认",
+    institutions: [],
+    aliases: [],
+    trackingStatus: "limited",
   };
 }
 
@@ -202,12 +274,45 @@ function validateSubscriptions(input: unknown): Subscriptions {
           const ids = Array.isArray(value.openAlexIds)
             ? value.openAlexIds.map(openAlexId).filter(Boolean)
             : [];
+          const semanticIds = Array.isArray(value.semanticScholarIds)
+            ? value.semanticScholarIds
+                .map(semanticScholarId)
+                .filter(Boolean)
+            : [];
+          const orcid = orcidId(value.orcid) || undefined;
+          const institutions = Array.isArray(value.institutions)
+            ? value.institutions
+                .slice(0, 12)
+                .map((item) => clean(item, 240))
+                .filter(Boolean)
+            : [];
+          const institution =
+            clean(value.institution) ||
+            institutions[0] ||
+            "单位待确认";
           return {
+            subscriptionId: scholarSubscriptionId(value, label),
             label,
+            aliases: Array.isArray(value.aliases)
+              ? value.aliases
+                  .slice(0, 16)
+                  .map((item) => clean(item, 180))
+                  .filter(Boolean)
+              : [],
             openAlexIds: ids,
-            institution: clean(value.institution) || "单位待确认",
+            semanticScholarIds: semanticIds,
+            institution,
+            institutions: [
+              ...new Set([institution, ...institutions].filter(Boolean)),
+            ],
             profileUrl: clean(value.profileUrl, 300) || undefined,
-            orcid: clean(value.orcid, 120) || undefined,
+            profileUrls: Array.isArray(value.profileUrls)
+              ? value.profileUrls
+                  .slice(0, 12)
+                  .map((item) => clean(item, 600))
+                  .filter(Boolean)
+              : undefined,
+            orcid,
             worksCount:
               typeof value.worksCount === "number" ? value.worksCount : undefined,
             researchAreas: Array.isArray(value.researchAreas)
@@ -216,6 +321,26 @@ function validateSubscriptions(input: unknown): Subscriptions {
                   .map((area) => clean(area, 160))
                   .filter(Boolean)
               : undefined,
+            verifiedWorkDois: Array.isArray(value.verifiedWorkDois)
+              ? value.verifiedWorkDois
+                  .slice(0, 20)
+                  .map((item) =>
+                    clean(item, 300)
+                      .replace(/^https?:\/\/doi\.org\//i, "")
+                      .toLowerCase(),
+                  )
+                  .filter(Boolean)
+              : undefined,
+            sources: Array.isArray(value.sources)
+              ? value.sources
+                  .slice(0, 8)
+                  .map((item) => clean(item, 80))
+                  .filter(Boolean)
+              : undefined,
+            trackingStatus:
+              ids.length || semanticIds.length || orcid
+                ? "verified"
+                : "limited",
           };
         })
         .filter((item): item is Scholar => Boolean(item))
@@ -302,9 +427,15 @@ function toArticle(work: OpenAlexWork, match: Match): Article | null {
     id: doi || work.id || title.toLowerCase(),
     doi,
     title,
-    authors: (work.authorships || [])
-      .map((item) => normalizeText(item.author?.display_name))
-      .filter(Boolean),
+    authors: (work.authorships || []).flatMap((item): ArticleAuthor[] => {
+        const name = normalizeText(item.author?.display_name);
+        if (!name) return [];
+        return [{
+          name,
+          openAlexId: openAlexId(item.author?.id) || undefined,
+          orcid: orcidId(item.author?.orcid) || undefined,
+        }];
+      }),
     venue:
       normalizeText(work.primary_location?.source?.display_name) || match.label,
     publishedAt:
@@ -322,7 +453,7 @@ async function openAlex<T>(url: URL): Promise<T> {
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/0.6",
+      "user-agent": "AnthropologyCanteen/1.1",
     },
     signal: AbortSignal.timeout(18_000),
   });
@@ -340,6 +471,81 @@ async function fetchWorks(url: URL, match: Match) {
         return null;
       }
     })
+    .filter((item): item is Article => Boolean(item));
+}
+
+function semanticScholarArticle(
+  paper: SemanticScholarPaper,
+  match: Match,
+): Article | null {
+  const title = normalizeText(paper.title);
+  if (!title) return null;
+  const doi = clean(paper.externalIds?.DOI, 300)
+    .replace(/^https?:\/\/doi\.org\//i, "")
+    .toLowerCase() || undefined;
+  const paperId = clean(paper.paperId, 220);
+  const publishedAt =
+    clean(paper.publicationDate, 40) ||
+    (paper.year ? `${paper.year}-01-01` : "1900-01-01");
+  return {
+    id: doi || paperId || title.toLowerCase(),
+    doi,
+    title,
+    authors: (paper.authors || []).flatMap((author): ArticleAuthor[] => {
+        const name = normalizeText(author.name);
+        if (!name) return [];
+        return [{
+          name,
+          semanticScholarId: clean(author.authorId, 160) || undefined,
+          orcid: orcidId(author.externalIds?.ORCID) || undefined,
+        }];
+      }),
+    venue: normalizeText(paper.venue) || match.label,
+    publishedAt,
+    type: typeLabel(paper.publicationTypes?.[0]?.toLowerCase()),
+    url:
+      clean(paper.url, 1000) ||
+      (paperId
+        ? `https://www.semanticscholar.org/paper/${paperId}`
+        : doi
+          ? `https://doi.org/${doi}`
+          : "https://www.semanticscholar.org"),
+    abstract: normalizeText(paper.abstract).slice(0, 6000) || undefined,
+    keywords: (paper.fieldsOfStudy || [])
+      .map((item) => normalizeText(item))
+      .filter(Boolean)
+      .slice(0, 18),
+    matches: [match],
+  };
+}
+
+async function fetchSemanticScholarWorks(
+  scholar: Scholar,
+  semanticId: string,
+  limit: number,
+) {
+  const url = new URL(
+    `https://api.semanticscholar.org/graph/v1/author/${encodeURIComponent(semanticId)}/papers`,
+  );
+  url.searchParams.set("limit", String(Math.min(limit, 100)));
+  url.searchParams.set(
+    "fields",
+    "title,abstract,year,publicationDate,venue,url,publicationTypes,externalIds,fieldsOfStudy,authors.authorId,authors.name",
+  );
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      "user-agent": "AnthropologyCanteen/1.1",
+    },
+    signal: AbortSignal.timeout(18_000),
+  });
+  if (!response.ok) throw new Error(`Semantic Scholar ${response.status}`);
+  const data = (await response.json()) as {
+    data?: SemanticScholarPaper[];
+  };
+  const match: Match = { kind: "scholar", label: scholar.label };
+  return (data.data || [])
+    .map((paper) => semanticScholarArticle(paper, match))
     .filter((item): item is Article => Boolean(item));
 }
 
@@ -361,13 +567,16 @@ function crossrefArticle(work: CrossrefWork, match: Match): Article | null {
   const title = normalizeText(work.title?.[0]);
   if (!title) return null;
   const doi = clean(work.DOI, 300).toLowerCase() || undefined;
-  const authors = (work.author || [])
-    .map((author) =>
-      normalizeText(
+  const authors = (work.author || []).flatMap((author): ArticleAuthor[] => {
+      const name = normalizeText(
         author.name || [author.given, author.family].filter(Boolean).join(" "),
-      ),
-    )
-    .filter(Boolean);
+      );
+      if (!name) return [];
+      return [{
+        name,
+        orcid: orcidId(author.ORCID) || undefined,
+      }];
+    });
   return {
     id: doi || clean(work.URL, 800) || title.toLowerCase(),
     doi,
@@ -402,7 +611,7 @@ async function fetchCrossrefJournalWorks(
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/0.6",
+      "user-agent": "AnthropologyCanteen/1.1",
     },
     signal: AbortSignal.timeout(18_000),
   });
@@ -448,7 +657,12 @@ async function fetchJournalWorks(journal: Journal, fromDate: string) {
 }
 
 async function resolveScholar(scholar: Scholar): Promise<Scholar> {
-  if (scholar.openAlexIds.length) return scholar;
+  if (
+    scholar.openAlexIds.length ||
+    (scholar.semanticScholarIds || []).length
+  ) {
+    return scholar;
+  }
   const url = new URL("https://api.openalex.org/authors");
   url.searchParams.set("search", scholar.label);
   url.searchParams.set("per-page", "5");
@@ -467,6 +681,7 @@ async function resolveScholar(scholar: Scholar): Promise<Scholar> {
         .join("；") || scholar.institution,
     orcid: candidate.orcid || scholar.orcid,
     worksCount: candidate.works_count,
+    trackingStatus: "verified",
   };
 }
 
@@ -550,6 +765,22 @@ function mergeArticles(
       merged.set(article.id, {
         ...current,
         abstract: current.abstract || article.abstract,
+        authors: [...current.authors, ...article.authors].filter(
+          (author, index, all) =>
+            all.findIndex(
+              (candidate) =>
+                (author.orcid &&
+                  candidate.orcid === author.orcid) ||
+                (author.openAlexId &&
+                  candidate.openAlexId === author.openAlexId) ||
+                (author.semanticScholarId &&
+                  candidate.semanticScholarId === author.semanticScholarId) ||
+                (!author.orcid &&
+                  !author.openAlexId &&
+                  !author.semanticScholarId &&
+                  candidate.name.toLowerCase() === author.name.toLowerCase()),
+            ) === index,
+        ),
         keywords: [...(current.keywords || []), ...(article.keywords || [])]
           .filter((item, index, all) => all.indexOf(item) === index)
           .slice(0, 18),
@@ -606,7 +837,9 @@ async function buildFeed(
 
   if (historyScholar) {
     const scholar = resolvedScholars.find(
-      (item) => item.label.toLowerCase() === historyScholar.toLowerCase(),
+      (item) =>
+        item.subscriptionId === historyScholar ||
+        item.label.toLowerCase() === historyScholar.toLowerCase(),
     );
     if (scholar) {
       for (const id of scholar.openAlexIds) {
@@ -616,6 +849,9 @@ async function buildFeed(
             label: scholar.label,
           }),
         );
+      }
+      for (const id of scholar.semanticScholarIds || []) {
+        jobs.push(fetchSemanticScholarWorks(scholar, id, 100));
       }
     }
   } else {
@@ -635,6 +871,9 @@ async function buildFeed(
           ),
         );
       }
+      for (const id of scholar.semanticScholarIds || []) {
+        jobs.push(fetchSemanticScholarWorks(scholar, id, 20));
+      }
     }
   }
 
@@ -647,7 +886,9 @@ async function buildFeed(
     .map((result) => result.value);
   const curatedScholars = historyScholar
     ? resolvedScholars.filter(
-        (item) => item.label.toLowerCase() === historyScholar.toLowerCase(),
+        (item) =>
+          item.subscriptionId === historyScholar ||
+          item.label.toLowerCase() === historyScholar.toLowerCase(),
       )
     : resolvedScholars;
   for (const scholar of curatedScholars) {

@@ -2,9 +2,16 @@
 
 这是一个本地运行的版本，自带运行环境。使用者不需要安装 Node.js，也不需要账号。
 
-当前正式版本：`v1.0.0`（内部第 12 次迭代）。
+当前正式版本：`v1.0.1`。
 
-创作者：[`YZYanthrop`](https://github.com/YZYanthrop)
+## 学者发现与作者档案
+
+- “按姓名”会同时尝试中文姓名的拼音、姓名顺序、标点和轻微拼写差异。
+- 可填写单位与研究方向来甄别同名学者；结果中会展示别名、机构、方向和代表作。
+- “按代表作”支持论文标题、DOI、ORCID、OpenAlex 或 Semantic Scholar 链接。
+- 文献卡片中的作者姓名可以点击；有稳定作者 ID 时直接打开内部档案，只有姓名时会结合当前文献让使用者确认。
+- 学者身份由 OpenAlex、Semantic Scholar 与 Crossref 独立聚合。某一来源限流或失败时，其他结果仍可使用。
+- 本版不包含邮件、定时任务或提醒设置。
 
 ## 启动
 
@@ -92,5 +99,7 @@ pnpm build
 [`CHANGELOG.md`](CHANGELOG.md)。
 
 ## 许可证
+
+创作者：[YZYanthrop](https://github.com/YZYanthrop)
 
 本项目由 YZYanthrop 创作，并采用 [MIT License](LICENSE) 开放使用。
