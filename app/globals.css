@@ -556,6 +556,11 @@ i.keyword {
   font-weight: 600;
 }
 
+.scholar-profile small.merge-summary {
+  color: #315744;
+  font-weight: 650;
+}
+
 .scholar-profile nav {
   display: flex;
   flex-wrap: wrap;
@@ -1695,6 +1700,17 @@ mark {
   border-radius: 7px;
   background: #fff3e4;
   color: #855f36;
+}
+
+.scholar-search-result > p.identity-merge-note {
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: #edf5ef;
+  color: #315744;
+}
+
+.identity-merge-note strong {
+  font-weight: 750;
 }
 
 .representative-works {

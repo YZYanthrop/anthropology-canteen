@@ -14,9 +14,9 @@ import test from "node:test";
 
 test("portable server upgrades version 2 data without losing saved content", async () => {
   const testRoot = await mkdtemp(
-    join(tmpdir(), "anthropology-canteen-v3-test-"),
+    join(tmpdir(), "anthropology-canteen-v5-test-"),
   );
-  const root = join(testRoot, "Anthropology-Canteen-v1.1.0");
+  const root = join(testRoot, "Anthropology-Canteen-v1.1.1");
   await mkdir(root);
   await cp(new URL("../dist", import.meta.url), join(root, "dist"), {
     recursive: true,
@@ -40,7 +40,7 @@ test("portable server upgrades version 2 data without losing saved content", asy
     const blank = await fetch(`${baseUrl}/api/local-data`).then((response) =>
       response.json(),
     );
-    assert.equal(blank.version, 4);
+    assert.equal(blank.version, 5);
     assert.deepEqual(blank.subscriptions.scholar, []);
 
     const legacy = {
@@ -87,7 +87,7 @@ test("portable server upgrades version 2 data without losing saved content", asy
     });
     assert.equal(savedResponse.status, 200);
     const saved = await savedResponse.json();
-    assert.equal(saved.version, 4);
+    assert.equal(saved.version, 5);
     assert.equal(saved.subscriptions.journal[0].label, "Ethos");
     assert.equal(saved.subscriptions.scholar[0].openAlexIds[0], "A123");
     assert.match(saved.subscriptions.scholar[0].subscriptionId, /^openalex:/);
@@ -109,7 +109,7 @@ test("portable server upgrades version 2 data without losing saved content", asy
         "utf8",
       ),
     );
-    assert.equal(diskData.version, 4);
+    assert.equal(diskData.version, 5);
     assert.equal(diskData.feed.items[0].authors[1].name, "Jason Throop");
   } finally {
     await new Promise((resolve) => server.close(resolve));

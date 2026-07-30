@@ -13,6 +13,7 @@ export type ScholarWork = {
   year?: number;
   venue?: string;
   url?: string;
+  familyIds?: string[];
 };
 
 export type ScholarCandidate = {
@@ -34,6 +35,10 @@ export type ScholarCandidate = {
   worksCount?: number;
   sources: string[];
   identityWarnings: string[];
+  coauthorNames: string[];
+  mergedRecordCount: number;
+  mergeConfidence: "verified" | "high" | "unconfirmed";
+  mergeEvidence: string[];
   score: number;
   scoreReasons: string[];
   trackingStatus: "verified" | "limited";
@@ -98,6 +103,7 @@ type SemanticScholarPaper = {
   venue?: string;
   url?: string;
   externalIds?: { DOI?: string; CorpusId?: number };
+  authors?: { authorId?: string; name?: string }[];
 };
 
 type SemanticScholarAuthor = {
@@ -125,6 +131,9 @@ type CrossrefWork = {
   URL?: string;
   title?: string[];
   author?: CrossrefAuthor[];
+  type?: string;
+  ISBN?: string[];
+  relation?: Record<string, { id?: string; "id-type"?: string }[]>;
   publisher?: string;
   "container-title"?: string[];
   subject?: string[];
@@ -132,7 +141,7 @@ type CrossrefWork = {
   issued?: { "date-parts"?: number[][] };
 };
 
-const USER_AGENT = "AnthropologyCanteen/1.1.0";
+const USER_AGENT = "AnthropologyCanteen/1.1.1";
 
 function clean(value: unknown, max = 500) {
   return typeof value === "string"
@@ -165,6 +174,36 @@ function normalizeDoi(value: unknown) {
     .toLowerCase();
 }
 
+function doiFamilyIds(value: unknown) {
+  const doi = normalizeDoi(value);
+  if (!doi) return [];
+  const families: string[] = [];
+  const isbn = doi.match(/(?:^|[/._-])(97[89]\d{10})(?=$|[._-])/i)?.[1];
+  if (isbn) families.push(`isbn:${isbn}`);
+  const componentParent = isbn
+    ? doi.replace(/-(?:fm|bm|\d{1,4})$/i, "")
+    : doi.replace(/\.[a-z]$/i, "");
+  if (componentParent !== doi) families.push(`doi-family:${componentParent}`);
+  return unique(families);
+}
+
+function crossrefFamilyIds(work: CrossrefWork) {
+  const related = Object.values(work.relation || {})
+    .flat()
+    .flatMap((item) => {
+      const value = clean(item.id, 320);
+      if (!value) return [];
+      return item["id-type"]?.toLowerCase() === "doi"
+        ? [`doi-family:${normalizeDoi(value)}`]
+        : [`relation:${normalizeName(value)}`];
+    });
+  return unique([
+    ...doiFamilyIds(work.DOI),
+    ...(work.ISBN || []).map((isbn) => `isbn:${clean(isbn).replace(/\D/g, "")}`),
+    ...related,
+  ]);
+}
+
 export function normalizeName(value: unknown) {
   return clean(value, 180)
     .normalize("NFKD")
@@ -181,10 +220,12 @@ function canonicalPersonName(value: unknown) {
 
 function distinctivePersonName(value: unknown) {
   const tokens = canonicalPersonName(value).split(/\s+/).filter(Boolean);
+  const hasCompoundSurname =
+    /[\p{L}]{2,}[-‐‑‒–—][\p{L}]{4,}/u.test(clean(value, 180));
   return (
     tokens.length >= 2 &&
     tokens.join("").length >= 10 &&
-    tokens.some((token) => token.length >= 8)
+    (tokens.some((token) => token.length >= 8) || hasCompoundSurname)
   );
 }
 
@@ -303,6 +344,7 @@ function scholarWorkFromOpenAlex(work: OpenAlexWork): ScholarWork | null {
       clean(work.primary_location?.landing_page_url, 1000) ||
       clean(work.id, 1000) ||
       undefined,
+    familyIds: doiFamilyIds(doi),
   };
 }
 
@@ -321,6 +363,7 @@ function scholarWorkFromSemantic(work: SemanticScholarPaper): ScholarWork | null
       (work.paperId
         ? `https://www.semanticscholar.org/paper/${work.paperId}`
         : undefined),
+    familyIds: doiFamilyIds(doi),
   };
 }
 
@@ -343,6 +386,7 @@ function scholarWorkFromCrossref(work: CrossrefWork): ScholarWork | null {
     year: crossrefYear(work),
     venue: clean(work["container-title"]?.[0]) || undefined,
     url: doi ? `https://doi.org/${doi}` : clean(work.URL, 1000) || undefined,
+    familyIds: crossrefFamilyIds(work),
   };
 }
 
@@ -393,6 +437,14 @@ function emptyCandidate(
     worksCount: undefined,
     sources: [source],
     identityWarnings: [],
+    coauthorNames: [],
+    mergedRecordCount: 1,
+    mergeConfidence: orcid
+      ? "verified"
+      : openAlex || semanticScholar
+        ? "high"
+        : "unconfirmed",
+    mergeEvidence: orcid ? ["ORCID 身份锚点"] : [],
     score: 0,
     scoreReasons: [],
     trackingStatus:
@@ -484,6 +536,17 @@ function semanticCandidate(author: SemanticScholarAuthor): ScholarCandidate | nu
     .filter((item): item is ScholarWork => Boolean(item))
     .sort((left, right) => (right.year || 0) - (left.year || 0))
     .slice(0, 3);
+  candidate.coauthorNames = unique(
+    (author.papers || []).flatMap((paper) =>
+      (paper.authors || [])
+        .map((item) => item.name)
+        .filter(
+          (name) =>
+            name &&
+            canonicalPersonName(name) !== canonicalPersonName(label),
+        ),
+    ),
+  ).slice(0, 30);
   candidate.worksCount = author.paperCount;
   candidate.profileUrls = unique([
     author.url,
@@ -541,14 +604,16 @@ function crossrefCandidates(
         );
       const nameCluster =
         distinctivePersonName(label) || contextualNameCluster;
-      const key = nameCluster
-        ? `crossref:${canonicalName}`
-        : (orcid && `orcid:${orcid}`) ||
+      const key = orcid
+        ? `crossref:${canonicalName}:orcid:${orcid}`
+        : nameCluster
+          ? `crossref:${canonicalName}:unidentified`
+          :
           `crossref:${canonicalName}:${representative.doi || representative.id}`;
       let candidate = candidates.get(key);
       if (!candidate) {
         candidate = emptyCandidate(label, "Crossref", { orcid });
-        if (!orcid || nameCluster) candidate.candidateId = key;
+        candidate.candidateId = key;
         candidate.institutions = unique(authorInstitutions);
         candidate.institution =
           candidate.institutions[0] || "Crossref 未收录单位";
@@ -564,26 +629,22 @@ function crossrefCandidates(
         ]);
         candidate.institution =
           candidate.institutions[0] || candidate.institution;
-        if (orcid && !candidate.orcid) {
-          candidate.orcid = orcid;
-          candidate.externalIds.orcid = orcid;
-          candidate.profileUrls = unique([
-            ...candidate.profileUrls,
-            `https://orcid.org/${orcid}`,
-          ]);
-          candidate.profileUrl ||= candidate.profileUrls[0];
-          candidate.trackingStatus = "verified";
-        } else if (orcid && candidate.orcid && candidate.orcid !== orcid) {
-          candidate.identityWarnings.push(
-            "同名作品带有互相冲突的 ORCID，未据此自动合并。",
-          );
-        }
       }
       candidate.researchAreas = unique([
         ...candidate.researchAreas,
         ...(work.subject || []),
         ...(work["container-title"] || []),
       ]).slice(0, 8);
+      candidate.coauthorNames = unique([
+        ...candidate.coauthorNames,
+        ...(work.author || [])
+          .map(crossrefAuthorName)
+          .filter(
+            (name) =>
+              name &&
+              canonicalPersonName(name) !== canonicalPersonName(label),
+          ),
+      ]).slice(0, 30);
       if (representative.doi) {
         candidate.verifiedWorkDois = unique([
           ...candidate.verifiedWorkDois,
@@ -605,7 +666,8 @@ function crossrefCandidates(
       ...candidate,
       representativeWorks: candidate.representativeWorks
         .sort((left, right) => (right.year || 0) - (left.year || 0))
-        .slice(0, 3),
+        .slice(0, 100),
+      worksCount: candidate.representativeWorks.length,
   }));
 }
 
@@ -675,6 +737,23 @@ async function attachOpenAlexWorks(candidates: ScholarCandidate[]) {
         ) {
           candidate.representativeWorks.push(normalized);
         }
+        if (candidate) {
+          if (normalized.doi) {
+            candidate.verifiedWorkDois = unique([
+              ...candidate.verifiedWorkDois,
+              normalized.doi,
+            ]);
+          }
+          candidate.coauthorNames = unique([
+            ...candidate.coauthorNames,
+            ...(work.authorships || [])
+              .filter(
+                (item) =>
+                  entityId(item.author?.id, /^A\d+$/) !== authorId,
+              )
+              .map((item) => item.author?.display_name),
+          ]).slice(0, 30);
+        }
       }
     }
   } catch {
@@ -692,7 +771,7 @@ async function semanticAuthorSearch(variants: string[]) {
       url.searchParams.set("limit", "12");
       url.searchParams.set(
         "fields",
-        "name,aliases,affiliations,paperCount,hIndex,url,externalIds,papers.title,papers.year,papers.venue,papers.url,papers.externalIds",
+        "name,aliases,affiliations,paperCount,hIndex,url,externalIds,papers.title,papers.year,papers.venue,papers.url,papers.externalIds,papers.authors",
       );
       const data = await fetchJson<{ data?: SemanticScholarAuthor[] }>(
         url,
@@ -733,25 +812,34 @@ async function crossrefWorkSearch(
     const data = await fetchJson<{ message?: CrossrefWork }>(url, "Crossref");
     if (data.message) works = [data.message];
   } else {
+    const variants = unique(queries).slice(0, workMode ? 1 : 3);
+    const requests = variants.map((variant) => ({
+      variant,
+      institution: "",
+    }));
+    if (!workMode && institutionQueries.length && variants[0]) {
+      const translatedInstitution =
+        institutionQueries.find((item) => /^[\x00-\x7F]+$/.test(item)) ||
+        institutionQueries[0];
+      requests.push({
+        variant: variants[0],
+        institution: translatedInstitution,
+      });
+    }
     const settled = await Promise.allSettled(
-      unique(queries)
-        .slice(0, workMode ? 1 : 3)
-        .map(async (variant) => {
+      requests.map(async ({ variant, institution }) => {
           const url = new URL("https://api.crossref.org/works");
           url.searchParams.set(
             workMode ? "query.title" : "query.author",
             variant,
           );
-          if (!workMode && institutionQueries.length) {
-            const translatedInstitution =
-              institutionQueries.find((item) => /^[\x00-\x7F]+$/.test(item)) ||
-              institutionQueries[0];
+          if (institution) {
             url.searchParams.set(
               "query.affiliation",
-              translatedInstitution,
+              institution,
             );
           }
-          url.searchParams.set("rows", workMode ? "8" : "30");
+          url.searchParams.set("rows", workMode ? "8" : "50");
           const data = await fetchJson<{
             message?: { items?: CrossrefWork[] };
           }>(url, "Crossref");
@@ -783,69 +871,238 @@ function overlap(left: string[], right: string[]) {
   return right.some((item) => item && set.has(item));
 }
 
-function sameStableIdentity(left: ScholarCandidate, right: ScholarCandidate) {
-  if (left.orcid && right.orcid && left.orcid === right.orcid) return true;
-  if (overlap(left.openAlexIds, right.openAlexIds)) return true;
-  if (overlap(left.semanticScholarIds, right.semanticScholarIds)) return true;
-  const leftDois = unique([
-    ...left.verifiedWorkDois,
-    ...left.representativeWorks.map((item) => item.doi),
-  ]);
-  const rightDois = unique([
-    ...right.verifiedWorkDois,
-    ...right.representativeWorks.map((item) => item.doi),
-  ]);
-  return (
-    canonicalPersonName(left.label) === canonicalPersonName(right.label) &&
-    overlap(leftDois, rightDois)
-  );
+function candidateNames(candidate: ScholarCandidate) {
+  return unique([candidate.label, ...candidate.aliases]);
 }
 
-function sameLikelyCareerIdentity(
+function sharedCanonicalName(
   left: ScholarCandidate,
   right: ScholarCandidate,
 ) {
-  if (
-    canonicalPersonName(left.label) !== canonicalPersonName(right.label) ||
-    !distinctivePersonName(left.label)
-  ) {
-    return false;
+  const rightNames = new Set(
+    candidateNames(right).map(canonicalPersonName).filter(Boolean),
+  );
+  return (
+    candidateNames(left)
+      .map(canonicalPersonName)
+      .find((name) => name && rightNames.has(name)) || ""
+  );
+}
+
+function scholarWorkKey(work: ScholarWork) {
+  const doi = normalizeDoi(work.doi);
+  if (doi) return `doi:${doi}`;
+  return `title:${normalizeName(work.title)}:${work.year || ""}`;
+}
+
+function sameScholarWork(left: ScholarWork, right: ScholarWork) {
+  const leftDoi = normalizeDoi(left.doi);
+  const rightDoi = normalizeDoi(right.doi);
+  if (leftDoi && rightDoi) return leftDoi === rightDoi;
+  return (
+    normalizeName(left.title) === normalizeName(right.title) &&
+    (!left.year || !right.year || left.year === right.year)
+  );
+}
+
+function candidateDois(candidate: ScholarCandidate) {
+  return unique([
+    ...candidate.verifiedWorkDois.map(normalizeDoi),
+    ...candidate.representativeWorks.map((item) => normalizeDoi(item.doi)),
+  ]);
+}
+
+function candidateWorkFamilies(candidate: ScholarCandidate) {
+  return unique(
+    candidate.representativeWorks.flatMap((work) => [
+      ...(work.familyIds || []),
+      ...doiFamilyIds(work.doi),
+    ]),
+  );
+}
+
+function candidateWorkSignatures(candidate: ScholarCandidate) {
+  return unique(
+    candidate.representativeWorks.map(
+      (work) => `${normalizeName(work.title)}:${work.year || ""}`,
+    ),
+  );
+}
+
+function meaningfulEvidenceText(value: string, kind: "institution" | "topic") {
+  const normalized = normalizeName(value);
+  if (!normalized || /未收录|待确认|unknown|not recorded/.test(normalized)) {
+    return "";
   }
-  if (left.orcid && right.orcid && left.orcid !== right.orcid) return false;
+  if (
+    kind === "topic" &&
+    [
+      "social sciences",
+      "arts and humanities",
+      "science",
+      "humanities",
+    ].includes(normalized)
+  ) {
+    return "";
+  }
+  return normalized;
+}
+
+function evidenceCollectionsOverlap(
+  left: string[],
+  right: string[],
+  kind: "institution" | "topic",
+) {
+  const leftValues = left
+    .map((item) => meaningfulEvidenceText(item, kind))
+    .filter(Boolean);
+  const rightValues = right
+    .map((item) => meaningfulEvidenceText(item, kind))
+    .filter(Boolean);
+  return leftValues.some((leftValue) =>
+    rightValues.some((rightValue) => {
+      if (leftValue === rightValue) return true;
+      const shorter =
+        leftValue.length <= rightValue.length ? leftValue : rightValue;
+      const longer =
+        leftValue.length > rightValue.length ? leftValue : rightValue;
+      if (shorter.length >= 8 && longer.includes(shorter)) return true;
+      const leftTokens = new Set(
+        leftValue.split(" ").filter((token) => token.length >= 7),
+      );
+      return rightValue
+        .split(" ")
+        .filter((token) => token.length >= 7)
+        .some((token) => leftTokens.has(token));
+    }),
+  );
+}
+
+function coauthorOverlap(left: ScholarCandidate, right: ScholarCandidate) {
+  const leftNames = new Set(
+    left.coauthorNames.map(canonicalPersonName).filter(Boolean),
+  );
+  return right.coauthorNames
+    .map(canonicalPersonName)
+    .some((name) => name && leftNames.has(name));
+}
+
+type IdentityLink = {
+  connect: boolean;
+  confidence: "verified" | "high";
+  evidence: string[];
+};
+
+function identityLink(
+  left: ScholarCandidate,
+  right: ScholarCandidate,
+): IdentityLink {
+  if (left.orcid && right.orcid && left.orcid !== right.orcid) {
+    return { connect: false, confidence: "high", evidence: [] };
+  }
+  const sharedName = sharedCanonicalName(left, right);
+  const compatibleName =
+    Boolean(sharedName) ||
+    nameSimilarity(left.label, right.label) >= 0.96;
+  if (!compatibleName) {
+    return { connect: false, confidence: "high", evidence: [] };
+  }
+
+  const verifiedEvidence: string[] = [];
+  if (left.orcid && right.orcid && left.orcid === right.orcid) {
+    verifiedEvidence.push("相同 ORCID");
+  }
+  if (overlap(left.openAlexIds, right.openAlexIds)) {
+    verifiedEvidence.push("相同 OpenAlex ID");
+  }
+  if (overlap(left.semanticScholarIds, right.semanticScholarIds)) {
+    verifiedEvidence.push("相同 Semantic Scholar ID");
+  }
+  if (overlap(candidateDois(left), candidateDois(right))) {
+    verifiedEvidence.push("共同作品 DOI");
+  }
+  if (verifiedEvidence.length) {
+    return {
+      connect: true,
+      confidence: "verified",
+      evidence: verifiedEvidence,
+    };
+  }
+
+  if (
+    !sharedName ||
+    (!distinctivePersonName(left.label) &&
+      !distinctivePersonName(right.label))
+  ) {
+    return { connect: false, confidence: "high", evidence: [] };
+  }
+  const contextualEvidence: string[] = [];
+  if (
+    evidenceCollectionsOverlap(
+      left.institutions,
+      right.institutions,
+      "institution",
+    )
+  ) {
+    contextualEvidence.push("姓名与任职单位一致");
+  }
+  if (
+    evidenceCollectionsOverlap(
+      left.researchAreas,
+      right.researchAreas,
+      "topic",
+    )
+  ) {
+    contextualEvidence.push("姓名与研究方向一致");
+  }
+  if (coauthorOverlap(left, right)) {
+    contextualEvidence.push("共同作者网络一致");
+  }
+  if (overlap(candidateWorkFamilies(left), candidateWorkFamilies(right))) {
+    contextualEvidence.push("属于同一专著或作品系列");
+  }
+  if (overlap(candidateWorkSignatures(left), candidateWorkSignatures(right))) {
+    contextualEvidence.push("共同作品题名与年份一致");
+  }
+  if (contextualEvidence.length) {
+    return {
+      connect: true,
+      confidence: "high",
+      evidence: contextualEvidence,
+    };
+  }
+
   const anchored = [left, right].find(
     (candidate) =>
       candidate.orcid &&
-      candidate.sources.length > 1 &&
-      candidate.verifiedWorkDois.length > 1,
+      (candidate.sources.length > 1 ||
+        candidate.verifiedWorkDois.length > 0),
   );
   const fragment = anchored === left ? right : anchored === right ? left : null;
-  return Boolean(
-    anchored &&
-      fragment &&
-      (fragment.worksCount || fragment.representativeWorks.length) <= 1,
-  );
-}
-
-function sameContextualWorkIdentity(
-  left: ScholarCandidate,
-  right: ScholarCandidate,
-) {
   if (
-    canonicalPersonName(left.label) !== canonicalPersonName(right.label) ||
-    left.orcid ||
-    right.orcid ||
-    !left.verifiedWorkDois.length ||
-    !right.verifiedWorkDois.length
+    anchored &&
+    fragment &&
+    fragment.sources.length > 1 &&
+    fragment.verifiedWorkDois.length > 0
   ) {
-    return false;
+    return {
+      connect: true,
+      confidence: "high",
+      evidence: ["独特姓名的跨机构发表轨迹一致"],
+    };
   }
-  const institutionMatch = left.institutions.some((institution) =>
-    textMatchesAny(institution, right.institutions),
-  );
-  const topicMatch = left.researchAreas.some((area) =>
-    textMatchesAny(area, right.researchAreas),
-  );
-  return institutionMatch && topicMatch;
+  if (
+    anchored &&
+    fragment &&
+    (fragment.worksCount || fragment.representativeWorks.length) <= 1
+  ) {
+    return {
+      connect: true,
+      confidence: "high",
+      evidence: ["独特姓名与单项索引碎片一致"],
+    };
+  }
+  return { connect: false, confidence: "high", evidence: [] };
 }
 
 function mergeCandidate(
@@ -863,13 +1120,7 @@ function mergeCandidate(
   const orcid = target.orcid || incoming.orcid;
   const works = [...target.representativeWorks];
   for (const work of incoming.representativeWorks) {
-    if (
-      !works.some(
-        (item) =>
-          item.id === work.id ||
-          Boolean(item.doi && work.doi && item.doi === work.doi),
-      )
-    ) {
+    if (!works.some((item) => sameScholarWork(item, work))) {
       works.push(work);
     }
   }
@@ -880,6 +1131,7 @@ function mergeCandidate(
         ? target.label
         : incoming.label,
     aliases: unique([
+      target.label,
       ...target.aliases,
       incoming.label,
       ...incoming.aliases,
@@ -924,14 +1176,34 @@ function mergeCandidate(
       ...incoming.profileUrls,
     ]),
     profileUrl: target.profileUrl || incoming.profileUrl,
-    worksCount: Math.max(
-      target.worksCount || 0,
-      incoming.worksCount || 0,
-    ) || undefined,
+    worksCount:
+      Math.max(
+        works.length,
+        target.worksCount || 0,
+        incoming.worksCount || 0,
+      ) || undefined,
     sources: unique([...target.sources, ...incoming.sources]),
     identityWarnings: unique([
       ...target.identityWarnings,
       ...incoming.identityWarnings,
+    ]),
+    coauthorNames: unique([
+      ...target.coauthorNames,
+      ...incoming.coauthorNames,
+    ]).slice(0, 50),
+    mergedRecordCount:
+      target.mergedRecordCount + incoming.mergedRecordCount,
+    mergeConfidence:
+      target.mergeConfidence === "verified" ||
+      incoming.mergeConfidence === "verified"
+        ? "verified"
+        : target.mergeConfidence === "high" ||
+            incoming.mergeConfidence === "high"
+          ? "high"
+          : "unconfirmed",
+    mergeEvidence: unique([
+      ...target.mergeEvidence,
+      ...incoming.mergeEvidence,
     ]),
     trackingStatus:
       openAlexIds.length || semanticScholarIds.length || orcid
@@ -940,28 +1212,162 @@ function mergeCandidate(
   };
 }
 
-function consolidateCandidates(candidates: ScholarCandidate[]) {
-  const merged: ScholarCandidate[] = [];
-  for (const candidate of candidates) {
-    let combined = candidate;
-    let mergedAnother = true;
-    while (mergedAnother) {
-      mergedAnother = false;
-      for (let index = merged.length - 1; index >= 0; index -= 1) {
-        if (
-          sameStableIdentity(merged[index], combined) ||
-          sameLikelyCareerIdentity(merged[index], combined) ||
-          sameContextualWorkIdentity(merged[index], combined)
-        ) {
-          combined = mergeCandidate(merged[index], combined);
-          merged.splice(index, 1);
-          mergedAnother = true;
-        }
-      }
+function labelQuality(value: string) {
+  return (
+    (/,/.test(value) ? 0 : 4) +
+    (/^[\x00-\x7F]+$/.test(value) ? 3 : 0) +
+    (/-/.test(value) ? 2 : 0) +
+    Math.min(value.length, 40) / 100
+  );
+}
+
+function finalizeCandidate(
+  candidate: ScholarCandidate,
+  evidence: string[],
+  confidence: "verified" | "high" | "unconfirmed",
+) {
+  const openAlexIds = unique(candidate.openAlexIds).sort();
+  const semanticScholarIds = unique(candidate.semanticScholarIds).sort();
+  const orcid = normalizeOrcid(candidate.orcid) || undefined;
+  const labels = unique([candidate.label, ...candidate.aliases]).sort(
+    (left, right) =>
+      labelQuality(right) - labelQuality(left),
+  );
+  const label = labels[0] || candidate.label;
+  const candidateId =
+    (orcid && `orcid:${orcid}`) ||
+    (openAlexIds[0] && `openalex:${openAlexIds[0]}`) ||
+    (semanticScholarIds[0] &&
+      `semantic:${semanticScholarIds[0]}`) ||
+    candidate.candidateId;
+  const works = [...candidate.representativeWorks]
+    .filter(
+      (work, index, all) =>
+        all.findIndex((item) => sameScholarWork(item, work)) === index,
+    )
+    .sort(
+      (left, right) =>
+        (right.year || 0) - (left.year || 0) ||
+        scholarWorkKey(left).localeCompare(scholarWorkKey(right)),
+    )
+    .slice(0, 100);
+  const mergeEvidence = unique([
+    ...candidate.mergeEvidence,
+    ...evidence,
+  ]);
+  const mergeConfidence =
+    orcid || confidence === "verified"
+      ? ("verified" as const)
+      : candidate.mergedRecordCount > 1 || confidence === "high"
+        ? ("high" as const)
+        : candidate.mergeConfidence;
+  return {
+    ...candidate,
+    candidateId,
+    value:
+      openAlexIds[0] ||
+      semanticScholarIds[0] ||
+      orcid ||
+      candidateId,
+    label,
+    aliases: labels.slice(1),
+    representativeWorks: works,
+    verifiedWorkDois: unique([
+      ...candidate.verifiedWorkDois.map(normalizeDoi),
+      ...works.map((work) => normalizeDoi(work.doi)),
+    ]).slice(0, 120),
+    openAlexIds,
+    semanticScholarIds,
+    orcid,
+    externalIds: {
+      openAlex: openAlexIds[0],
+      semanticScholar: semanticScholarIds[0],
+      orcid,
+    },
+    worksCount:
+      Math.max(candidate.worksCount || 0, works.length) || undefined,
+    mergedRecordCount: Math.max(candidate.mergedRecordCount, 1),
+    mergeConfidence,
+    mergeEvidence:
+      candidate.mergedRecordCount > 1
+        ? mergeEvidence
+        : candidate.mergeEvidence,
+    trackingStatus:
+      openAlexIds.length || semanticScholarIds.length || orcid
+        ? ("verified" as const)
+        : ("limited" as const),
+  };
+}
+
+export function consolidateScholarCandidates(
+  candidates: ScholarCandidate[],
+) {
+  const parents = candidates.map((_, index) => index);
+  const componentEvidence = candidates.map(() => [] as string[]);
+  const componentConfidence = candidates.map(
+    (candidate) => candidate.mergeConfidence,
+  );
+  const find = (index: number): number => {
+    if (parents[index] !== index) parents[index] = find(parents[index]);
+    return parents[index];
+  };
+  const union = (
+    left: number,
+    right: number,
+    link: IdentityLink,
+  ) => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot === rightRoot) {
+      componentEvidence[leftRoot] = unique([
+        ...componentEvidence[leftRoot],
+        ...link.evidence,
+      ]);
+      return;
     }
-    merged.push(combined);
+    const root = Math.min(leftRoot, rightRoot);
+    const child = Math.max(leftRoot, rightRoot);
+    parents[child] = root;
+    componentEvidence[root] = unique([
+      ...componentEvidence[root],
+      ...componentEvidence[child],
+      ...link.evidence,
+    ]);
+    componentConfidence[root] =
+      link.confidence === "verified" ||
+      componentConfidence[root] === "verified" ||
+      componentConfidence[child] === "verified"
+        ? "verified"
+        : "high";
+  };
+
+  for (let left = 0; left < candidates.length; left += 1) {
+    for (let right = left + 1; right < candidates.length; right += 1) {
+      const link = identityLink(candidates[left], candidates[right]);
+      if (link.connect) union(left, right, link);
+    }
   }
-  return merged;
+
+  const groups = new Map<number, ScholarCandidate[]>();
+  candidates.forEach((candidate, index) => {
+    const root = find(index);
+    groups.set(root, [...(groups.get(root) || []), candidate]);
+  });
+  return [...groups.entries()].map(([root, group]) => {
+    const combined = group
+      .slice()
+      .sort((left, right) =>
+        left.candidateId.localeCompare(right.candidateId),
+      )
+      .reduce((target, incoming) =>
+        target ? mergeCandidate(target, incoming) : incoming,
+      );
+    return finalizeCandidate(
+      combined,
+      componentEvidence[find(root)],
+      componentConfidence[find(root)],
+    );
+  });
 }
 
 const TOPIC_TRANSLATIONS: Record<string, string[]> = {
@@ -1063,16 +1469,18 @@ function rankCandidate(
   );
   let score = Math.round(similarity * 100);
   const reasons: string[] = [];
+  let institution = candidate.institution;
   if (similarity >= 0.96) reasons.push("姓名高度吻合");
   else if (similarity >= 0.72) reasons.push("姓名近似");
-  if (
-    institutionQueries.length &&
-    candidate.institutions.some((item) =>
-      textMatchesAny(item, institutionQueries),
-    )
-  ) {
+  const matchingInstitution = institutionQueries.length
+    ? candidate.institutions.find((item) =>
+        textMatchesAny(item, institutionQueries),
+      )
+    : undefined;
+  if (matchingInstitution) {
     score += 35;
     reasons.push("单位吻合");
+    institution = matchingInstitution;
   }
   if (
     topicQueries.length &&
@@ -1096,6 +1504,9 @@ function rankCandidate(
     score += 6;
     reasons.push("多个索引相互印证");
   }
+  if (candidate.mergedRecordCount > 1) {
+    reasons.push(`已整合 ${candidate.mergedRecordCount} 条索引记录`);
+  }
   if (
     candidate.identityWarnings.some((warning) =>
       /混合|混杂|冲突/.test(warning),
@@ -1104,7 +1515,12 @@ function rankCandidate(
     score -= 45;
     reasons.push("索引身份可能混杂");
   }
-  return { ...candidate, score, scoreReasons: unique(reasons) };
+  return {
+    ...candidate,
+    institution,
+    score,
+    scoreReasons: unique(reasons),
+  };
 }
 
 export async function searchScholars({
@@ -1174,7 +1590,7 @@ export async function searchScholars({
     else warnings.push(clean(result.reason?.message) || "一个索引暂时不可用");
   }
 
-  const merged = consolidateCandidates(candidates);
+  const merged = consolidateScholarCandidates(candidates);
 
   const ranked = merged
     .map((candidate) => {
@@ -1357,6 +1773,17 @@ async function getOpenAlexProfile(idOrOrcid: string) {
   candidate.representativeWorks = (worksData.results || [])
     .map(scholarWorkFromOpenAlex)
     .filter((item): item is ScholarWork => Boolean(item));
+  candidate.coauthorNames = unique(
+    (worksData.results || []).flatMap((work) =>
+      (work.authorships || [])
+        .filter(
+          (item) =>
+            entityId(item.author?.id, /^A\d+$/) !==
+            candidate.openAlexIds[0],
+        )
+        .map((item) => item.author?.display_name),
+    ),
+  ).slice(0, 40);
   candidate.verifiedWorkDois = unique(
     candidate.representativeWorks.map((item) => item.doi),
   ).slice(0, 40);
@@ -1383,7 +1810,7 @@ async function getSemanticProfile(id: string) {
   papersUrl.searchParams.set("limit", "100");
   papersUrl.searchParams.set(
     "fields",
-    "title,year,venue,url,externalIds",
+    "title,year,venue,url,externalIds,authors",
   );
   const papers = await fetchJson<{ data?: SemanticScholarPaper[] }>(
     papersUrl,
@@ -1405,11 +1832,13 @@ async function getSemanticProfile(id: string) {
 export async function getScholarProfile({
   openAlexIds = [],
   semanticScholarIds = [],
+  verifiedWorkDois = [],
   orcid,
   name,
 }: {
   openAlexIds?: string[];
   semanticScholarIds?: string[];
+  verifiedWorkDois?: string[];
   orcid?: string;
   name?: string;
 }) {
@@ -1441,7 +1870,68 @@ export async function getScholarProfile({
     )
     .map((result) => result.value)
     .filter((item): item is ScholarCandidate => Boolean(item));
-  const candidateGroups = consolidateCandidates(candidates);
+  const additionalWarnings: string[] = [];
+  if (name) {
+    try {
+      candidates.push(
+        ...(await crossrefWorkSearch([name], [], [], false)).filter(
+          (candidate) =>
+            canonicalPersonName(candidate.label) ===
+            canonicalPersonName(name),
+        ),
+      );
+    } catch (error) {
+      additionalWarnings.push(
+        clean((error as Error)?.message) || "Crossref 暂时不可用",
+      );
+    }
+  }
+  if (
+    name &&
+    (openAlexIds.length ||
+      semanticScholarIds.length ||
+      verifiedWorkDois.length ||
+      orcid)
+  ) {
+    const bridge = emptyCandidate(name, "已确认本地档案", { orcid });
+    bridge.openAlexIds = unique(openAlexIds);
+    bridge.semanticScholarIds = unique(semanticScholarIds);
+    bridge.verifiedWorkDois = unique(
+      verifiedWorkDois.map(normalizeDoi),
+    );
+    bridge.externalIds = {
+      openAlex: bridge.openAlexIds[0],
+      semanticScholar: bridge.semanticScholarIds[0],
+      orcid: normalizeOrcid(orcid) || undefined,
+    };
+    bridge.sources = [];
+    bridge.mergedRecordCount = 0;
+    bridge.mergeConfidence = "verified";
+    bridge.mergeEvidence = ["已关注档案中的确认 ID"];
+    candidates.push(bridge);
+  }
+  const candidateGroups = consolidateScholarCandidates(candidates);
+  const requestedOpenAlex = unique(openAlexIds);
+  const requestedSemantic = unique(semanticScholarIds);
+  const requestedOrcid = normalizeOrcid(orcid);
+  candidateGroups.sort((left, right) => {
+    const identityScore = (candidate: ScholarCandidate) =>
+      (requestedOrcid && candidate.orcid === requestedOrcid ? 1000 : 0) +
+      candidate.openAlexIds.filter((id) =>
+        requestedOpenAlex.includes(id),
+      ).length *
+        100 +
+      candidate.semanticScholarIds.filter((id) =>
+        requestedSemantic.includes(id),
+      ).length *
+        100 +
+      (name &&
+      canonicalPersonName(candidate.label) === canonicalPersonName(name)
+        ? 20
+        : 0) +
+      (candidate.worksCount || candidate.representativeWorks.length);
+    return identityScore(right) - identityScore(left);
+  });
   let candidate = candidateGroups[0] || null;
   const works = candidate?.representativeWorks || [];
   if (candidate) {
@@ -1455,13 +1945,16 @@ export async function getScholarProfile({
     candidates: [],
     works,
     needsConfirmation: !candidate,
-    warnings: settled
-      .filter((result) => result.status === "rejected")
-      .map((result) =>
-        result.status === "rejected"
-          ? clean(result.reason?.message) || "一个索引暂时不可用"
-          : "",
-      )
-      .filter(Boolean),
+    warnings: unique([
+      ...settled
+        .filter((result) => result.status === "rejected")
+        .map((result) =>
+          result.status === "rejected"
+            ? clean(result.reason?.message) || "一个索引暂时不可用"
+            : "",
+        )
+        .filter(Boolean),
+      ...additionalWarnings,
+    ]),
   };
 }

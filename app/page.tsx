@@ -26,6 +26,10 @@ type Scholar = {
   sources?: string[];
   trackingStatus?: "verified" | "limited";
   followedAt?: string;
+  identityCheckedAt?: string;
+  mergedRecordCount?: number;
+  mergeConfidence?: "verified" | "high" | "unconfirmed";
+  mergeEvidence?: string[];
 };
 type Subscriptions = {
   journal: Journal[];
@@ -39,6 +43,7 @@ type ScholarWork = {
   year?: number;
   venue?: string;
   url?: string;
+  familyIds?: string[];
 };
 type SearchResult = {
   candidateId?: string;
@@ -66,6 +71,9 @@ type SearchResult = {
   identityWarnings?: string[];
   scoreReasons?: string[];
   trackingStatus?: "verified" | "limited";
+  mergedRecordCount?: number;
+  mergeConfidence?: "verified" | "high" | "unconfirmed";
+  mergeEvidence?: string[];
 };
 
 type ArticleAuthor = {
@@ -529,6 +537,30 @@ function safeSubscriptions(value: unknown): Subscriptions {
                 ? ("verified" as const)
                 : ("limited" as const),
             followedAt: safeTimestamp(scholar.followedAt),
+            identityCheckedAt:
+              typeof scholar.identityCheckedAt === "string" &&
+              Number.isFinite(Date.parse(scholar.identityCheckedAt))
+                ? scholar.identityCheckedAt
+                : undefined,
+            mergedRecordCount:
+              typeof scholar.mergedRecordCount === "number"
+                ? Math.max(1, Math.floor(scholar.mergedRecordCount))
+                : 1,
+            mergeConfidence:
+              scholar.mergeConfidence === "verified" ||
+              scholar.mergeConfidence === "high" ||
+              scholar.mergeConfidence === "unconfirmed"
+                ? scholar.mergeConfidence
+                : orcid
+                  ? "verified"
+                  : openAlexIds.length || semanticScholarIds.length
+                    ? "high"
+                    : "unconfirmed",
+            mergeEvidence: Array.isArray(scholar.mergeEvidence)
+              ? scholar.mergeEvidence.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : [],
           }];
         }
         return [];
@@ -914,10 +946,21 @@ export default function Home() {
       });
       if (!response.ok) throw new Error("feed unavailable");
       const data = (await response.json()) as FeedResponse;
+      const resolvedSubscriptions = Array.isArray(data.scholars)
+        ? {
+            ...sourceSubscriptions,
+            scholar: safeSubscriptions({
+              journal: [],
+              scholar: data.scholars,
+              keyword: [],
+            }).scholar,
+          }
+        : sourceSubscriptions;
       setFeed(data);
+      setSubscriptions(resolvedSubscriptions);
       void persistLocalData({
         feed: data,
-        subscriptions: sourceSubscriptions,
+        subscriptions: resolvedSubscriptions,
       });
       if (force) showNotice("已检查最新出版记录");
     } catch {
@@ -1013,14 +1056,78 @@ export default function Home() {
           ? "verified"
           : "limited",
       followedAt: new Date().toISOString(),
+      identityCheckedAt: new Date().toISOString(),
+      mergedRecordCount: result.mergedRecordCount || 1,
+      mergeConfidence:
+        result.mergeConfidence ||
+        (orcid
+          ? "verified"
+          : openAlexIds.length || semanticScholarIds.length
+            ? "high"
+            : "unconfirmed"),
+      mergeEvidence: result.mergeEvidence || [],
     };
   }
 
-  function isScholarFollowed(result: SearchResult | Scholar) {
-    const key = scholarIdentityKey(result);
-    return subscriptions.scholar.some(
-      (item) => scholarIdentityKey(item) === key,
+  function scholarRecordsMatch(
+    result: SearchResult | Scholar,
+    item: Scholar,
+  ) {
+    const resultOrcid = cleanOrcid(result.orcid);
+    const resultOpenAlex = new Set(result.openAlexIds || []);
+    const resultSemantic = new Set(result.semanticScholarIds || []);
+    if (scholarIdentityKey(item) === scholarIdentityKey(result)) return true;
+    if (resultOrcid && cleanOrcid(item.orcid) === resultOrcid) return true;
+    if (item.openAlexIds.some((id) => resultOpenAlex.has(id))) return true;
+    return (item.semanticScholarIds || []).some((id) =>
+      resultSemantic.has(id),
     );
+  }
+
+  function isScholarFollowed(result: SearchResult | Scholar) {
+    return subscriptions.scholar.some((item) =>
+      scholarRecordsMatch(result, item),
+    );
+  }
+
+  function persistEnrichedScholar(result: SearchResult) {
+    const index = subscriptions.scholar.findIndex((item) =>
+      scholarRecordsMatch(result, item),
+    );
+    if (index < 0) return;
+    const current = subscriptions.scholar[index];
+    const enriched = scholarFromResult(result);
+    enriched.followedAt = current.followedAt;
+    enriched.identityCheckedAt = new Date().toISOString();
+    enriched.aliases = [...new Set([
+      ...(current.aliases || []),
+      ...(enriched.aliases || []),
+    ])];
+    enriched.openAlexIds = [...new Set([
+      ...current.openAlexIds,
+      ...enriched.openAlexIds,
+    ])];
+    enriched.semanticScholarIds = [...new Set([
+      ...(current.semanticScholarIds || []),
+      ...(enriched.semanticScholarIds || []),
+    ])];
+    enriched.institutions = [...new Set([
+      current.institution,
+      ...(current.institutions || []),
+      enriched.institution,
+      ...(enriched.institutions || []),
+    ])];
+    enriched.verifiedWorkDois = [...new Set([
+      ...(current.verifiedWorkDois || []),
+      ...(enriched.verifiedWorkDois || []),
+    ])];
+    enriched.mergeEvidence = [...new Set([
+      ...(current.mergeEvidence || []),
+      ...(enriched.mergeEvidence || []),
+    ])];
+    const nextScholars = [...subscriptions.scholar];
+    nextScholars[index] = enriched;
+    saveSubscriptions({ ...subscriptions, scholar: nextScholars });
   }
 
   function followScholar(result: SearchResult, closeModal = true) {
@@ -1112,13 +1219,16 @@ export default function Home() {
       semanticScholarIds.forEach((id) =>
         params.append("semanticScholarId", id),
       );
+      (result.verifiedWorkDois || [])
+        .slice(0, 40)
+        .forEach((doi) => params.append("workDoi", doi));
       if (result.orcid || result.externalIds?.orcid) {
         params.set(
           "orcid",
           result.orcid || result.externalIds?.orcid || "",
         );
       }
-      if (![...params.keys()].length) params.set("name", result.label);
+      params.set("name", result.label);
       const response = await fetch(
         `/api/scholar-profile?${params.toString()}`,
         { cache: "no-store" },
@@ -1131,6 +1241,7 @@ export default function Home() {
         needsConfirmation?: boolean;
       };
       if (data.candidate) {
+        persistEnrichedScholar(data.candidate);
         setProfile({
           candidate: data.candidate,
           works: data.works || data.candidate.representativeWorks || [],
@@ -1485,8 +1596,7 @@ export default function Home() {
       : undefined;
   const currentProfileFollowed = profile
     ? subscriptions.scholar.find(
-        (item) =>
-          scholarIdentityKey(item) === scholarIdentityKey(profile.candidate),
+        (item) => scholarRecordsMatch(profile.candidate, item),
       )
     : currentScholar;
 
@@ -1676,6 +1786,16 @@ export default function Home() {
                 </p>
                 <h2>{currentScholar.label}</h2>
                 <strong>{currentScholar.institution}</strong>
+                {(currentScholar.mergedRecordCount || 1) > 1 ? (
+                  <small className="merge-summary">
+                    已整合 {currentScholar.mergedRecordCount} 条索引记录
+                    {currentScholar.mergeEvidence?.length
+                      ? `；依据：${currentScholar.mergeEvidence
+                          .slice(0, 3)
+                          .join("、")}`
+                      : ""}
+                  </small>
+                ) : null}
                 <small>
                   公开索引约收录{" "}
                   {currentScholar.worksCount?.toLocaleString("zh-CN") || "—"}{" "}
@@ -2377,6 +2497,18 @@ export default function Home() {
                           {warning}
                         </p>
                       ))}
+                      {(result.mergedRecordCount || 1) > 1 ? (
+                        <p className="identity-merge-note">
+                          <strong>
+                            已整合 {result.mergedRecordCount} 条索引记录
+                          </strong>
+                          {result.mergeEvidence?.length
+                            ? `：${result.mergeEvidence
+                                .slice(0, 3)
+                                .join("、")}`
+                            : ""}
+                        </p>
+                      ) : null}
                       {result.representativeWorks?.length ? (
                         <ol className="representative-works">
                           {result.representativeWorks.slice(0, 3).map((work) => (
