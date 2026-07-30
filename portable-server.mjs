@@ -85,9 +85,14 @@ function clean(value, max = 2000) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+function cleanTimestamp(value, fallback = new Date().toISOString()) {
+  const timestamp = clean(value, 80);
+  return Number.isFinite(Date.parse(timestamp)) ? timestamp : fallback;
+}
+
 function emptyLocalData() {
   return {
-    version: 3,
+    version: 4,
     savedAt: new Date().toISOString(),
     subscriptions: { journal: [], scholar: [], keyword: [] },
     states: {},
@@ -187,13 +192,14 @@ function cleanKeywordGroup(value) {
   };
 }
 
-function cleanSubscriptions(value = {}) {
+function cleanSubscriptions(value = {}, migrationBaseline = new Date().toISOString()) {
   const journal = Array.isArray(value.journal)
     ? value.journal
         .slice(0, 40)
         .map((item) => ({
           label: clean(item?.label, 180),
           issn: clean(item?.issn, 40),
+          followedAt: cleanTimestamp(item?.followedAt, migrationBaseline),
         }))
         .filter((item) => item.label && item.issn)
     : [];
@@ -285,6 +291,10 @@ function cleanSubscriptions(value = {}) {
               openAlexIds.length || semanticScholarIds.length || orcid
                 ? "verified"
                 : "limited",
+            followedAt: cleanTimestamp(
+              candidate?.followedAt,
+              migrationBaseline,
+            ),
           };
         })
         .filter(Boolean)
@@ -391,6 +401,9 @@ function cleanSavedAt(value) {
 }
 
 function cleanLocalData(value = {}, refreshSavedAt = false) {
+  const now = new Date().toISOString();
+  const savedAt = refreshSavedAt ? now : cleanSavedAt(value.savedAt);
+  const migrationBaseline = Number(value.version) >= 4 ? savedAt : now;
   const states = {};
   if (value.states && typeof value.states === "object") {
     for (const [id, state] of Object.entries(value.states).slice(0, 2000)) {
@@ -409,9 +422,12 @@ function cleanLocalData(value = {}, refreshSavedAt = false) {
   }
 
   return {
-    version: 3,
-    savedAt: refreshSavedAt ? new Date().toISOString() : cleanSavedAt(value.savedAt),
-    subscriptions: cleanSubscriptions(value.subscriptions),
+    version: 4,
+    savedAt,
+    subscriptions: cleanSubscriptions(
+      value.subscriptions,
+      migrationBaseline,
+    ),
     states,
     feed: cleanFeed(value.feed),
     translations,

@@ -8,14 +8,22 @@ function clean(value: string | null, max = 200) {
 }
 
 export async function GET(request: NextRequest) {
-  const openAlexId = clean(request.nextUrl.searchParams.get("openAlexId"), 80);
-  const semanticScholarId = clean(
-    request.nextUrl.searchParams.get("semanticScholarId"),
-    160,
-  );
+  const openAlexIds = request.nextUrl.searchParams
+    .getAll("openAlexId")
+    .map((item) => clean(item, 80))
+    .filter(Boolean);
+  const semanticScholarIds = request.nextUrl.searchParams
+    .getAll("semanticScholarId")
+    .map((item) => clean(item, 160))
+    .filter(Boolean);
   const orcid = clean(request.nextUrl.searchParams.get("orcid"), 80);
   const name = clean(request.nextUrl.searchParams.get("name"), 180);
-  if (!openAlexId && !semanticScholarId && !orcid && name.length < 2) {
+  if (
+    !openAlexIds.length &&
+    !semanticScholarIds.length &&
+    !orcid &&
+    name.length < 2
+  ) {
     return NextResponse.json(
       { message: "缺少可用于确认学者身份的信息。" },
       { status: 400 },
@@ -24,8 +32,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const profile = await getScholarProfile({
-      openAlexId,
-      semanticScholarId,
+      openAlexIds,
+      semanticScholarIds,
       orcid,
       name,
     });

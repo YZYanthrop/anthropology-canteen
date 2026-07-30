@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type MatchKind = "journal" | "scholar" | "keyword";
 type Match = { kind: MatchKind; label: string; terms?: string[] };
-type Journal = { label: string; issn: string };
+type Journal = { label: string; issn: string; followedAt?: string };
 type KeywordGroup = {
   root: string;
   variants: string[];
@@ -25,6 +25,7 @@ type Scholar = {
   verifiedWorkDois?: string[];
   sources?: string[];
   trackingStatus?: "verified" | "limited";
+  followedAt?: string;
 };
 type Subscriptions = {
   journal: Journal[];
@@ -53,6 +54,7 @@ type SearchResult = {
   worksCount?: number;
   researchAreas?: string[];
   representativeWorks?: ScholarWork[];
+  verifiedWorkDois?: string[];
   externalIds?: {
     openAlex?: string;
     semanticScholar?: string;
@@ -61,6 +63,7 @@ type SearchResult = {
   openAlexIds?: string[];
   semanticScholarIds?: string[];
   sources?: string[];
+  identityWarnings?: string[];
   scoreReasons?: string[];
   trackingStatus?: "verified" | "limited";
 };
@@ -157,12 +160,44 @@ function relativeDate(value: string) {
   return formatDate(value);
 }
 
+function safeTimestamp(value: unknown, fallback = new Date().toISOString()) {
+  return typeof value === "string" && Number.isFinite(Date.parse(value))
+    ? value
+    : fallback;
+}
+
 function kindLabel(kind: MatchKind) {
   return kind === "journal" ? "期刊" : kind === "scholar" ? "学者" : "关键词";
 }
 
 function defaultArticleState(): ArticleState {
   return { saved: false, read: false, ignored: false };
+}
+
+function articlePublishedSinceFollow(
+  article: Article,
+  subscriptions: Subscriptions,
+) {
+  const publicationDate = article.publishedAt.slice(0, 10);
+  return article.matches.some((match) => {
+    if (match.kind === "scholar") {
+      const scholar = subscriptions.scholar.find(
+        (item) => item.label.toLowerCase() === match.label.toLowerCase(),
+      );
+      return scholar
+        ? publicationDate >= safeTimestamp(scholar.followedAt).slice(0, 10)
+        : false;
+    }
+    if (match.kind === "journal") {
+      const journal = subscriptions.journal.find(
+        (item) => item.label.toLowerCase() === match.label.toLowerCase(),
+      );
+      return journal
+        ? publicationDate >= safeTimestamp(journal.followedAt).slice(0, 10)
+        : false;
+    }
+    return false;
+  });
 }
 
 function defaultLocalData(): LocalData {
@@ -391,9 +426,18 @@ function safeSubscriptions(value: unknown): Subscriptions {
     return DEFAULT_SUBSCRIPTIONS;
   }
   return {
-    journal: candidate.journal.filter(
-      (item): item is Journal =>
-        Boolean(item && typeof item.label === "string" && typeof item.issn === "string"),
+    journal: candidate.journal.flatMap((item): Journal[] =>
+      item &&
+      typeof item.label === "string" &&
+      typeof item.issn === "string"
+        ? [{
+            label: item.label,
+            issn: item.issn,
+            followedAt: safeTimestamp(
+              (item as Partial<Journal>).followedAt,
+            ),
+          }]
+        : [],
     ),
     scholar: candidate.scholar
       .flatMap((item): Scholar[] => {
@@ -407,6 +451,7 @@ function safeSubscriptions(value: unknown): Subscriptions {
             institution: "单位待确认",
             institutions: [],
             trackingStatus: "limited" as const,
+            followedAt: new Date().toISOString(),
           }];
         }
         if (
@@ -483,6 +528,7 @@ function safeSubscriptions(value: unknown): Subscriptions {
               openAlexIds.length || semanticScholarIds.length || orcid
                 ? ("verified" as const)
                 : ("limited" as const),
+            followedAt: safeTimestamp(scholar.followedAt),
           }];
         }
         return [];
@@ -955,14 +1001,18 @@ export default function Home() {
       orcid,
       worksCount: result.worksCount,
       researchAreas: result.researchAreas,
-      verifiedWorkDois: (result.representativeWorks || [])
-        .map((work) => work.doi || "")
-        .filter(Boolean),
+      verifiedWorkDois: [
+        ...(result.verifiedWorkDois || []),
+        ...(result.representativeWorks || []).map((work) => work.doi || ""),
+      ].filter(
+        (doi, index, all) => Boolean(doi) && all.indexOf(doi) === index,
+      ),
       sources: result.sources,
       trackingStatus:
         openAlexIds.length || semanticScholarIds.length || orcid
           ? "verified"
           : "limited",
+      followedAt: new Date().toISOString(),
     };
   }
 
@@ -1023,20 +1073,45 @@ export default function Home() {
   }
 
   async function openScholarProfile(result: SearchResult) {
+    const hasStableIdentity =
+      result.openAlexIds?.length ||
+      result.semanticScholarIds?.length ||
+      result.externalIds?.openAlex ||
+      result.externalIds?.semanticScholar ||
+      result.orcid ||
+      result.externalIds?.orcid;
+    if (!hasStableIdentity && result.representativeWorks?.length) {
+      setAddOpen(false);
+      setProfile({
+        candidate: result,
+        works: result.representativeWorks,
+      });
+      setActiveSubscription(null);
+      setHistoryScholar(undefined);
+      setFilter("scholar");
+      return;
+    }
     setProfileLoading(true);
     setAddOpen(false);
     setError("");
     try {
       const params = new URLSearchParams();
-      const openAlexId =
-        result.openAlexIds?.[0] || result.externalIds?.openAlex;
-      const semanticScholarId =
-        result.semanticScholarIds?.[0] ||
-        result.externalIds?.semanticScholar;
-      if (openAlexId) params.set("openAlexId", openAlexId);
-      if (semanticScholarId) {
-        params.set("semanticScholarId", semanticScholarId);
-      }
+      const openAlexIds = [
+        ...(result.openAlexIds || []),
+        ...(result.externalIds?.openAlex
+          ? [result.externalIds.openAlex]
+          : []),
+      ].filter((id, index, all) => Boolean(id) && all.indexOf(id) === index);
+      const semanticScholarIds = [
+        ...(result.semanticScholarIds || []),
+        ...(result.externalIds?.semanticScholar
+          ? [result.externalIds.semanticScholar]
+          : []),
+      ].filter((id, index, all) => Boolean(id) && all.indexOf(id) === index);
+      openAlexIds.forEach((id) => params.append("openAlexId", id));
+      semanticScholarIds.forEach((id) =>
+        params.append("semanticScholarId", id),
+      );
       if (result.orcid || result.externalIds?.orcid) {
         params.set(
           "orcid",
@@ -1167,7 +1242,11 @@ export default function Home() {
         ...subscriptions,
         journal: [
           ...subscriptions.journal,
-          { label: result.label, issn: result.value },
+          {
+            label: result.label,
+            issn: result.value,
+            followedAt: new Date().toISOString(),
+          },
         ],
       };
       saveSubscriptions(next);
@@ -1379,7 +1458,10 @@ export default function Home() {
   }, [feed, query, states, subscriptions.scholar]);
 
   const unreadCount = (feed?.items || []).filter(
-    (article) => !states[article.id]?.read && !states[article.id]?.ignored,
+    (article) =>
+      articlePublishedSinceFollow(article, subscriptions) &&
+      !states[article.id]?.read &&
+      !states[article.id]?.ignored,
   ).length;
   const savedCount = Object.values(states).filter((state) => state.saved).length;
   const currentScholar =
@@ -1878,19 +1960,28 @@ export default function Home() {
             <div className="article-list">
               {visibleItems.map((article) => {
                 const state = states[article.id] || defaultArticleState();
+                const publishedSinceFollow = articlePublishedSinceFollow(
+                  article,
+                  subscriptions,
+                );
                 const isExpanded = expanded[article.id];
                 const keywordMatches = article.matches
                   .filter((match) => match.kind === "keyword")
                   .flatMap((match) => match.terms || [match.label]);
                 return (
                   <article
-                    className={`article-card ${state.read ? "is-read" : ""}`}
+                    className={`article-card ${
+                      state.read || !publishedSinceFollow ? "is-read" : ""
+                    }`}
                     key={article.id}
                   >
                     <div className="article-meta">
                       <span className="venue">{article.venue}</span>
                       <span>·</span>
                       <time>{relativeDate(article.publishedAt)}</time>
+                      {!publishedSinceFollow && (
+                        <span className="before-follow-pill">关注前发表</span>
+                      )}
                       <span className="type-pill">{article.type}</span>
                     </div>
 
@@ -2281,6 +2372,11 @@ export default function Home() {
                           研究方向：{result.researchAreas.slice(0, 6).join("、")}
                         </p>
                       ) : null}
+                      {result.identityWarnings?.map((warning) => (
+                        <p className="identity-warning" key={warning}>
+                          {warning}
+                        </p>
+                      ))}
                       {result.representativeWorks?.length ? (
                         <ol className="representative-works">
                           {result.representativeWorks.slice(0, 3).map((work) => (

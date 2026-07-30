@@ -24,6 +24,7 @@ export type ScholarCandidate = {
   institution: string;
   researchAreas: string[];
   representativeWorks: ScholarWork[];
+  verifiedWorkDois: string[];
   externalIds: ScholarExternalIds;
   openAlexIds: string[];
   semanticScholarIds: string[];
@@ -32,19 +33,24 @@ export type ScholarCandidate = {
   profileUrl?: string;
   worksCount?: number;
   sources: string[];
+  identityWarnings: string[];
   score: number;
   scoreReasons: string[];
   trackingStatus: "verified" | "limited";
 };
 
 type OpenAlexInstitution = {
+  id?: string;
   display_name?: string;
+  display_name_acronyms?: string[];
+  display_name_alternatives?: string[];
 };
 
 type OpenAlexAuthor = {
   id?: string;
   display_name?: string;
   display_name_alternatives?: string[];
+  raw_author_names?: string[];
   orcid?: string;
   works_count?: number;
   cited_by_count?: number;
@@ -74,6 +80,14 @@ type OpenAlexWork = {
   };
   authorships?: {
     author?: { id?: string; display_name?: string; orcid?: string };
+    institutions?: OpenAlexInstitution[];
+    raw_author_name?: string;
+    raw_affiliation_strings?: string[];
+  }[];
+  topics?: {
+    display_name?: string;
+    subfield?: { display_name?: string };
+    field?: { display_name?: string };
   }[];
 };
 
@@ -118,7 +132,7 @@ type CrossrefWork = {
   issued?: { "date-parts"?: number[][] };
 };
 
-const USER_AGENT = "AnthropologyCanteen/1.1";
+const USER_AGENT = "AnthropologyCanteen/1.1.0";
 
 function clean(value: unknown, max = 500) {
   return typeof value === "string"
@@ -159,6 +173,19 @@ export function normalizeName(value: unknown) {
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .toLowerCase()
     .trim();
+}
+
+function canonicalPersonName(value: unknown) {
+  return normalizeName(value).split(/\s+/).filter(Boolean).sort().join(" ");
+}
+
+function distinctivePersonName(value: unknown) {
+  const tokens = canonicalPersonName(value).split(/\s+/).filter(Boolean);
+  return (
+    tokens.length >= 2 &&
+    tokens.join("").length >= 10 &&
+    tokens.some((token) => token.length >= 8)
+  );
 }
 
 function comparableName(value: unknown) {
@@ -219,16 +246,21 @@ export function scholarQueryVariants(input: string) {
       .map((item) => clean(item))
       .filter(Boolean);
     if (syllables.length) {
-      const surnameFirst = syllables
-        .map((item) => `${item[0]?.toUpperCase() || ""}${item.slice(1)}`)
-        .join(" ");
+      const capitalized = syllables.map(
+        (item) => `${item[0]?.toUpperCase() || ""}${item.slice(1)}`,
+      );
+      const surnameFirst = capitalized.join(" ");
       const givenFirst = [
-        ...syllables.slice(1),
-        syllables[0],
-      ]
-        .map((item) => `${item[0]?.toUpperCase() || ""}${item.slice(1)}`)
-        .join(" ");
-      variants.push(surnameFirst, givenFirst);
+        ...capitalized.slice(1),
+        capitalized[0],
+      ].join(" ");
+      const compactGiven = capitalized.slice(1).join("");
+      variants.push(
+        [capitalized[0], compactGiven].filter(Boolean).join(" "),
+        [compactGiven, capitalized[0]].filter(Boolean).join(" "),
+        surnameFirst,
+        givenFirst,
+      );
     }
   } else {
     const normalized = normalizeName(raw);
@@ -241,7 +273,7 @@ export function scholarQueryVariants(input: string) {
       }
     }
   }
-  return unique(variants).slice(0, 4);
+  return unique(variants).slice(0, 6);
 }
 
 function fuzzyOpenAlexQuery(value: string) {
@@ -348,6 +380,7 @@ function emptyCandidate(
     institution: "未收录单位",
     researchAreas: [],
     representativeWorks: [],
+    verifiedWorkDois: [],
     externalIds: {
       openAlex: openAlex || undefined,
       semanticScholar: semanticScholar || undefined,
@@ -359,6 +392,7 @@ function emptyCandidate(
     profileUrls: [],
     worksCount: undefined,
     sources: [source],
+    identityWarnings: [],
     score: 0,
     scoreReasons: [],
     trackingStatus:
@@ -382,7 +416,10 @@ function openAlexCandidate(author: OpenAlexAuthor): ScholarCandidate | null {
         Math.max(...(left.years || [0])),
     )
     .map((item) => clean(item.institution?.display_name));
-  candidate.aliases = unique(author.display_name_alternatives || []).filter(
+  candidate.aliases = unique([
+    ...(author.display_name_alternatives || []),
+    ...(author.raw_author_names || []),
+  ]).filter(
     (item) => normalizeName(item) !== normalizeName(label),
   );
   candidate.institutions = unique([
@@ -406,6 +443,26 @@ function openAlexCandidate(author: OpenAlexAuthor): ScholarCandidate | null {
     candidate.orcid ? `https://orcid.org/${candidate.orcid}` : undefined,
   ]);
   candidate.profileUrl = candidate.profileUrls[0];
+  const divergentAliases = candidate.aliases.filter(
+    (alias) => nameSimilarity(alias, label) < 0.55,
+  );
+  const likelyMixedIdentity =
+    candidate.institutions.length > 12 ||
+    divergentAliases.length > 2 ||
+    (candidate.aliases.length > 14 && (candidate.worksCount || 0) > 100);
+  if (likelyMixedIdentity) {
+    candidate.candidateId = `openalex-suspect:${openAlex}:${normalizeName(label)}`;
+    candidate.value = candidate.candidateId;
+    candidate.openAlexIds = [];
+    candidate.orcid = undefined;
+    candidate.externalIds = {};
+    candidate.trackingStatus = "limited";
+    candidate.sources = ["OpenAlex（疑似混合同名记录）"];
+    candidate.identityWarnings = [
+      "该索引档案包含大量互不相干的姓名、单位或学科，已阻止自动绑定。",
+    ];
+    candidate.worksCount = undefined;
+  }
   return candidate;
 }
 
@@ -443,7 +500,9 @@ function crossrefAuthorName(author: CrossrefAuthor) {
 
 function crossrefCandidates(
   works: CrossrefWork[],
-  query: string,
+  queries: string[],
+  institutionQueries: string[],
+  topicQueries: string[],
   workMode: boolean,
 ) {
   const candidates = new Map<string, ScholarCandidate>();
@@ -453,18 +512,44 @@ function crossrefCandidates(
     for (const author of work.author || []) {
       const label = crossrefAuthorName(author);
       if (!label) continue;
-      if (!workMode && nameSimilarity(label, query) < 0.48) continue;
+      if (
+        !workMode &&
+        Math.max(...queries.map((query) => nameSimilarity(label, query)), 0) <
+          0.48
+      ) {
+        continue;
+      }
       const orcid = normalizeOrcid(author.ORCID);
-      const key =
-        (orcid && `orcid:${orcid}`) ||
-        `crossref:${normalizeName(label)}:${representative.doi || representative.id}`;
+      const canonicalName = canonicalPersonName(label);
+      const authorInstitutions = (author.affiliation || [])
+        .map((item) => clean(item.name))
+        .filter(Boolean);
+      const contextualNameCluster =
+        !workMode &&
+        Math.max(...queries.map((query) => nameSimilarity(label, query)), 0) >=
+          0.96 &&
+        authorInstitutions.some((item) =>
+          textMatchesAny(item, institutionQueries),
+        ) &&
+        textMatchesAny(
+          [
+            ...(work.subject || []),
+            ...(work.title || []),
+            ...(work["container-title"] || []),
+          ].join(" "),
+          topicQueries,
+        );
+      const nameCluster =
+        distinctivePersonName(label) || contextualNameCluster;
+      const key = nameCluster
+        ? `crossref:${canonicalName}`
+        : (orcid && `orcid:${orcid}`) ||
+          `crossref:${canonicalName}:${representative.doi || representative.id}`;
       let candidate = candidates.get(key);
       if (!candidate) {
         candidate = emptyCandidate(label, "Crossref", { orcid });
-        if (!orcid) candidate.candidateId = key;
-        candidate.institutions = unique(
-          (author.affiliation || []).map((item) => item.name),
-        );
+        if (!orcid || nameCluster) candidate.candidateId = key;
+        candidate.institutions = unique(authorInstitutions);
         candidate.institution =
           candidate.institutions[0] || "Crossref 未收录单位";
         candidate.profileUrls = candidate.orcid
@@ -472,6 +557,38 @@ function crossrefCandidates(
           : [];
         candidate.profileUrl = candidate.profileUrls[0];
         candidates.set(key, candidate);
+      } else {
+        candidate.institutions = unique([
+          ...candidate.institutions,
+          ...authorInstitutions,
+        ]);
+        candidate.institution =
+          candidate.institutions[0] || candidate.institution;
+        if (orcid && !candidate.orcid) {
+          candidate.orcid = orcid;
+          candidate.externalIds.orcid = orcid;
+          candidate.profileUrls = unique([
+            ...candidate.profileUrls,
+            `https://orcid.org/${orcid}`,
+          ]);
+          candidate.profileUrl ||= candidate.profileUrls[0];
+          candidate.trackingStatus = "verified";
+        } else if (orcid && candidate.orcid && candidate.orcid !== orcid) {
+          candidate.identityWarnings.push(
+            "同名作品带有互相冲突的 ORCID，未据此自动合并。",
+          );
+        }
+      }
+      candidate.researchAreas = unique([
+        ...candidate.researchAreas,
+        ...(work.subject || []),
+        ...(work["container-title"] || []),
+      ]).slice(0, 8);
+      if (representative.doi) {
+        candidate.verifiedWorkDois = unique([
+          ...candidate.verifiedWorkDois,
+          representative.doi,
+        ]).slice(0, 30);
       }
       if (
         !candidate.representativeWorks.some(
@@ -485,10 +602,10 @@ function crossrefCandidates(
     }
   }
   return [...candidates.values()].map((candidate) => ({
-    ...candidate,
-    representativeWorks: candidate.representativeWorks
-      .sort((left, right) => (right.year || 0) - (left.year || 0))
-      .slice(0, 3),
+      ...candidate,
+      representativeWorks: candidate.representativeWorks
+        .sort((left, right) => (right.year || 0) - (left.year || 0))
+        .slice(0, 3),
   }));
 }
 
@@ -600,7 +717,13 @@ async function semanticAuthorSearch(variants: string[]) {
     .filter((item): item is ScholarCandidate => Boolean(item));
 }
 
-async function crossrefWorkSearch(query: string, workMode: boolean) {
+async function crossrefWorkSearch(
+  queries: string[],
+  institutionQueries: string[],
+  topicQueries: string[],
+  workMode: boolean,
+) {
+  const query = queries[0] || "";
   const doi = normalizeDoi(query);
   let works: CrossrefWork[] = [];
   if (/^10\.\d{4,9}\//i.test(doi)) {
@@ -610,16 +733,49 @@ async function crossrefWorkSearch(query: string, workMode: boolean) {
     const data = await fetchJson<{ message?: CrossrefWork }>(url, "Crossref");
     if (data.message) works = [data.message];
   } else {
-    const url = new URL("https://api.crossref.org/works");
-    url.searchParams.set(workMode ? "query.title" : "query.author", query);
-    url.searchParams.set("rows", workMode ? "8" : "20");
-    const data = await fetchJson<{ message?: { items?: CrossrefWork[] } }>(
-      url,
-      "Crossref",
+    const settled = await Promise.allSettled(
+      unique(queries)
+        .slice(0, workMode ? 1 : 3)
+        .map(async (variant) => {
+          const url = new URL("https://api.crossref.org/works");
+          url.searchParams.set(
+            workMode ? "query.title" : "query.author",
+            variant,
+          );
+          if (!workMode && institutionQueries.length) {
+            const translatedInstitution =
+              institutionQueries.find((item) => /^[\x00-\x7F]+$/.test(item)) ||
+              institutionQueries[0];
+            url.searchParams.set(
+              "query.affiliation",
+              translatedInstitution,
+            );
+          }
+          url.searchParams.set("rows", workMode ? "8" : "30");
+          const data = await fetchJson<{
+            message?: { items?: CrossrefWork[] };
+          }>(url, "Crossref");
+          return data.message?.items || [];
+        }),
     );
-    works = data.message?.items || [];
+    works = settled.flatMap((result) =>
+      result.status === "fulfilled" ? result.value : [],
+    );
+    if (
+      !works.length &&
+      settled.length &&
+      settled.every((result) => result.status === "rejected")
+    ) {
+      throw new Error("Crossref unavailable");
+    }
   }
-  return crossrefCandidates(works, query, workMode);
+  return crossrefCandidates(
+    works,
+    queries,
+    institutionQueries,
+    topicQueries,
+    workMode,
+  );
 }
 
 function overlap(left: string[], right: string[]) {
@@ -631,16 +787,65 @@ function sameStableIdentity(left: ScholarCandidate, right: ScholarCandidate) {
   if (left.orcid && right.orcid && left.orcid === right.orcid) return true;
   if (overlap(left.openAlexIds, right.openAlexIds)) return true;
   if (overlap(left.semanticScholarIds, right.semanticScholarIds)) return true;
-  const leftDois = left.representativeWorks
-    .map((item) => item.doi || "")
-    .filter(Boolean);
-  const rightDois = right.representativeWorks
-    .map((item) => item.doi || "")
-    .filter(Boolean);
+  const leftDois = unique([
+    ...left.verifiedWorkDois,
+    ...left.representativeWorks.map((item) => item.doi),
+  ]);
+  const rightDois = unique([
+    ...right.verifiedWorkDois,
+    ...right.representativeWorks.map((item) => item.doi),
+  ]);
   return (
-    normalizeName(left.label) === normalizeName(right.label) &&
+    canonicalPersonName(left.label) === canonicalPersonName(right.label) &&
     overlap(leftDois, rightDois)
   );
+}
+
+function sameLikelyCareerIdentity(
+  left: ScholarCandidate,
+  right: ScholarCandidate,
+) {
+  if (
+    canonicalPersonName(left.label) !== canonicalPersonName(right.label) ||
+    !distinctivePersonName(left.label)
+  ) {
+    return false;
+  }
+  if (left.orcid && right.orcid && left.orcid !== right.orcid) return false;
+  const anchored = [left, right].find(
+    (candidate) =>
+      candidate.orcid &&
+      candidate.sources.length > 1 &&
+      candidate.verifiedWorkDois.length > 1,
+  );
+  const fragment = anchored === left ? right : anchored === right ? left : null;
+  return Boolean(
+    anchored &&
+      fragment &&
+      (fragment.worksCount || fragment.representativeWorks.length) <= 1,
+  );
+}
+
+function sameContextualWorkIdentity(
+  left: ScholarCandidate,
+  right: ScholarCandidate,
+) {
+  if (
+    canonicalPersonName(left.label) !== canonicalPersonName(right.label) ||
+    left.orcid ||
+    right.orcid ||
+    !left.verifiedWorkDois.length ||
+    !right.verifiedWorkDois.length
+  ) {
+    return false;
+  }
+  const institutionMatch = left.institutions.some((institution) =>
+    textMatchesAny(institution, right.institutions),
+  );
+  const topicMatch = left.researchAreas.some((area) =>
+    textMatchesAny(area, right.researchAreas),
+  );
+  return institutionMatch && topicMatch;
 }
 
 function mergeCandidate(
@@ -701,7 +906,11 @@ function mergeCandidate(
     ]).slice(0, 8),
     representativeWorks: works
       .sort((left, right) => (right.year || 0) - (left.year || 0))
-      .slice(0, 3),
+      .slice(0, 100),
+    verifiedWorkDois: unique([
+      ...target.verifiedWorkDois,
+      ...incoming.verifiedWorkDois,
+    ]).slice(0, 40),
     externalIds: {
       openAlex: openAlexIds[0],
       semanticScholar: semanticScholarIds[0],
@@ -720,6 +929,10 @@ function mergeCandidate(
       incoming.worksCount || 0,
     ) || undefined,
     sources: unique([...target.sources, ...incoming.sources]),
+    identityWarnings: unique([
+      ...target.identityWarnings,
+      ...incoming.identityWarnings,
+    ]),
     trackingStatus:
       openAlexIds.length || semanticScholarIds.length || orcid
         ? ("verified" as const)
@@ -727,11 +940,120 @@ function mergeCandidate(
   };
 }
 
+function consolidateCandidates(candidates: ScholarCandidate[]) {
+  const merged: ScholarCandidate[] = [];
+  for (const candidate of candidates) {
+    let combined = candidate;
+    let mergedAnother = true;
+    while (mergedAnother) {
+      mergedAnother = false;
+      for (let index = merged.length - 1; index >= 0; index -= 1) {
+        if (
+          sameStableIdentity(merged[index], combined) ||
+          sameLikelyCareerIdentity(merged[index], combined) ||
+          sameContextualWorkIdentity(merged[index], combined)
+        ) {
+          combined = mergeCandidate(merged[index], combined);
+          merged.splice(index, 1);
+          mergedAnother = true;
+        }
+      }
+    }
+    merged.push(combined);
+  }
+  return merged;
+}
+
+const TOPIC_TRANSLATIONS: Record<string, string[]> = {
+  人类学: ["anthropology", "social anthropology", "cultural anthropology"],
+  社会人类学: ["social anthropology", "anthropology"],
+  文化人类学: ["cultural anthropology", "anthropology"],
+  社会学: ["sociology", "social science"],
+  宗教: ["religion", "religious studies"],
+  宗教研究: ["religious studies", "religion"],
+  伦理学: ["ethics", "morality"],
+  科学技术研究: ["science and technology studies", "sts"],
+  科学社会学: ["sociology of science", "science studies"],
+  医学人类学: ["medical anthropology", "anthropology"],
+  政治学: ["political science", "politics"],
+  历史学: ["history", "historical studies"],
+  心理学: ["psychology"],
+};
+
+function topicContextVariants(topic: string) {
+  const normalized = clean(topic, 120);
+  const translated = Object.entries(TOPIC_TRANSLATIONS)
+    .filter(([key]) => normalized.includes(key))
+    .flatMap(([, values]) => values);
+  return unique([normalized, ...translated]);
+}
+
+async function institutionContextVariants(institution: string) {
+  const normalized = clean(institution, 120);
+  if (!normalized) return [];
+  const variants = [normalized];
+  try {
+    const url = new URL("https://api.openalex.org/institutions");
+    url.searchParams.set("search", normalized);
+    url.searchParams.set("per-page", "5");
+    url.searchParams.set(
+      "select",
+      "id,display_name,display_name_acronyms,display_name_alternatives",
+    );
+    const data = await fetchJson<{ results?: OpenAlexInstitution[] }>(
+      url,
+      "OpenAlex institutions",
+    );
+    const exact =
+      (data.results || []).find((item) =>
+        [item.display_name, ...(item.display_name_alternatives || [])].some(
+          (name) => normalizeName(name) === normalizeName(normalized),
+        ),
+      ) || data.results?.[0];
+    if (exact) {
+      variants.push(
+        clean(exact.display_name),
+        ...(exact.display_name_acronyms || []),
+        ...(exact.display_name_alternatives || []),
+      );
+    }
+  } catch {
+    if (normalized.includes("浙江大学")) {
+      variants.push("Zhejiang University", "ZJU");
+    }
+  }
+  return unique(variants);
+}
+
+function textMatchesAny(value: string, queries: string[]) {
+  const normalized = normalizeName(value);
+  if (!normalized) return false;
+  return queries.some((query) => {
+    const normalizedQuery = normalizeName(query);
+    if (
+      normalizedQuery &&
+      (normalized.includes(normalizedQuery) ||
+        normalizedQuery.includes(normalized))
+    ) {
+      return true;
+    }
+    return normalizedQuery
+      .split(/\s+/)
+      .filter((token) => token.length >= 7)
+      .map((token) =>
+        token.endsWith("y")
+          ? token.slice(0, -1)
+          : token.replace(/(?:ical|ically|ist|ists)$/i, ""),
+      )
+      .some((stem) => stem.length >= 6 && normalized.includes(stem));
+  });
+}
+
 function rankCandidate(
   candidate: ScholarCandidate,
   query: string,
-  institution: string,
-  topic: string,
+  institutionQueries: string[],
+  topicQueries: string[],
   workMode: boolean,
 ) {
   const names = [candidate.label, ...candidate.aliases];
@@ -743,23 +1065,21 @@ function rankCandidate(
   const reasons: string[] = [];
   if (similarity >= 0.96) reasons.push("姓名高度吻合");
   else if (similarity >= 0.72) reasons.push("姓名近似");
-  const institutionQuery = normalizeName(institution);
   if (
-    institutionQuery &&
+    institutionQueries.length &&
     candidate.institutions.some((item) =>
-      normalizeName(item).includes(institutionQuery),
+      textMatchesAny(item, institutionQueries),
     )
   ) {
     score += 35;
     reasons.push("单位吻合");
   }
-  const topicQuery = normalizeName(topic);
   if (
-    topicQuery &&
+    topicQueries.length &&
     [
       ...candidate.researchAreas,
       ...candidate.representativeWorks.map((item) => item.title),
-    ].some((item) => normalizeName(item).includes(topicQuery))
+    ].some((item) => textMatchesAny(item, topicQueries))
   ) {
     score += 25;
     reasons.push("研究方向吻合");
@@ -775,6 +1095,14 @@ function rankCandidate(
   if (candidate.sources.length > 1) {
     score += 6;
     reasons.push("多个索引相互印证");
+  }
+  if (
+    candidate.identityWarnings.some((warning) =>
+      /混合|混杂|冲突/.test(warning),
+    )
+  ) {
+    score -= 45;
+    reasons.push("索引身份可能混杂");
   }
   return { ...candidate, score, scoreReasons: unique(reasons) };
 }
@@ -792,6 +1120,8 @@ export async function searchScholars({
 }) {
   const cleanQuery = clean(query, 180);
   const variants = scholarQueryVariants(cleanQuery);
+  const institutionQueries = await institutionContextVariants(institution);
+  const topicQueries = topicContextVariants(topic);
   const workMode = mode === "work";
   const directOpenAlexId = entityId(
     cleanQuery.match(/A\d+/i)?.[0]?.toUpperCase(),
@@ -823,7 +1153,14 @@ export async function searchScholars({
     jobs.push(semanticAuthorSearch(variants));
   }
 
-  jobs.push(crossrefWorkSearch(cleanQuery, workMode));
+  jobs.push(
+    crossrefWorkSearch(
+      workMode ? [cleanQuery] : variants,
+      institutionQueries,
+      topicQueries,
+      workMode,
+    ),
+  );
   if (workMode && !directOpenAlexId && !directSemanticId && !directOrcid) {
     jobs.push(openAlexWorkAuthorSearch(cleanQuery));
     jobs.push(semanticPaperAuthorSearch(cleanQuery));
@@ -837,14 +1174,7 @@ export async function searchScholars({
     else warnings.push(clean(result.reason?.message) || "一个索引暂时不可用");
   }
 
-  const merged: ScholarCandidate[] = [];
-  for (const candidate of candidates) {
-    const index = merged.findIndex((item) =>
-      sameStableIdentity(item, candidate),
-    );
-    if (index === -1) merged.push(candidate);
-    else merged[index] = mergeCandidate(merged[index], candidate);
-  }
+  const merged = consolidateCandidates(candidates);
 
   const ranked = merged
     .map((candidate) => {
@@ -861,8 +1191,8 @@ export async function searchScholars({
       return rankCandidate(
         candidate,
         identityQuery,
-        institution,
-        topic,
+        institutionQueries,
+        topicQueries,
         workMode,
       );
     })
@@ -904,24 +1234,45 @@ async function openAlexWorkAuthorSearch(query: string) {
     if (!representative) continue;
     for (const authorship of work.authorships || []) {
       const id = entityId(authorship.author?.id, /^A\d+$/);
-      const label = clean(authorship.author?.display_name);
-      if (!id || !label) continue;
-      let candidate = authors.get(id);
+      const label = clean(
+        authorship.raw_author_name || authorship.author?.display_name,
+      );
+      if (!label) continue;
+      const key = `${canonicalPersonName(label)}:${representative.doi || representative.id}`;
+      let candidate = authors.get(key);
       if (!candidate) {
-        candidate = emptyCandidate(label, "OpenAlex", {
-          openAlex: id,
-          orcid: authorship.author?.orcid,
-        });
-        candidate.profileUrls = [
-          `https://openalex.org/${id}`,
-          ...(candidate.orcid
-            ? [`https://orcid.org/${candidate.orcid}`]
-            : []),
-        ];
+        candidate = emptyCandidate(label, "OpenAlex 作品记录", {});
+        candidate.candidateId = `work:${key}`;
+        candidate.value = candidate.candidateId;
+        candidate.institutions = unique([
+          ...(authorship.institutions || []).map((item) => item.display_name),
+          ...(authorship.raw_affiliation_strings || []),
+        ]);
+        candidate.institution =
+          candidate.institutions[0] || "作品未收录单位";
+        candidate.researchAreas = unique(
+          (work.topics || []).flatMap((item) => [
+            item.display_name,
+            item.subfield?.display_name,
+            item.field?.display_name,
+          ]),
+        ).slice(0, 8);
+        candidate.profileUrls = id ? [`https://openalex.org/${id}`] : [];
         candidate.profileUrl = candidate.profileUrls[0];
-        authors.set(id, candidate);
+        candidate.identityWarnings = id
+          ? [
+              "作者 ID 仅来自单篇作品，尚未通过姓名、单位与学科交叉核验，暂不自动绑定。",
+            ]
+          : [];
+        authors.set(key, candidate);
       }
       candidate.representativeWorks.push(representative);
+      if (representative.doi) {
+        candidate.verifiedWorkDois = unique([
+          ...candidate.verifiedWorkDois,
+          representative.doi,
+        ]);
+      }
     }
   }
   return [...authors.values()];
@@ -972,6 +1323,12 @@ async function semanticPaperAuthorSearch(query: string) {
         authors.set(id, candidate);
       }
       candidate.representativeWorks.push(representative);
+      if (representative.doi) {
+        candidate.verifiedWorkDois = unique([
+          ...candidate.verifiedWorkDois,
+          representative.doi,
+        ]);
+      }
     }
   }
   return [...authors.values()];
@@ -1000,6 +1357,9 @@ async function getOpenAlexProfile(idOrOrcid: string) {
   candidate.representativeWorks = (worksData.results || [])
     .map(scholarWorkFromOpenAlex)
     .filter((item): item is ScholarWork => Boolean(item));
+  candidate.verifiedWorkDois = unique(
+    candidate.representativeWorks.map((item) => item.doi),
+  ).slice(0, 40);
   return candidate;
 }
 
@@ -1036,25 +1396,31 @@ async function getSemanticProfile(id: string) {
   candidate.representativeWorks = (author.papers || [])
     .map(scholarWorkFromSemantic)
     .filter((item): item is ScholarWork => Boolean(item));
+  candidate.verifiedWorkDois = unique(
+    candidate.representativeWorks.map((item) => item.doi),
+  ).slice(0, 40);
   return candidate;
 }
 
 export async function getScholarProfile({
-  openAlexId,
-  semanticScholarId,
+  openAlexIds = [],
+  semanticScholarIds = [],
   orcid,
   name,
 }: {
-  openAlexId?: string;
-  semanticScholarId?: string;
+  openAlexIds?: string[];
+  semanticScholarIds?: string[];
   orcid?: string;
   name?: string;
 }) {
   const jobs: Promise<ScholarCandidate | null>[] = [];
-  if (openAlexId || orcid) {
-    jobs.push(getOpenAlexProfile(openAlexId || orcid || ""));
+  for (const openAlexId of unique(openAlexIds)) {
+    jobs.push(getOpenAlexProfile(openAlexId));
   }
-  if (semanticScholarId) {
+  if (!openAlexIds.length && orcid) {
+    jobs.push(getOpenAlexProfile(orcid));
+  }
+  for (const semanticScholarId of unique(semanticScholarIds)) {
     jobs.push(getSemanticProfile(semanticScholarId));
   }
   if (!jobs.length && name) {
@@ -1075,10 +1441,8 @@ export async function getScholarProfile({
     )
     .map((result) => result.value)
     .filter((item): item is ScholarCandidate => Boolean(item));
-  let candidate = candidates[0] || null;
-  for (const next of candidates.slice(1)) {
-    candidate = candidate ? mergeCandidate(candidate, next) : next;
-  }
+  const candidateGroups = consolidateCandidates(candidates);
+  let candidate = candidateGroups[0] || null;
   const works = candidate?.representativeWorks || [];
   if (candidate) {
     candidate = {

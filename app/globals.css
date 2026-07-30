@@ -865,6 +865,14 @@ i.keyword {
   white-space: nowrap;
 }
 
+.before-follow-pill {
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: #eeece6;
+  color: #8b8d89;
+  font-size: 9px;
+}
+
 .type-pill {
   margin-left: auto;
   padding: 5px 9px;
@@ -1680,6 +1688,13 @@ mark {
 
 .scholar-search-result > p.research-preview {
   color: var(--muted);
+}
+
+.scholar-search-result > p.identity-warning {
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: #fff3e4;
+  color: #855f36;
 }
 
 .representative-works {
