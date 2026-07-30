@@ -370,7 +370,11 @@ test("same distinctive scholar is consolidated across former and current institu
     );
     const payload = await response.json();
     assert.equal(response.status, 200);
-    assert.equal(payload.results.length, 1);
+    assert.equal(
+      payload.results.length,
+      1,
+      JSON.stringify(payload.results, null, 2),
+    );
     const candidate = payload.results[0];
     assert.equal(candidate.orcid, "0000-0003-4679-0864");
     assert.deepEqual(
@@ -380,6 +384,474 @@ test("same distinctive scholar is consolidated across former and current institu
     assert.ok(candidate.institutions.includes("Zhejiang University"));
     assert.ok(candidate.institutions.includes("University of Göttingen"));
     assert.ok(candidate.verifiedWorkDois.length >= 2);
+  } finally {
+    mockFetch = null;
+  }
+});
+
+test("Jay Ke-Schutte split records form one identity with the 2026 work", async () => {
+  const openAlexAuthors = [
+    {
+      id: "https://openalex.org/A5024152784",
+      display_name: "Jay Ke‐Schutte",
+      display_name_alternatives: ["Jay Ke-Schutte"],
+      orcid: "https://orcid.org/0000-0002-8183-1409",
+      works_count: 3,
+      last_known_institutions: [{ display_name: "Zhejiang University" }],
+      topics: [{ display_name: "Multilingual Education and Policy" }],
+    },
+    {
+      id: "https://openalex.org/A5033374330",
+      display_name: "Jay Ke-Schutte",
+      works_count: 20,
+      last_known_institutions: [{ display_name: "Zhejiang University" }],
+      topics: [
+        { display_name: "Multilingual Education and Policy" },
+        { display_name: "Anthropology" },
+      ],
+    },
+    {
+      id: "https://openalex.org/A5099509696",
+      display_name: "Jay Ke-Schutte",
+      works_count: 2,
+    },
+    {
+      id: "https://openalex.org/A5129637301",
+      display_name: "Ke-Schutte, Jay",
+      works_count: 1,
+    },
+  ];
+  const openAlexWorks = [
+    {
+      id: "https://openalex.org/W2026",
+      doi: "https://doi.org/10.1017/sas.2026.10058",
+      title:
+        "From Berimbolo to Bolo-Player: Kinesic Enregisterment and Motion Text in the Jitsuverse",
+      publication_year: 2026,
+      authorships: [
+        {
+          author: {
+            id: "https://openalex.org/A5033374330",
+            display_name: "Jay Ke-Schutte",
+          },
+          institutions: [{ display_name: "Zhejiang University" }],
+        },
+      ],
+    },
+    {
+      id: "https://openalex.org/W2025",
+      doi: "https://doi.org/10.30676/jfas.160917",
+      title: "Book Review: The Right to be Counted",
+      publication_year: 2025,
+      authorships: [
+        {
+          author: {
+            id: "https://openalex.org/A5024152784",
+            display_name: "Jay Ke‐Schutte",
+          },
+          institutions: [{ display_name: "Zhejiang University" }],
+        },
+      ],
+    },
+    {
+      id: "https://openalex.org/WBOOK",
+      doi: "https://doi.org/10.1525/9780520389823-004",
+      title: "Introduction",
+      publication_year: 2023,
+      authorships: [
+        {
+          author: {
+            id: "https://openalex.org/A5099509696",
+            display_name: "Jay Ke-Schutte",
+          },
+        },
+      ],
+    },
+    {
+      id: "https://openalex.org/WBOOKROOT",
+      doi: "https://doi.org/10.1525/9780520389823",
+      title: "Angloscene",
+      publication_year: 2023,
+      authorships: [
+        {
+          author: {
+            id: "https://openalex.org/A5033374330",
+            display_name: "Jay Ke-Schutte",
+          },
+        },
+      ],
+    },
+    {
+      id: "https://openalex.org/WBOOKNOID",
+      title: "Angloscene",
+      publication_year: 2023,
+      authorships: [
+        {
+          author: {
+            id: "https://openalex.org/A5129637301",
+            display_name: "Ke-Schutte, Jay",
+          },
+        },
+      ],
+    },
+  ];
+  const crossrefWorks = [
+    {
+      DOI: "10.1017/sas.2026.10058",
+      title: [
+        "From Berimbolo to Bolo-Player: Kinesic Enregisterment and Motion Text in the Jitsuverse",
+      ],
+      author: [{ given: "Jay", family: "Ke-Schutte" }],
+      "container-title": ["Signs and Society"],
+      subject: ["Anthropology", "Linguistics"],
+      published: { "date-parts": [[2026]] },
+    },
+    {
+      DOI: "10.30676/jfas.160917",
+      title: ["Book Review: The Right to be Counted"],
+      author: [
+        {
+          given: "Jay",
+          family: "Ke-Schutte",
+          ORCID: "https://orcid.org/0000-0002-8183-1409",
+          affiliation: [{ name: "Zhejiang University" }],
+        },
+      ],
+      subject: ["Anthropology"],
+      published: { "date-parts": [[2025]] },
+    },
+    {
+      DOI: "10.1525/9780520389823-004",
+      title: ["Introduction"],
+      type: "book-chapter",
+      ISBN: ["9780520389823"],
+      author: [{ given: "Jay", family: "Ke-Schutte" }],
+      published: { "date-parts": [[2023]] },
+    },
+  ];
+
+  mockFetch = async (input) => {
+    const url = new URL(
+      typeof input === "string" ? input : input instanceof URL ? input : input.url,
+    );
+    if (
+      url.hostname === "api.openalex.org" &&
+      url.pathname === "/institutions"
+    ) {
+      return json({
+        results: [
+          {
+            display_name: "Zhejiang University",
+            display_name_alternatives: ["浙江大学"],
+          },
+        ],
+      });
+    }
+    if (url.hostname === "api.openalex.org" && url.pathname === "/authors") {
+      return json({ results: openAlexAuthors });
+    }
+    if (url.hostname === "api.openalex.org" && url.pathname === "/works") {
+      return json({ results: openAlexWorks });
+    }
+    if (url.hostname === "api.crossref.org") {
+      return json({ message: { items: crossrefWorks } });
+    }
+    if (url.hostname.includes("semanticscholar.org")) return json({}, 429);
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request(
+        "http://anthropology-canteen.localhost:3000/api/search?kind=scholar&mode=name&q=Jay%20Ke-Schutte&institution=Zhejiang%20University&topic=anthropology",
+      ),
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    const exact = payload.results.filter(
+      (candidate) =>
+        candidate.label
+          .normalize("NFKD")
+          .replace(/[^\p{L}\p{N}]+/gu, "")
+          .toLowerCase() === "jaykeschutte",
+    );
+    assert.equal(
+      exact.length,
+      1,
+      JSON.stringify(payload.results, null, 2),
+    );
+    const candidate = exact[0];
+    assert.equal(candidate.orcid, "0000-0002-8183-1409");
+    assert.deepEqual(
+      [...candidate.openAlexIds].sort(),
+      openAlexAuthors
+        .map((author) => author.id.split("/").at(-1))
+        .sort(),
+    );
+    assert.equal(candidate.representativeWorks[0].year, 2026);
+    assert.equal(
+      candidate.representativeWorks[0].doi,
+      "10.1017/sas.2026.10058",
+    );
+    assert.ok(candidate.mergedRecordCount >= 5);
+    assert.ok(candidate.mergeEvidence.length > 0);
+  } finally {
+    mockFetch = null;
+  }
+});
+
+test("conflicting ORCIDs and common same names remain separate", async () => {
+  mockFetch = async (input) => {
+    const url = new URL(
+      typeof input === "string" ? input : input instanceof URL ? input : input.url,
+    );
+    if (url.hostname === "api.openalex.org" && url.pathname === "/authors") {
+      const query = url.searchParams.get("search") || "";
+      if (/Michael/i.test(query)) {
+        return json({
+          results: [
+            {
+              id: "https://openalex.org/A100",
+              display_name: "Michael Jackson",
+              works_count: 20,
+              last_known_institutions: [
+                { display_name: "Harvard University" },
+              ],
+            },
+            {
+              id: "https://openalex.org/A101",
+              display_name: "Michael Jackson",
+              works_count: 30,
+              last_known_institutions: [
+                { display_name: "University of California" },
+              ],
+            },
+          ],
+        });
+      }
+      return json({
+        results: [
+          {
+            id: "https://openalex.org/A200",
+            display_name: "Alexandra Rare-Surname",
+            orcid: "https://orcid.org/0000-0001-1111-1111",
+            works_count: 4,
+          },
+          {
+            id: "https://openalex.org/A201",
+            display_name: "Alexandra Rare-Surname",
+            orcid: "https://orcid.org/0000-0002-2222-2222",
+            works_count: 5,
+          },
+        ],
+      });
+    }
+    if (url.hostname === "api.openalex.org" && url.pathname === "/works") {
+      return json({ results: [] });
+    }
+    return json({}, 503);
+  };
+
+  try {
+    const rareResponse = await worker.fetch(
+      new Request(
+        "http://local/api/search?kind=scholar&mode=name&q=Alexandra%20Rare-Surname",
+      ),
+    );
+    const rare = await rareResponse.json();
+    assert.equal(rare.results.length, 2);
+    assert.deepEqual(
+      rare.results.map((item) => item.orcid).sort(),
+      ["0000-0001-1111-1111", "0000-0002-2222-2222"],
+    );
+
+    const commonResponse = await worker.fetch(
+      new Request(
+        "http://local/api/search?kind=scholar&mode=name&q=Michael%20Jackson",
+      ),
+    );
+    const common = await commonResponse.json();
+    assert.equal(common.results.length, 2);
+    assert.ok(common.results.every((item) => item.openAlexIds.length === 1));
+  } finally {
+    mockFetch = null;
+  }
+});
+
+test("feed refresh expands and merges existing Jay Ke-Schutte subscriptions", async () => {
+  const authors = [
+    {
+      id: "https://openalex.org/A5024152784",
+      display_name: "Jay Ke‐Schutte",
+      orcid: "https://orcid.org/0000-0002-8183-1409",
+      works_count: 3,
+      last_known_institutions: [{ display_name: "Zhejiang University" }],
+      topics: [{ display_name: "Linguistic Anthropology" }],
+    },
+    {
+      id: "https://openalex.org/A5033374330",
+      display_name: "Jay Ke-Schutte",
+      works_count: 20,
+      last_known_institutions: [{ display_name: "Zhejiang University" }],
+      topics: [{ display_name: "Linguistic Anthropology" }],
+    },
+  ];
+  const works = [
+    {
+      id: "https://openalex.org/W2026",
+      doi: "https://doi.org/10.1017/sas.2026.10058",
+      title:
+        "From Berimbolo to Bolo-Player: Kinesic Enregisterment and Motion Text in the Jitsuverse",
+      publication_date: "2026-01-10",
+      publication_year: 2026,
+      type: "article",
+      authorships: [
+        {
+          author: {
+            id: "https://openalex.org/A5033374330",
+            display_name: "Jay Ke-Schutte",
+          },
+          institutions: [{ display_name: "Zhejiang University" }],
+        },
+      ],
+      primary_location: {
+        source: { display_name: "Signs and Society" },
+      },
+      topics: [{ display_name: "Linguistic Anthropology" }],
+    },
+    {
+      id: "https://openalex.org/W2025",
+      doi: "https://doi.org/10.30676/jfas.160917",
+      title: "Book Review: The Right to be Counted",
+      publication_date: "2025-04-15",
+      publication_year: 2025,
+      type: "article",
+      authorships: [
+        {
+          author: {
+            id: "https://openalex.org/A5024152784",
+            display_name: "Jay Ke‐Schutte",
+            orcid: "https://orcid.org/0000-0002-8183-1409",
+          },
+          institutions: [{ display_name: "Zhejiang University" }],
+        },
+      ],
+      primary_location: {
+        source: { display_name: "Suomen Antropologi" },
+      },
+    },
+  ];
+  const crossrefItems = [
+    {
+      DOI: "10.1017/sas.2026.10058",
+      title: [works[0].title],
+      author: [{ given: "Jay", family: "Ke-Schutte" }],
+      "container-title": ["Signs and Society"],
+      subject: ["Linguistic Anthropology"],
+      published: { "date-parts": [[2026, 1, 10]] },
+    },
+    {
+      DOI: "10.30676/jfas.160917",
+      title: [works[1].title],
+      author: [
+        {
+          given: "Jay",
+          family: "Ke-Schutte",
+          ORCID: "https://orcid.org/0000-0002-8183-1409",
+          affiliation: [{ name: "Zhejiang University" }],
+        },
+      ],
+      subject: ["Anthropology"],
+      published: { "date-parts": [[2025, 4, 15]] },
+    },
+  ];
+
+  mockFetch = async (input) => {
+    const url = new URL(
+      typeof input === "string" ? input : input instanceof URL ? input : input.url,
+    );
+    if (
+      url.hostname === "api.openalex.org" &&
+      url.pathname === "/institutions"
+    ) {
+      return json({
+        results: [
+          {
+            display_name: "Zhejiang University",
+            display_name_alternatives: ["浙江大学"],
+          },
+        ],
+      });
+    }
+    if (url.hostname === "api.openalex.org" && url.pathname === "/authors") {
+      return json({ results: authors });
+    }
+    if (url.hostname === "api.openalex.org" && url.pathname === "/works") {
+      return json({ results: works });
+    }
+    if (url.hostname === "api.crossref.org") {
+      return json({ message: { items: crossrefItems } });
+    }
+    if (url.hostname.includes("semanticscholar.org")) return json({}, 429);
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request("http://local/api/feed", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          subscriptions: {
+            journal: [],
+            keyword: [],
+            scholar: [
+              {
+                subscriptionId: "openalex:A5024152784",
+                label: "Jay Ke-Schutte",
+                openAlexIds: ["A5024152784"],
+                semanticScholarIds: [],
+                orcid: "0000-0002-8183-1409",
+                institution: "Zhejiang University",
+                institutions: ["Zhejiang University"],
+                researchAreas: ["Linguistic Anthropology"],
+                followedAt: "2024-01-01T00:00:00.000Z",
+              },
+              {
+                subscriptionId: "openalex:A5033374330",
+                label: "Jay Ke-Schutte",
+                openAlexIds: ["A5033374330"],
+                semanticScholarIds: [],
+                institution: "Zhejiang University",
+                institutions: ["Zhejiang University"],
+                researchAreas: ["Linguistic Anthropology"],
+                followedAt: "2025-01-01T00:00:00.000Z",
+              },
+            ],
+          },
+        }),
+      }),
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.scholars.length, 1);
+    assert.equal(
+      payload.scholars[0].subscriptionId,
+      "orcid:0000-0002-8183-1409",
+    );
+    assert.deepEqual(
+      [...payload.scholars[0].openAlexIds].sort(),
+      ["A5024152784", "A5033374330"],
+    );
+    assert.equal(
+      payload.scholars[0].followedAt,
+      "2024-01-01T00:00:00.000Z",
+    );
+    assert.ok(
+      payload.items.some(
+        (item) => item.doi === "10.1017/sas.2026.10058",
+      ),
+    );
   } finally {
     mockFetch = null;
   }

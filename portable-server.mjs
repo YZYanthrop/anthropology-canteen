@@ -92,7 +92,7 @@ function cleanTimestamp(value, fallback = new Date().toISOString()) {
 
 function emptyLocalData() {
   return {
-    version: 4,
+    version: 5,
     savedAt: new Date().toISOString(),
     subscriptions: { journal: [], scholar: [], keyword: [] },
     states: {},
@@ -273,7 +273,7 @@ function cleanSubscriptions(value = {}, migrationBaseline = new Date().toISOStri
               : undefined,
             verifiedWorkDois: Array.isArray(candidate?.verifiedWorkDois)
               ? candidate.verifiedWorkDois
-                  .slice(0, 20)
+                  .slice(0, 120)
                   .map((doi) =>
                     clean(doi, 300)
                       .replace(/^https?:\/\/doi\.org\//i, "")
@@ -295,6 +295,33 @@ function cleanSubscriptions(value = {}, migrationBaseline = new Date().toISOStri
               candidate?.followedAt,
               migrationBaseline,
             ),
+            identityCheckedAt:
+              clean(candidate?.identityCheckedAt, 80) &&
+              Number.isFinite(
+                Date.parse(clean(candidate?.identityCheckedAt, 80)),
+              )
+                ? clean(candidate?.identityCheckedAt, 80)
+                : undefined,
+            mergedRecordCount:
+              typeof candidate?.mergedRecordCount === "number"
+                ? Math.max(1, Math.floor(candidate.mergedRecordCount))
+                : 1,
+            mergeConfidence:
+              ["verified", "high", "unconfirmed"].includes(
+                candidate?.mergeConfidence,
+              )
+                ? candidate.mergeConfidence
+                : orcid
+                  ? "verified"
+                  : openAlexIds.length || semanticScholarIds.length
+                    ? "high"
+                    : "unconfirmed",
+            mergeEvidence: Array.isArray(candidate?.mergeEvidence)
+              ? candidate.mergeEvidence
+                  .slice(0, 20)
+                  .map((item) => clean(item, 160))
+                  .filter(Boolean)
+              : [],
           };
         })
         .filter(Boolean)
@@ -422,7 +449,7 @@ function cleanLocalData(value = {}, refreshSavedAt = false) {
   }
 
   return {
-    version: 4,
+    version: 5,
     savedAt,
     subscriptions: cleanSubscriptions(
       value.subscriptions,

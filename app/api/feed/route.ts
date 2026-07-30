@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  searchScholars,
+  type ScholarCandidate,
+} from "../../lib/scholar-search";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +27,10 @@ type Scholar = {
   sources?: string[];
   trackingStatus?: "verified" | "limited";
   followedAt?: string;
+  identityCheckedAt?: string;
+  mergedRecordCount?: number;
+  mergeConfidence?: "verified" | "high" | "unconfirmed";
+  mergeEvidence?: string[];
 };
 type Subscriptions = {
   journal: Journal[];
@@ -326,7 +334,7 @@ function validateSubscriptions(input: unknown): Subscriptions {
               : undefined,
             verifiedWorkDois: Array.isArray(value.verifiedWorkDois)
               ? value.verifiedWorkDois
-                  .slice(0, 20)
+                  .slice(0, 120)
                   .map((item) =>
                     clean(item, 300)
                       .replace(/^https?:\/\/doi\.org\//i, "")
@@ -345,6 +353,31 @@ function validateSubscriptions(input: unknown): Subscriptions {
                 ? "verified"
                 : "limited",
             followedAt: cleanTimestamp(value.followedAt),
+            identityCheckedAt:
+              clean(value.identityCheckedAt) &&
+              Number.isFinite(Date.parse(clean(value.identityCheckedAt)))
+                ? clean(value.identityCheckedAt)
+                : undefined,
+            mergedRecordCount:
+              typeof value.mergedRecordCount === "number"
+                ? Math.max(1, Math.floor(value.mergedRecordCount))
+                : 1,
+            mergeConfidence:
+              value.mergeConfidence === "verified" ||
+              value.mergeConfidence === "high" ||
+              value.mergeConfidence === "unconfirmed"
+                ? value.mergeConfidence
+                : orcid
+                  ? "verified"
+                  : ids.length || semanticIds.length
+                    ? "high"
+                    : "unconfirmed",
+            mergeEvidence: Array.isArray(value.mergeEvidence)
+              ? value.mergeEvidence
+                  .slice(0, 20)
+                  .map((item) => clean(item, 160))
+                  .filter(Boolean)
+              : [],
           };
         })
         .filter((item): item is Scholar => Boolean(item))
@@ -394,10 +427,12 @@ function normalizedPersonName(value: unknown) {
 
 function distinctivePersonName(value: unknown) {
   const tokens = normalizedPersonName(value).split(/\s+/).filter(Boolean);
+  const hasCompoundSurname =
+    /[\p{L}]{2,}[-‐‑‒–—][\p{L}]{4,}/u.test(normalizeText(value));
   return (
     tokens.length >= 2 &&
     tokens.join("").length >= 10 &&
-    tokens.some((token) => token.length >= 8)
+    (tokens.some((token) => token.length >= 8) || hasCompoundSurname)
   );
 }
 
@@ -488,7 +523,7 @@ async function openAlex<T>(url: URL): Promise<T> {
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.1.0",
+      "user-agent": "AnthropologyCanteen/1.1.1",
     },
     signal: AbortSignal.timeout(18_000),
   });
@@ -570,7 +605,7 @@ async function fetchSemanticScholarWorks(
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.1.0",
+      "user-agent": "AnthropologyCanteen/1.1.1",
     },
     signal: AbortSignal.timeout(18_000),
   });
@@ -646,7 +681,7 @@ async function fetchCrossrefJournalWorks(
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.1.0",
+      "user-agent": "AnthropologyCanteen/1.1.1",
     },
     signal: AbortSignal.timeout(18_000),
   });
@@ -764,7 +799,7 @@ async function fetchCrossrefScholarWorks(
       const response = await fetch(url, {
         headers: {
           accept: "application/json",
-          "user-agent": "AnthropologyCanteen/1.1.0",
+          "user-agent": "AnthropologyCanteen/1.1.1",
         },
         signal: AbortSignal.timeout(18_000),
       });
@@ -818,11 +853,335 @@ async function fetchJournalWorks(journal: Journal, fromDate: string) {
   }
 }
 
+function stringOverlap(left: string[] = [], right: string[] = []) {
+  const values = new Set(left.filter(Boolean));
+  return right.some((item) => item && values.has(item));
+}
+
+function evidenceListOverlap(left: string[] = [], right: string[] = []) {
+  const leftValues = left.map(normalizedEvidenceText).filter(Boolean);
+  const rightValues = right.map(normalizedEvidenceText).filter(Boolean);
+  return leftValues.some((leftValue) =>
+    rightValues.some((rightValue) => {
+      const shorter =
+        leftValue.length <= rightValue.length ? leftValue : rightValue;
+      const longer =
+        leftValue.length > rightValue.length ? leftValue : rightValue;
+      return (
+        leftValue === rightValue ||
+        (shorter.length >= 8 && longer.includes(shorter))
+      );
+    }),
+  );
+}
+
+function candidateMatchesScholar(
+  candidate: ScholarCandidate,
+  scholar: Scholar,
+) {
+  if (
+    candidate.orcid &&
+    scholar.orcid &&
+    candidate.orcid !== scholar.orcid
+  ) {
+    return false;
+  }
+  if (candidate.orcid && candidate.orcid === scholar.orcid) return true;
+  if (stringOverlap(candidate.openAlexIds, scholar.openAlexIds)) return true;
+  if (
+    stringOverlap(
+      candidate.semanticScholarIds,
+      scholar.semanticScholarIds || [],
+    )
+  ) {
+    return true;
+  }
+  if (
+    stringOverlap(
+      candidate.verifiedWorkDois,
+      scholar.verifiedWorkDois || [],
+    )
+  ) {
+    return true;
+  }
+  if (
+    normalizedPersonName(candidate.label) !==
+      normalizedPersonName(scholar.label) ||
+    !distinctivePersonName(scholar.label)
+  ) {
+    return false;
+  }
+  return (
+    evidenceListOverlap(
+      candidate.institutions,
+      scholar.institutions || [scholar.institution],
+    ) ||
+    evidenceListOverlap(
+      candidate.researchAreas,
+      scholar.researchAreas || [],
+    )
+  );
+}
+
+function earliestTimestamp(left?: string, right?: string) {
+  const values = [left, right]
+    .filter((value): value is string => Boolean(value))
+    .filter((value) => Number.isFinite(Date.parse(value)));
+  return values.sort(
+    (a, b) => Date.parse(a) - Date.parse(b),
+  )[0] || new Date().toISOString();
+}
+
+function latestTimestamp(left?: string, right?: string) {
+  return [left, right]
+    .filter((value): value is string => Boolean(value))
+    .filter((value) => Number.isFinite(Date.parse(value)))
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+}
+
+function scholarFromCandidate(
+  scholar: Scholar,
+  candidate: ScholarCandidate,
+): Scholar {
+  const openAlexIds = [
+    ...new Set([...scholar.openAlexIds, ...candidate.openAlexIds]),
+  ];
+  const semanticScholarIds = [
+    ...new Set([
+      ...(scholar.semanticScholarIds || []),
+      ...candidate.semanticScholarIds,
+    ]),
+  ];
+  const orcid = scholar.orcid || candidate.orcid;
+  const institutions = [
+    ...new Set([
+      scholar.institution,
+      ...(scholar.institutions || []),
+      ...candidate.institutions,
+    ].filter(Boolean)),
+  ];
+  const subscriptionId =
+    (orcid && `orcid:${orcid}`) ||
+    (openAlexIds[0] && `openalex:${openAlexIds[0]}`) ||
+    (semanticScholarIds[0] &&
+      `semantic:${semanticScholarIds[0]}`) ||
+    scholar.subscriptionId;
+  return {
+    ...scholar,
+    subscriptionId,
+    label: candidate.label || scholar.label,
+    aliases: [
+      ...new Set([
+        ...(scholar.aliases || []),
+        scholar.label,
+        ...candidate.aliases,
+      ].filter(
+        (name) =>
+          name &&
+          normalizedPersonName(name) !==
+            normalizedPersonName(candidate.label),
+      )),
+    ],
+    openAlexIds,
+    semanticScholarIds,
+    institution:
+      candidate.institution !== "未收录单位"
+        ? candidate.institution
+        : scholar.institution,
+    institutions,
+    profileUrl: candidate.profileUrl || scholar.profileUrl,
+    profileUrls: [
+      ...new Set([
+        ...(scholar.profileUrls || []),
+        ...candidate.profileUrls,
+      ]),
+    ],
+    orcid,
+    worksCount: Math.max(
+      scholar.worksCount || 0,
+      candidate.worksCount || 0,
+    ) || undefined,
+    researchAreas: [
+      ...new Set([
+        ...(scholar.researchAreas || []),
+        ...candidate.researchAreas,
+      ]),
+    ].slice(0, 12),
+    verifiedWorkDois: [
+      ...new Set([
+        ...(scholar.verifiedWorkDois || []),
+        ...candidate.verifiedWorkDois,
+      ]),
+    ].slice(0, 120),
+    sources: [
+      ...new Set([...(scholar.sources || []), ...candidate.sources]),
+    ],
+    trackingStatus:
+      openAlexIds.length || semanticScholarIds.length || orcid
+        ? "verified"
+        : "limited",
+    followedAt: scholar.followedAt,
+    identityCheckedAt: new Date().toISOString(),
+    mergedRecordCount: Math.max(
+      scholar.mergedRecordCount || 1,
+      candidate.mergedRecordCount,
+    ),
+    mergeConfidence: candidate.mergeConfidence,
+    mergeEvidence: [
+      ...new Set([
+        ...(scholar.mergeEvidence || []),
+        ...candidate.mergeEvidence,
+      ]),
+    ],
+  };
+}
+
 async function resolveScholar(scholar: Scholar): Promise<Scholar> {
-  // Never bind a name-only subscription to the first same-name result.
-  // Limited subscriptions are followed through their verified works,
-  // affiliations and aliases until a stable identifier is confirmed.
-  return scholar;
+  const checkedAt = Date.parse(scholar.identityCheckedAt || "");
+  if (
+    Number.isFinite(checkedAt) &&
+    Date.now() - checkedAt < 7 * 24 * 60 * 60 * 1000
+  ) {
+    return scholar;
+  }
+  const search = await searchScholars({
+    query: scholar.label,
+    mode: "name",
+    institution: scholar.institution,
+    topic: scholar.researchAreas?.[0] || "",
+  });
+  const candidate = search.results.find((item) =>
+    candidateMatchesScholar(item, scholar),
+  );
+  return candidate ? scholarFromCandidate(scholar, candidate) : scholar;
+}
+
+function sameResolvedScholar(left: Scholar, right: Scholar) {
+  if (left.orcid && right.orcid && left.orcid !== right.orcid) return false;
+  if (left.orcid && left.orcid === right.orcid) return true;
+  if (stringOverlap(left.openAlexIds, right.openAlexIds)) return true;
+  if (
+    stringOverlap(
+      left.semanticScholarIds || [],
+      right.semanticScholarIds || [],
+    )
+  ) {
+    return true;
+  }
+  if (
+    stringOverlap(
+      left.verifiedWorkDois || [],
+      right.verifiedWorkDois || [],
+    )
+  ) {
+    return true;
+  }
+  return (
+    normalizedPersonName(left.label) ===
+      normalizedPersonName(right.label) &&
+    distinctivePersonName(left.label) &&
+    (evidenceListOverlap(
+      left.institutions || [left.institution],
+      right.institutions || [right.institution],
+    ) ||
+      evidenceListOverlap(
+        left.researchAreas || [],
+        right.researchAreas || [],
+      ))
+  );
+}
+
+function mergeResolvedScholar(left: Scholar, right: Scholar): Scholar {
+  const openAlexIds = [...new Set([
+    ...left.openAlexIds,
+    ...right.openAlexIds,
+  ])];
+  const semanticScholarIds = [...new Set([
+    ...(left.semanticScholarIds || []),
+    ...(right.semanticScholarIds || []),
+  ])];
+  const orcid = left.orcid || right.orcid;
+  const institutions = [...new Set([
+    left.institution,
+    ...(left.institutions || []),
+    right.institution,
+    ...(right.institutions || []),
+  ].filter(Boolean))];
+  return {
+    ...left,
+    subscriptionId:
+      (orcid && `orcid:${orcid}`) ||
+      (openAlexIds[0] && `openalex:${openAlexIds[0]}`) ||
+      (semanticScholarIds[0] &&
+        `semantic:${semanticScholarIds[0]}`) ||
+      left.subscriptionId,
+    aliases: [...new Set([
+      ...(left.aliases || []),
+      right.label,
+      ...(right.aliases || []),
+    ])],
+    openAlexIds,
+    semanticScholarIds,
+    institution:
+      left.institution !== "单位待确认"
+        ? left.institution
+        : right.institution,
+    institutions,
+    profileUrl: left.profileUrl || right.profileUrl,
+    profileUrls: [...new Set([
+      ...(left.profileUrls || []),
+      ...(right.profileUrls || []),
+    ])],
+    orcid,
+    worksCount: Math.max(left.worksCount || 0, right.worksCount || 0) ||
+      undefined,
+    researchAreas: [...new Set([
+      ...(left.researchAreas || []),
+      ...(right.researchAreas || []),
+    ])].slice(0, 12),
+    verifiedWorkDois: [...new Set([
+      ...(left.verifiedWorkDois || []),
+      ...(right.verifiedWorkDois || []),
+    ])].slice(0, 120),
+    sources: [...new Set([
+      ...(left.sources || []),
+      ...(right.sources || []),
+    ])],
+    trackingStatus:
+      openAlexIds.length || semanticScholarIds.length || orcid
+        ? "verified"
+        : "limited",
+    followedAt: earliestTimestamp(left.followedAt, right.followedAt),
+    identityCheckedAt: latestTimestamp(
+      left.identityCheckedAt,
+      right.identityCheckedAt,
+    ),
+    mergedRecordCount: Math.max(
+      left.mergedRecordCount || 1,
+      right.mergedRecordCount || 1,
+    ),
+    mergeConfidence:
+      left.mergeConfidence === "verified" ||
+      right.mergeConfidence === "verified"
+        ? "verified"
+        : "high",
+    mergeEvidence: [...new Set([
+      ...(left.mergeEvidence || []),
+      ...(right.mergeEvidence || []),
+    ])],
+  };
+}
+
+function mergeResolvedScholars(scholars: Scholar[]) {
+  const merged: Scholar[] = [];
+  for (const scholar of scholars) {
+    const index = merged.findIndex((item) =>
+      sameResolvedScholar(item, scholar),
+    );
+    if (index < 0) merged.push(scholar);
+    else merged[index] = mergeResolvedScholar(merged[index], scholar);
+  }
+  return merged;
 }
 
 function worksUrl(filters: string[], perPage: number) {
@@ -969,9 +1328,11 @@ async function buildFeed(
   historyScholar?: string,
 ) {
   const jobs: Promise<Article[]>[] = [];
-  const resolvedScholars = await Promise.all(
-    subscriptions.scholar.map((scholar) =>
-      resolveScholar(scholar).catch(() => scholar),
+  const resolvedScholars = mergeResolvedScholars(
+    await Promise.all(
+      subscriptions.scholar.map((scholar) =>
+        resolveScholar(scholar).catch(() => scholar),
+      ),
     ),
   );
 

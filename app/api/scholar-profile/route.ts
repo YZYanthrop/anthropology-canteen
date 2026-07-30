@@ -16,6 +16,14 @@ export async function GET(request: NextRequest) {
     .getAll("semanticScholarId")
     .map((item) => clean(item, 160))
     .filter(Boolean);
+  const verifiedWorkDois = request.nextUrl.searchParams
+    .getAll("workDoi")
+    .map((item) =>
+      clean(item, 320)
+        .replace(/^https?:\/\/doi\.org\//i, "")
+        .toLowerCase(),
+    )
+    .filter(Boolean);
   const orcid = clean(request.nextUrl.searchParams.get("orcid"), 80);
   const name = clean(request.nextUrl.searchParams.get("name"), 180);
   if (
@@ -34,6 +42,7 @@ export async function GET(request: NextRequest) {
     const profile = await getScholarProfile({
       openAlexIds,
       semanticScholarIds,
+      verifiedWorkDois,
       orcid,
       name,
     });
