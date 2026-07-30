@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 type MatchKind = "journal" | "scholar" | "keyword";
 type Match = { kind: MatchKind; label: string; terms?: string[] };
-type Journal = { label: string; issn: string };
+type Journal = { label: string; issn: string; followedAt?: string };
 type KeywordGroup = { root: string; variants: string[] };
 type Scholar = {
   subscriptionId: string;
@@ -22,6 +22,7 @@ type Scholar = {
   verifiedWorkDois?: string[];
   sources?: string[];
   trackingStatus?: "verified" | "limited";
+  followedAt?: string;
 };
 type Subscriptions = {
   journal: Journal[];
@@ -55,14 +56,6 @@ type OpenAlexWork = {
   concepts?: { display_name?: string }[];
 };
 
-type OpenAlexAuthor = {
-  id?: string;
-  display_name?: string;
-  orcid?: string;
-  works_count?: number;
-  last_known_institutions?: { display_name?: string }[];
-};
-
 type CrossrefWork = {
   DOI?: string;
   URL?: string;
@@ -77,6 +70,7 @@ type CrossrefWork = {
     family?: string;
     name?: string;
     ORCID?: string;
+    affiliation?: { name?: string }[];
   }[];
   published?: { "date-parts"?: number[][] };
   issued?: { "date-parts"?: number[][] };
@@ -142,6 +136,13 @@ function curatedWorks(scholar: Scholar) {
 
 function clean(value: unknown, max = 160) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function cleanTimestamp(value: unknown) {
+  const timestamp = clean(value, 80);
+  return Number.isFinite(Date.parse(timestamp))
+    ? timestamp
+    : new Date().toISOString();
 }
 
 function canonicalKeywordRoot(input: string) {
@@ -248,6 +249,7 @@ function legacyScholar(name: string): Scholar {
     institutions: [],
     aliases: [],
     trackingStatus: "limited",
+    followedAt: new Date().toISOString(),
   };
 }
 
@@ -260,6 +262,7 @@ function validateSubscriptions(input: unknown): Subscriptions {
         .map((item) => ({
           label: clean(item?.label),
           issn: clean(item?.issn, 30),
+          followedAt: cleanTimestamp(item?.followedAt),
         }))
         .filter((item) => item.label && item.issn)
     : [];
@@ -341,6 +344,7 @@ function validateSubscriptions(input: unknown): Subscriptions {
               ids.length || semanticIds.length || orcid
                 ? "verified"
                 : "limited",
+            followedAt: cleanTimestamp(value.followedAt),
           };
         })
         .filter((item): item is Scholar => Boolean(item))
@@ -372,6 +376,37 @@ function normalizeText(value: unknown = "") {
     .replace(/&#x2013;/gi, "–")
     .replace(/&#x2014;/gi, "—")
     .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizedPersonName(value: unknown) {
+  return normalizeText(value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .toLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
+
+function distinctivePersonName(value: unknown) {
+  const tokens = normalizedPersonName(value).split(/\s+/).filter(Boolean);
+  return (
+    tokens.length >= 2 &&
+    tokens.join("").length >= 10 &&
+    tokens.some((token) => token.length >= 8)
+  );
+}
+
+function normalizedEvidenceText(value: unknown) {
+  return normalizeText(value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .toLowerCase()
     .trim();
 }
 
@@ -453,7 +488,7 @@ async function openAlex<T>(url: URL): Promise<T> {
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.1",
+      "user-agent": "AnthropologyCanteen/1.1.0",
     },
     signal: AbortSignal.timeout(18_000),
   });
@@ -535,7 +570,7 @@ async function fetchSemanticScholarWorks(
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.1",
+      "user-agent": "AnthropologyCanteen/1.1.0",
     },
     signal: AbortSignal.timeout(18_000),
   });
@@ -611,7 +646,7 @@ async function fetchCrossrefJournalWorks(
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.1",
+      "user-agent": "AnthropologyCanteen/1.1.0",
     },
     signal: AbortSignal.timeout(18_000),
   });
@@ -628,6 +663,133 @@ async function fetchCrossrefJournalWorks(
       }
     })
     .filter((item): item is Article => Boolean(item));
+}
+
+function crossrefAuthorName(
+  author: NonNullable<CrossrefWork["author"]>[number],
+) {
+  return normalizeText(
+    author.name || [author.given, author.family].filter(Boolean).join(" "),
+  );
+}
+
+function crossrefWorkMatchesScholar(
+  work: CrossrefWork,
+  scholar: Scholar,
+) {
+  const names = [scholar.label, ...(scholar.aliases || [])]
+    .map(normalizedPersonName)
+    .filter(Boolean);
+  const seedDois = new Set(
+    (scholar.verifiedWorkDois || []).map((doi) =>
+      clean(doi, 300)
+        .replace(/^https?:\/\/doi\.org\//i, "")
+        .toLowerCase(),
+    ),
+  );
+  const doi = clean(work.DOI, 300).toLowerCase();
+  const institutions = (scholar.institutions || [scholar.institution])
+    .map(normalizedEvidenceText)
+    .filter(
+      (item) =>
+        item &&
+        !["单位待确认", "未收录单位", "作品未收录单位"].some(
+          (placeholder) => normalizedEvidenceText(placeholder) === item,
+        ),
+    );
+  const topics = (scholar.researchAreas || [])
+    .map(normalizedEvidenceText)
+    .filter((item) => item.length >= 4);
+
+  return (work.author || []).some((author) => {
+    const authorName = crossrefAuthorName(author);
+    const canonical = normalizedPersonName(authorName);
+    if (!canonical || !names.includes(canonical)) return false;
+    const authorOrcid = orcidId(author.ORCID);
+    if (scholar.orcid && authorOrcid) return scholar.orcid === authorOrcid;
+    if (doi && seedDois.has(doi)) return true;
+    const affiliations = (author.affiliation || [])
+      .map((item) => normalizedEvidenceText(item.name))
+      .filter(Boolean);
+    if (
+      institutions.some((institution) =>
+        affiliations.some(
+          (affiliation) =>
+            affiliation.includes(institution) ||
+            institution.includes(affiliation),
+        ),
+      )
+    ) {
+      return true;
+    }
+    const subjectText = normalizedEvidenceText([
+      ...(work.subject || []),
+      ...(work.title || []),
+      ...(work["container-title"] || []),
+    ].join(" "));
+    if (
+      topics.some(
+        (topic) =>
+          subjectText.includes(topic) ||
+          topic
+            .split(/\s+/)
+            .filter((token) => token.length >= 5)
+            .some((token) => subjectText.includes(token)),
+      )
+    ) {
+      return true;
+    }
+    return distinctivePersonName(authorName);
+  });
+}
+
+async function fetchCrossrefScholarWorks(
+  scholar: Scholar,
+  limit: number,
+) {
+  const queries = [
+    scholar.label,
+    ...(scholar.aliases || []),
+  ]
+    .map((item) => normalizeText(item))
+    .filter((item, index, all) => item && all.indexOf(item) === index)
+    .slice(0, 3);
+  const settled = await Promise.allSettled(
+    queries.map(async (query) => {
+      const url = new URL("https://api.crossref.org/works");
+      url.searchParams.set("query.author", query);
+      url.searchParams.set("rows", String(Math.min(Math.max(limit, 30), 100)));
+      url.searchParams.set("sort", "published");
+      url.searchParams.set("order", "desc");
+      const response = await fetch(url, {
+        headers: {
+          accept: "application/json",
+          "user-agent": "AnthropologyCanteen/1.1.0",
+        },
+        signal: AbortSignal.timeout(18_000),
+      });
+      if (!response.ok) throw new Error(`Crossref ${response.status}`);
+      const data = (await response.json()) as {
+        message?: { items?: CrossrefWork[] };
+      };
+      return data.message?.items || [];
+    }),
+  );
+  const works = settled.flatMap((result) =>
+    result.status === "fulfilled" ? result.value : [],
+  );
+  if (
+    !works.length &&
+    settled.length &&
+    settled.every((result) => result.status === "rejected")
+  ) {
+    throw new Error("Crossref unavailable");
+  }
+  const match: Match = { kind: "scholar", label: scholar.label };
+  return works
+    .filter((work) => crossrefWorkMatchesScholar(work, scholar))
+    .map((work) => crossrefArticle(work, match))
+    .filter((article): article is Article => Boolean(article));
 }
 
 async function fetchJournalWorks(journal: Journal, fromDate: string) {
@@ -657,32 +819,10 @@ async function fetchJournalWorks(journal: Journal, fromDate: string) {
 }
 
 async function resolveScholar(scholar: Scholar): Promise<Scholar> {
-  if (
-    scholar.openAlexIds.length ||
-    (scholar.semanticScholarIds || []).length
-  ) {
-    return scholar;
-  }
-  const url = new URL("https://api.openalex.org/authors");
-  url.searchParams.set("search", scholar.label);
-  url.searchParams.set("per-page", "5");
-  const data = await openAlex<{ results?: OpenAlexAuthor[] }>(url);
-  const candidate = (data.results || [])[0];
-  const id = openAlexId(candidate?.id);
-  if (!id) return scholar;
-  return {
-    ...scholar,
-    label: normalizeText(candidate.display_name) || scholar.label,
-    openAlexIds: [id],
-    institution:
-      (candidate.last_known_institutions || [])
-        .map((item) => normalizeText(item.display_name))
-        .filter(Boolean)
-        .join("；") || scholar.institution,
-    orcid: candidate.orcid || scholar.orcid,
-    worksCount: candidate.works_count,
-    trackingStatus: "verified",
-  };
+  // Never bind a name-only subscription to the first same-name result.
+  // Limited subscriptions are followed through their verified works,
+  // affiliations and aliases until a stable identifier is confirmed.
+  return scholar;
 }
 
 function worksUrl(filters: string[], perPage: number) {
@@ -853,6 +993,7 @@ async function buildFeed(
       for (const id of scholar.semanticScholarIds || []) {
         jobs.push(fetchSemanticScholarWorks(scholar, id, 100));
       }
+      jobs.push(fetchCrossrefScholarWorks(scholar, 100));
     }
   } else {
     const since = new Date();
@@ -874,6 +1015,7 @@ async function buildFeed(
       for (const id of scholar.semanticScholarIds || []) {
         jobs.push(fetchSemanticScholarWorks(scholar, id, 20));
       }
+      jobs.push(fetchCrossrefScholarWorks(scholar, 40));
     }
   }
 

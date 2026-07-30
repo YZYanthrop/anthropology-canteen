@@ -217,7 +217,7 @@ async function openAlex<T>(url: URL): Promise<T> {
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.1",
+      "user-agent": "AnthropologyCanteen/1.1.0",
     },
     signal: AbortSignal.timeout(15_000),
   });
@@ -232,7 +232,7 @@ async function crossrefJournals(query: string) {
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.1",
+      "user-agent": "AnthropologyCanteen/1.1.0",
     },
     signal: AbortSignal.timeout(15_000),
   });
