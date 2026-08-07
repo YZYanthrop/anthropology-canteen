@@ -15,10 +15,16 @@ type Scholar = {
   aliases?: string[];
   openAlexIds: string[];
   semanticScholarIds?: string[];
+  quarantinedOpenAlexIds?: string[];
+  quarantinedSemanticScholarIds?: string[];
+  identityNeedsReview?: boolean;
   institution: string;
   institutions?: string[];
   profileUrl?: string;
   profileUrls?: string[];
+  institutionalProfileUrl?: string;
+  institutionalProfileVerifiedAt?: string;
+  institutionalEvidence?: string[];
   orcid?: string;
   worksCount?: number;
   researchAreas?: string[];
@@ -43,6 +49,7 @@ type ScholarWork = {
   year?: number;
   venue?: string;
   url?: string;
+  abstract?: string;
   familyIds?: string[];
 };
 type SearchResult = {
@@ -55,6 +62,9 @@ type SearchResult = {
   aliases?: string[];
   profileUrl?: string;
   profileUrls?: string[];
+  institutionalProfileUrl?: string;
+  institutionalProfileVerifiedAt?: string;
+  institutionalEvidence?: string[];
   orcid?: string;
   worksCount?: number;
   researchAreas?: string[];
@@ -102,6 +112,11 @@ type ScholarProfile = {
   works: ScholarWork[];
 };
 
+type CachedScholarProfile = ScholarProfile & {
+  updatedAt: string;
+  complete: boolean;
+};
+
 type FeedResponse = {
   items: Article[];
   updatedAt: string;
@@ -123,6 +138,14 @@ type LocalData = {
   states: Record<string, ArticleState>;
   feed: FeedResponse | null;
   translations: Record<string, string>;
+  scholarProfiles: Record<string, CachedScholarProfile>;
+};
+
+type LocalSettingsStatus = {
+  openAlexConfigured: boolean;
+  openAlexKeyHint?: string;
+  semanticScholarConfigured?: boolean;
+  semanticScholarKeyHint?: string;
 };
 
 const FILTERS: { id: Filter; label: string; icon: string }[] = [
@@ -214,6 +237,7 @@ function defaultLocalData(): LocalData {
     states: {},
     feed: null,
     translations: {},
+    scholarProfiles: {},
   };
 }
 
@@ -238,6 +262,25 @@ function normalizeScholarName(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, "")
     .toLowerCase();
+}
+
+function formatScholarDisplayName(value: string) {
+  const source = value.replace(/\s+/g, " ").trim();
+  if (!source || /\p{Script=Han}/u.test(source)) return source;
+  const letters = source.replace(/[^A-Za-z]/g, "");
+  if (
+    letters &&
+    letters !== letters.toLowerCase() &&
+    letters !== letters.toUpperCase()
+  ) {
+    return source;
+  }
+  return source
+    .toLowerCase()
+    .replace(/(^|[\s\-‐‑‒–—'’])([a-z])/g, (_match, separator, letter) =>
+      `${separator}${letter.toUpperCase()}`,
+    )
+    .replace(/\b([A-Z])\b(?!\.)/g, "$1.");
 }
 
 function scholarIdentityKey(value: Partial<Scholar> & Partial<SearchResult>) {
@@ -450,9 +493,10 @@ function safeSubscriptions(value: unknown): Subscriptions {
     scholar: candidate.scholar
       .flatMap((item): Scholar[] => {
         if (typeof item === "string") {
+          const label = formatScholarDisplayName(item);
           return [{
-            subscriptionId: `legacy:${item.toLowerCase()}`,
-            label: item,
+            subscriptionId: `legacy:${label.toLowerCase()}`,
+            label,
             aliases: [],
             openAlexIds: [],
             semanticScholarIds: [],
@@ -468,6 +512,7 @@ function safeSubscriptions(value: unknown): Subscriptions {
           typeof (item as Scholar).label === "string"
         ) {
           const scholar = item as Scholar;
+          const label = formatScholarDisplayName(scholar.label);
           const openAlexIds = Array.isArray(scholar.openAlexIds)
             ? scholar.openAlexIds
                 .map((id) => cleanExternalId(id, /^A\d+$/))
@@ -496,8 +541,8 @@ function safeSubscriptions(value: unknown): Subscriptions {
               (openAlexIds[0] && `openalex:${openAlexIds[0]}`) ||
               (semanticScholarIds[0] &&
                 `semantic:${semanticScholarIds[0]}`) ||
-              `legacy:${scholar.label.toLowerCase()}:${institution.toLowerCase()}`,
-            label: scholar.label,
+              `legacy:${label.toLowerCase()}:${institution.toLowerCase()}`,
+            label,
             aliases: Array.isArray(scholar.aliases)
               ? scholar.aliases.filter(
                   (item): item is string => typeof item === "string",
@@ -505,6 +550,21 @@ function safeSubscriptions(value: unknown): Subscriptions {
               : [],
             openAlexIds,
             semanticScholarIds,
+            quarantinedOpenAlexIds: Array.isArray(
+              scholar.quarantinedOpenAlexIds,
+            )
+              ? scholar.quarantinedOpenAlexIds.filter(
+                  (id): id is string => typeof id === "string",
+                )
+              : [],
+            quarantinedSemanticScholarIds: Array.isArray(
+              scholar.quarantinedSemanticScholarIds,
+            )
+              ? scholar.quarantinedSemanticScholarIds.filter(
+                  (id): id is string => typeof id === "string",
+                )
+              : [],
+            identityNeedsReview: Boolean(scholar.identityNeedsReview),
             institution,
             institutions: [
               ...new Set([institution, ...institutions].filter(Boolean)),
@@ -515,6 +575,24 @@ function safeSubscriptions(value: unknown): Subscriptions {
                   (item): item is string => typeof item === "string",
                 )
               : undefined,
+            institutionalProfileUrl:
+              typeof scholar.institutionalProfileUrl === "string"
+                ? scholar.institutionalProfileUrl
+                : undefined,
+            institutionalProfileVerifiedAt:
+              typeof scholar.institutionalProfileVerifiedAt === "string" &&
+              Number.isFinite(
+                Date.parse(scholar.institutionalProfileVerifiedAt),
+              )
+                ? scholar.institutionalProfileVerifiedAt
+                : undefined,
+            institutionalEvidence: Array.isArray(
+              scholar.institutionalEvidence,
+            )
+              ? scholar.institutionalEvidence.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : [],
             orcid,
             worksCount: scholar.worksCount,
             researchAreas: Array.isArray(scholar.researchAreas)
@@ -643,6 +721,97 @@ function safeFeed(value: unknown): FeedResponse | null {
   };
 }
 
+function safeScholarWork(value: unknown): ScholarWork | null {
+  if (!value || typeof value !== "object") return null;
+  const work = value as Partial<ScholarWork>;
+  if (typeof work.title !== "string" || !work.title.trim()) return null;
+  return {
+    id:
+      typeof work.id === "string" && work.id.trim()
+        ? work.id
+        : work.title.toLowerCase(),
+    doi: typeof work.doi === "string" ? work.doi : undefined,
+    title: work.title,
+    year:
+      typeof work.year === "number" && Number.isFinite(work.year)
+        ? work.year
+        : undefined,
+    venue: typeof work.venue === "string" ? work.venue : undefined,
+    url: typeof work.url === "string" ? work.url : undefined,
+    abstract:
+      typeof work.abstract === "string" ? work.abstract : undefined,
+    familyIds: Array.isArray(work.familyIds)
+      ? work.familyIds.filter(
+          (item): item is string => typeof item === "string",
+        )
+      : undefined,
+  };
+}
+
+function safeScholarProfiles(
+  value: unknown,
+): Record<string, CachedScholarProfile> {
+  if (!value || typeof value !== "object") return {};
+  const result: Record<string, CachedScholarProfile> = {};
+  for (const [key, rawProfile] of Object.entries(value)) {
+    if (!rawProfile || typeof rawProfile !== "object") continue;
+    const profile = rawProfile as Partial<CachedScholarProfile>;
+    const rawCandidate = profile.candidate;
+    if (
+      !rawCandidate ||
+      typeof rawCandidate !== "object" ||
+      typeof rawCandidate.label !== "string"
+    ) {
+      continue;
+    }
+    const savedScholar = safeSubscriptions({
+      journal: [],
+      scholar: [rawCandidate],
+      keyword: [],
+    }).scholar[0];
+    if (!savedScholar) continue;
+    const candidate: SearchResult = {
+      ...rawCandidate,
+      ...savedScholar,
+      candidateId:
+        typeof rawCandidate.candidateId === "string"
+          ? rawCandidate.candidateId
+          : savedScholar.subscriptionId,
+      value:
+        typeof rawCandidate.value === "string"
+          ? rawCandidate.value
+          : savedScholar.subscriptionId,
+      representativeWorks: Array.isArray(rawCandidate.representativeWorks)
+        ? rawCandidate.representativeWorks
+            .map(safeScholarWork)
+            .filter((item): item is ScholarWork => Boolean(item))
+        : [],
+      identityWarnings: Array.isArray(rawCandidate.identityWarnings)
+        ? rawCandidate.identityWarnings.filter(
+            (item): item is string => typeof item === "string",
+          )
+        : [],
+      scoreReasons: Array.isArray(rawCandidate.scoreReasons)
+        ? rawCandidate.scoreReasons.filter(
+            (item): item is string => typeof item === "string",
+          )
+        : [],
+    };
+    const works = Array.isArray(profile.works)
+      ? profile.works
+          .map(safeScholarWork)
+          .filter((item): item is ScholarWork => Boolean(item))
+      : candidate.representativeWorks || [];
+    result[key] = {
+      candidate,
+      works,
+      updatedAt: safeTimestamp(profile.updatedAt),
+      complete: Boolean(profile.complete),
+    };
+  }
+  return result;
+}
+
 function migrateFeedKeywordMatches(
   feed: FeedResponse | null,
   keywordGroups: KeywordGroup[],
@@ -684,6 +853,7 @@ function safeLocalData(value: unknown): LocalData {
       subscriptions.keyword,
     ),
     translations: safeTranslations(data.translations),
+    scholarProfiles: safeScholarProfiles(data.scholarProfiles),
   };
 }
 
@@ -694,6 +864,7 @@ function hasStoredLocalData(data: LocalData) {
     data.subscriptions.keyword.length > 0 ||
     Object.keys(data.states).length > 0 ||
     Object.keys(data.translations).length > 0 ||
+    Object.keys(data.scholarProfiles).length > 0 ||
     Boolean(data.feed?.items.length)
   );
 }
@@ -757,16 +928,30 @@ export default function Home() {
     useState<"name" | "work">("name");
   const [scholarInstitution, setScholarInstitution] = useState("");
   const [scholarTopic, setScholarTopic] = useState("");
+  const [scholarHomepage, setScholarHomepage] = useState("");
   const [manualScholarName, setManualScholarName] = useState("");
   const [authorContextName, setAuthorContextName] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchWarnings, setSearchWarnings] = useState<string[]>([]);
   const [queryVariants, setQueryVariants] = useState<string[]>([]);
+  const [localSettings, setLocalSettings] = useState<LocalSettingsStatus>({
+    openAlexConfigured: false,
+  });
+  const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
+  const [openAlexApiKeyInput, setOpenAlexApiKeyInput] = useState("");
+  const [semanticScholarApiKeyInput, setSemanticScholarApiKeyInput] =
+    useState("");
+  const [apiSettingsSaving, setApiSettingsSaving] = useState(false);
   const [profile, setProfile] = useState<ScholarProfile | null>(null);
+  const [scholarProfiles, setScholarProfiles] = useState<
+    Record<string, CachedScholarProfile>
+  >({});
   const [profileLoading, setProfileLoading] = useState(false);
   const localDataRef = useRef<LocalData>(defaultLocalData());
   const saveQueueRef = useRef(Promise.resolve());
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const searchRequestRef = useRef(0);
   const keywordSuggestion = useMemo(
     () => (addKind === "keyword" ? createKeywordGroup(addQuery) : null),
     [addKind, addQuery],
@@ -797,6 +982,7 @@ export default function Home() {
     setStates(data.states);
     setTranslations(data.translations);
     setFeed(data.feed);
+    setScholarProfiles(data.scholarProfiles);
   }
 
   function persistLocalData(patch: Partial<LocalData>, silent = false) {
@@ -838,6 +1024,16 @@ export default function Home() {
 
         if (cancelled) return;
         applyLocalData(data);
+        const cachedAt = Date.parse(data.feed?.updatedAt || "");
+        if (
+          data.feed &&
+          !data.feed.historyScholar &&
+          Number.isFinite(cachedAt) &&
+          Date.now() - cachedAt < 6 * 60 * 60 * 1000
+        ) {
+          setLoading(false);
+          return;
+        }
         // Boot intentionally uses the initial local snapshot exactly once.
         // eslint-disable-next-line react-hooks/immutability
         await loadFeed(false, undefined, data.subscriptions, data.feed);
@@ -855,6 +1051,26 @@ export default function Home() {
     };
     // Boot is intentionally a one-time migration and initial-load effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLocalSettings() {
+      try {
+        const response = await fetch("/api/local-settings", {
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const settings = (await response.json()) as LocalSettingsStatus;
+        if (!cancelled) setLocalSettings(settings);
+      } catch {
+        // Hosted previews do not expose portable local settings.
+      }
+    }
+    void loadLocalSettings();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -881,7 +1097,12 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const requestId = searchRequestRef.current + 1;
+    searchRequestRef.current = requestId;
+    searchAbortRef.current?.abort();
     if (!searchActive) return;
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
     const timer = window.setTimeout(async () => {
       setSearching(true);
       try {
@@ -895,36 +1116,109 @@ export default function Home() {
             params.set("institution", scholarInstitution.trim());
           }
           if (scholarTopic.trim()) params.set("topic", scholarTopic.trim());
+          if (scholarHomepage.trim()) {
+            params.set("homepage", scholarHomepage.trim());
+          }
         }
         const response = await fetch(
           `/api/search?${params.toString()}`,
-          { cache: "no-store" },
+          { cache: "no-store", signal: controller.signal },
         );
         const data = (await response.json()) as {
           results?: SearchResult[];
           warnings?: string[];
           queryVariants?: string[];
+          openAlexConfigured?: boolean;
+          semanticScholarConfigured?: boolean;
         };
-        setSearchResults(data.results || []);
-        setSearchWarnings(data.warnings || []);
-        setQueryVariants(data.queryVariants || []);
-      } catch {
-        setSearchResults([]);
-        setSearchWarnings(["暂时无法连接公开学术索引。"]);
-        setQueryVariants([]);
+        if (searchRequestRef.current === requestId) {
+          setSearchResults(data.results || []);
+          setSearchWarnings(data.warnings || []);
+          setQueryVariants(data.queryVariants || []);
+          if (typeof data.openAlexConfigured === "boolean") {
+            setLocalSettings((current) => ({
+              ...current,
+              openAlexConfigured: data.openAlexConfigured,
+            }));
+          }
+          if (typeof data.semanticScholarConfigured === "boolean") {
+            setLocalSettings((current) => ({
+              ...current,
+              semanticScholarConfigured:
+                data.semanticScholarConfigured,
+            }));
+          }
+        }
+      } catch (error) {
+        if (
+          !(error instanceof DOMException && error.name === "AbortError") &&
+          searchRequestRef.current === requestId
+        ) {
+          setSearchResults([]);
+          setSearchWarnings(["暂时无法连接公开学术索引。"]);
+          setQueryVariants([]);
+        }
       } finally {
-        setSearching(false);
+        if (searchRequestRef.current === requestId) setSearching(false);
       }
-    }, 480);
-    return () => window.clearTimeout(timer);
+    }, 650);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [
     addKind,
     addQuery,
     scholarInstitution,
     scholarSearchMode,
+    scholarHomepage,
     scholarTopic,
+    localSettings.openAlexConfigured,
+    localSettings.semanticScholarConfigured,
     searchActive,
   ]);
+
+  async function saveApiKey(
+    provider: "openAlex" | "semanticScholar",
+    remove = false,
+  ) {
+    const providerLabel =
+      provider === "openAlex" ? "OpenAlex" : "Semantic Scholar";
+    const input =
+      provider === "openAlex"
+        ? openAlexApiKeyInput
+        : semanticScholarApiKeyInput;
+    const key = remove ? "" : input.trim();
+    if (!remove && key.length < 8) {
+      showNotice(`请输入完整的 ${providerLabel} API Key`);
+      return;
+    }
+    setApiSettingsSaving(true);
+    try {
+      const response = await fetch("/api/local-settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ [`${provider}ApiKey`]: key }),
+      });
+      if (!response.ok) throw new Error("settings unavailable");
+      const settings = (await response.json()) as LocalSettingsStatus;
+      setLocalSettings(settings);
+      if (provider === "openAlex") setOpenAlexApiKeyInput("");
+      else setSemanticScholarApiKeyInput("");
+      setSearchResults([]);
+      setSearchWarnings([]);
+      showNotice(
+        remove
+          ? `已移除 ${providerLabel} API Key`
+          : `${providerLabel} API Key 已保存在本地文件夹`,
+      );
+    } catch {
+      showNotice("API Key 保存失败，请确认程序文件夹可写");
+    } finally {
+      setApiSettingsSaving(false);
+    }
+  }
 
   async function loadFeed(
     force = false,
@@ -986,6 +1280,99 @@ export default function Home() {
     void persistLocalData({ subscriptions: next });
   }
 
+  function cachedProfileMatches(
+    candidate: SearchResult,
+    query: SearchResult | Scholar,
+  ) {
+    const candidateOrcid = cleanOrcid(candidate.orcid);
+    const queryOrcid = cleanOrcid(query.orcid);
+    if (candidateOrcid && queryOrcid && candidateOrcid !== queryOrcid) {
+      return false;
+    }
+    if (candidateOrcid && candidateOrcid === queryOrcid) return true;
+    if (
+      (candidate.openAlexIds || []).some((id) =>
+        (query.openAlexIds || []).includes(id),
+      )
+    ) {
+      return true;
+    }
+    if (
+      (candidate.semanticScholarIds || []).some((id) =>
+        (query.semanticScholarIds || []).includes(id),
+      )
+    ) {
+      return true;
+    }
+    if (
+      candidate.candidateId &&
+      "candidateId" in query &&
+      candidate.candidateId === query.candidateId
+    ) {
+      return true;
+    }
+    return (
+      normalizeScholarName(candidate.label) ===
+        normalizeScholarName(query.label) &&
+      Boolean(
+        candidate.institutionalProfileUrl &&
+          candidate.institutionalProfileUrl ===
+            query.institutionalProfileUrl,
+      )
+    );
+  }
+
+  function findCachedProfile(result: SearchResult | Scholar) {
+    return Object.values(localDataRef.current.scholarProfiles).find(
+      (item) => cachedProfileMatches(item.candidate, result),
+    );
+  }
+
+  function saveCachedProfile(
+    candidate: SearchResult,
+    works: ScholarWork[],
+    updatedAt = new Date().toISOString(),
+    complete = true,
+  ) {
+    const existing = findCachedProfile(candidate);
+    const sourceWorks = complete
+      ? works
+      : [...works, ...(existing?.works || [])];
+    const mergedWorks = sourceWorks.filter(
+      (work, index, all) =>
+        all.findIndex(
+          (item) =>
+            (work.doi && item.doi === work.doi) ||
+            item.id === work.id ||
+            (item.title.toLowerCase() === work.title.toLowerCase() &&
+              item.year === work.year),
+        ) === index,
+    );
+    const key = scholarIdentityKey(candidate);
+    const retainedProfiles = Object.fromEntries(
+      Object.entries(localDataRef.current.scholarProfiles).filter(
+        ([storedKey, profile]) =>
+          storedKey === key ||
+          !cachedProfileMatches(profile.candidate, candidate),
+      ),
+    );
+    const nextProfiles = {
+      ...retainedProfiles,
+      [key]: {
+        candidate: {
+          ...(existing?.candidate || {}),
+          ...candidate,
+          representativeWorks: mergedWorks.slice(0, 100),
+        },
+        works: mergedWorks.slice(0, 1000),
+        updatedAt,
+        complete,
+      },
+    };
+    setScholarProfiles(nextProfiles);
+    void persistLocalData({ scholarProfiles: nextProfiles }, true);
+  }
+
   function updateArticle(id: string, patch: Partial<ArticleState>) {
     const next = {
       ...localDataRef.current.states,
@@ -999,6 +1386,7 @@ export default function Home() {
   }
 
   function scholarFromResult(result: SearchResult): Scholar {
+    const displayLabel = formatScholarDisplayName(result.label);
     const openAlexIds = [
       ...(result.openAlexIds || []),
       ...(result.externalIds?.openAlex
@@ -1027,12 +1415,12 @@ export default function Home() {
       (openAlexIds[0] && `openalex:${openAlexIds[0]}`) ||
       (semanticScholarIds[0] &&
         `semantic:${semanticScholarIds[0]}`) ||
-      `limited:${result.label.toLowerCase()}:${
+      `limited:${displayLabel.toLowerCase()}:${
         (result.institution || "").toLowerCase()
       }`;
     return {
       subscriptionId,
-      label: result.label,
+      label: displayLabel,
       aliases: result.aliases || [],
       openAlexIds,
       semanticScholarIds,
@@ -1041,6 +1429,10 @@ export default function Home() {
       institutions,
       profileUrl: result.profileUrl || result.profileUrls?.[0],
       profileUrls: result.profileUrls,
+      institutionalProfileUrl: result.institutionalProfileUrl,
+      institutionalProfileVerifiedAt:
+        result.institutionalProfileVerifiedAt,
+      institutionalEvidence: result.institutionalEvidence || [],
       orcid,
       worksCount: result.worksCount,
       researchAreas: result.researchAreas,
@@ -1097,25 +1489,54 @@ export default function Home() {
     if (index < 0) return;
     const current = subscriptions.scholar[index];
     const enriched = scholarFromResult(result);
+    enriched.subscriptionId = current.subscriptionId;
     enriched.followedAt = current.followedAt;
     enriched.identityCheckedAt = new Date().toISOString();
     enriched.aliases = [...new Set([
       ...(current.aliases || []),
+      current.label,
       ...(enriched.aliases || []),
+    ])].filter(
+      (label) =>
+        normalizeScholarName(label) !==
+        normalizeScholarName(enriched.label),
+    );
+    const confirmedOpenAlexIds = enriched.openAlexIds.length
+      ? enriched.openAlexIds
+      : current.openAlexIds;
+    const confirmedSemanticIds = (enriched.semanticScholarIds || []).length
+      ? enriched.semanticScholarIds || []
+      : current.semanticScholarIds || [];
+    enriched.quarantinedOpenAlexIds = [...new Set([
+      ...(current.quarantinedOpenAlexIds || []),
+      ...current.openAlexIds.filter(
+        (id) => !confirmedOpenAlexIds.includes(id),
+      ),
     ])];
-    enriched.openAlexIds = [...new Set([
-      ...current.openAlexIds,
-      ...enriched.openAlexIds,
+    enriched.quarantinedSemanticScholarIds = [...new Set([
+      ...(current.quarantinedSemanticScholarIds || []),
+      ...(current.semanticScholarIds || []).filter(
+        (id) => !confirmedSemanticIds.includes(id),
+      ),
     ])];
-    enriched.semanticScholarIds = [...new Set([
-      ...(current.semanticScholarIds || []),
-      ...(enriched.semanticScholarIds || []),
-    ])];
+    enriched.openAlexIds = [...new Set(confirmedOpenAlexIds)];
+    enriched.semanticScholarIds = [...new Set(confirmedSemanticIds)];
+    enriched.identityNeedsReview = false;
     enriched.institutions = [...new Set([
       current.institution,
       ...(current.institutions || []),
       enriched.institution,
       ...(enriched.institutions || []),
+    ])];
+    enriched.institutionalProfileUrl =
+      enriched.institutionalProfileUrl ||
+      current.institutionalProfileUrl;
+    enriched.institutionalProfileVerifiedAt =
+      enriched.institutionalProfileVerifiedAt ||
+      current.institutionalProfileVerifiedAt;
+    enriched.institutionalEvidence = [...new Set([
+      ...(current.institutionalEvidence || []),
+      ...(enriched.institutionalEvidence || []),
     ])];
     enriched.verifiedWorkDois = [...new Set([
       ...(current.verifiedWorkDois || []),
@@ -1141,6 +1562,12 @@ export default function Home() {
       scholar: [...subscriptions.scholar, scholar],
     };
     saveSubscriptions(next);
+    saveCachedProfile(
+      result,
+      result.representativeWorks || [],
+      new Date().toISOString(),
+      false,
+    );
     void loadFeed(false, undefined, next);
     if (closeModal) {
       setAddOpen(false);
@@ -1156,7 +1583,7 @@ export default function Home() {
 
   function saveManualScholar() {
     const name = manualScholarName.trim();
-    const homepage = addQuery.trim();
+    const homepage = scholarHomepage.trim() || addQuery.trim();
     if (name.length < 2 || !/^https?:\/\//i.test(homepage)) {
       showNotice("请填写学者姓名和完整主页网址");
       return;
@@ -1174,61 +1601,85 @@ export default function Home() {
       researchAreas: scholarTopic.trim() ? [scholarTopic.trim()] : [],
       profileUrl: homepage,
       profileUrls: [homepage],
+      institutionalProfileUrl: homepage,
+      institutionalEvidence: ["使用者保存的机构个人主页，尚待在线核验"],
       sources: ["人工核验主页"],
       trackingStatus: "limited",
     });
   }
 
   async function openScholarProfile(result: SearchResult) {
-    const hasStableIdentity =
-      result.openAlexIds?.length ||
-      result.semanticScholarIds?.length ||
-      result.externalIds?.openAlex ||
-      result.externalIds?.semanticScholar ||
-      result.orcid ||
-      result.externalIds?.orcid;
-    if (!hasStableIdentity && result.representativeWorks?.length) {
-      setAddOpen(false);
+    const cached = findCachedProfile(result);
+    const requestResult = cached?.candidate || result;
+    setAddOpen(false);
+    setActiveSubscription(null);
+    setHistoryScholar(undefined);
+    setFilter("scholar");
+    if (cached) {
       setProfile({
-        candidate: result,
-        works: result.representativeWorks,
+        candidate: cached.candidate,
+        works: cached.works,
       });
-      setActiveSubscription(null);
-      setHistoryScholar(undefined);
-      setFilter("scholar");
+      const cachedAt = Date.parse(cached.updatedAt);
+      if (
+        cached.complete &&
+        Number.isFinite(cachedAt) &&
+        new Date().getTime() - cachedAt < 24 * 60 * 60 * 1000
+      ) {
+        setProfileLoading(false);
+        return;
+      }
+    }
+    const hasStableIdentity =
+      requestResult.openAlexIds?.length ||
+      requestResult.semanticScholarIds?.length ||
+      requestResult.externalIds?.openAlex ||
+      requestResult.externalIds?.semanticScholar ||
+      requestResult.orcid ||
+      requestResult.externalIds?.orcid;
+    if (!hasStableIdentity && requestResult.representativeWorks?.length) {
+      saveCachedProfile(
+        requestResult,
+        requestResult.representativeWorks,
+      );
+      setProfile({
+        candidate: requestResult,
+        works: requestResult.representativeWorks,
+      });
       return;
     }
-    setProfileLoading(true);
-    setAddOpen(false);
+    setProfileLoading(!cached);
     setError("");
     try {
       const params = new URLSearchParams();
       const openAlexIds = [
-        ...(result.openAlexIds || []),
-        ...(result.externalIds?.openAlex
-          ? [result.externalIds.openAlex]
+        ...(requestResult.openAlexIds || []),
+        ...(requestResult.externalIds?.openAlex
+          ? [requestResult.externalIds.openAlex]
           : []),
       ].filter((id, index, all) => Boolean(id) && all.indexOf(id) === index);
       const semanticScholarIds = [
-        ...(result.semanticScholarIds || []),
-        ...(result.externalIds?.semanticScholar
-          ? [result.externalIds.semanticScholar]
+        ...(requestResult.semanticScholarIds || []),
+        ...(requestResult.externalIds?.semanticScholar
+          ? [requestResult.externalIds.semanticScholar]
           : []),
       ].filter((id, index, all) => Boolean(id) && all.indexOf(id) === index);
       openAlexIds.forEach((id) => params.append("openAlexId", id));
       semanticScholarIds.forEach((id) =>
         params.append("semanticScholarId", id),
       );
-      (result.verifiedWorkDois || [])
+      (requestResult.verifiedWorkDois || [])
         .slice(0, 40)
         .forEach((doi) => params.append("workDoi", doi));
-      if (result.orcid || result.externalIds?.orcid) {
+      if (requestResult.orcid || requestResult.externalIds?.orcid) {
         params.set(
           "orcid",
-          result.orcid || result.externalIds?.orcid || "",
+          requestResult.orcid ||
+            requestResult.externalIds?.orcid ||
+            "",
         );
       }
-      params.set("name", result.label);
+      params.set("name", requestResult.label);
       const response = await fetch(
         `/api/scholar-profile?${params.toString()}`,
         { cache: "no-store" },
@@ -1241,35 +1692,64 @@ export default function Home() {
         needsConfirmation?: boolean;
       };
       if (data.candidate) {
-        persistEnrichedScholar(data.candidate);
+        const enrichedCandidate: SearchResult = {
+          ...requestResult,
+          ...data.candidate,
+          institutionalProfileUrl:
+            data.candidate.institutionalProfileUrl ||
+            requestResult.institutionalProfileUrl,
+          institutionalProfileVerifiedAt:
+            data.candidate.institutionalProfileVerifiedAt ||
+            requestResult.institutionalProfileVerifiedAt,
+          institutionalEvidence: [
+            ...new Set([
+              ...(requestResult.institutionalEvidence || []),
+              ...(data.candidate.institutionalEvidence || []),
+            ]),
+          ],
+          profileUrls: [
+            ...new Set([
+              ...(requestResult.profileUrls || []),
+              ...(data.candidate.profileUrls || []),
+            ]),
+          ],
+        };
+        persistEnrichedScholar(enrichedCandidate);
+        saveCachedProfile(
+          enrichedCandidate,
+          data.works || enrichedCandidate.representativeWorks || [],
+        );
         setProfile({
-          candidate: data.candidate,
-          works: data.works || data.candidate.representativeWorks || [],
+          candidate: enrichedCandidate,
+          works: data.works || enrichedCandidate.representativeWorks || [],
         });
-        setActiveSubscription(null);
-        setHistoryScholar(undefined);
-        setFilter("scholar");
       } else if (data.candidates?.length) {
         setAddKind("scholar");
         setScholarSearchMode("name");
-        setAddQuery(result.label);
+        setAddQuery(requestResult.label);
         setSearchResults(data.candidates);
-        setAuthorContextName(result.label);
+        setAuthorContextName(requestResult.label);
         setAddOpen(true);
       } else {
         setProfile({
-          candidate: result,
-          works: result.representativeWorks || [],
+          candidate: requestResult,
+          works: requestResult.representativeWorks || [],
         });
         setFilter("scholar");
       }
     } catch {
-      setProfile({
-        candidate: result,
-        works: result.representativeWorks || [],
-      });
+      if (!cached) {
+        setProfile({
+          candidate: requestResult,
+          works: requestResult.representativeWorks || [],
+        });
+      }
       setFilter("scholar");
-      setError("暂时无法补充学者档案，正在显示已有身份信息。");
+      setError(
+        cached
+          ? "暂时无法更新，正在显示文件夹中保存的学者档案。"
+          : "暂时无法补充学者档案，正在显示已有身份信息。",
+      );
     } finally {
       setProfileLoading(false);
     }
@@ -1283,6 +1763,10 @@ export default function Home() {
     setQueryVariants([]);
     setAuthorContextName("");
     setManualScholarName("");
+    setScholarHomepage("");
+    setApiSettingsOpen(false);
+    setOpenAlexApiKeyInput("");
+    setSemanticScholarApiKeyInput("");
   }
 
   async function openArticleAuthor(author: ArticleAuthor, article: Article) {
@@ -1420,11 +1904,7 @@ export default function Home() {
     setProfile(null);
     setFilter(kind);
     setActiveSubscription({ kind, label, id });
-    if (kind === "scholar") {
-      const scholarKey = id || label;
-      setHistoryScholar(scholarKey);
-      await loadFeed(false, scholarKey);
-    } else if (historyScholar) {
+    if (kind !== "scholar" && historyScholar) {
       setHistoryScholar(undefined);
       await loadFeed();
     }
@@ -1523,7 +2003,26 @@ export default function Home() {
               item.subscriptionId === savedScholar.subscriptionId ||
               item.label.toLowerCase() === savedScholar.label.toLowerCase(),
           ) || savedScholar;
-        const articles = (feed?.items || [])
+        const cachedProfile = Object.values(scholarProfiles).find(
+          (item) => cachedProfileMatches(item.candidate, scholar),
+        );
+        const cachedArticles = (cachedProfile?.works || []).map(
+          (work): Article => ({
+            id: work.doi || work.id,
+            doi: work.doi,
+            title: work.title,
+            authors: [{ name: scholar.label }],
+            venue: work.venue || "发表载体待确认",
+            publishedAt: work.year
+              ? `${work.year}-01-01`
+              : "1900-01-01",
+            type: "学术成果",
+            url: work.url || (work.doi ? `https://doi.org/${work.doi}` : ""),
+            abstract: work.abstract,
+            matches: [{ kind: "scholar", label: scholar.label }],
+          }),
+        );
+        const articles = [...(feed?.items || []), ...cachedArticles]
           .filter(
             (article) =>
               !states[article.id]?.ignored &&
@@ -1532,6 +2031,14 @@ export default function Home() {
                   match.kind === "scholar" &&
                   match.label.toLowerCase() === scholar.label.toLowerCase(),
               ),
+          )
+          .filter(
+            (article, index, all) =>
+              all.findIndex(
+                (item) =>
+                  item.id === article.id ||
+                  (item.doi && item.doi === article.doi),
+              ) === index,
           )
           .sort(
             (a, b) =>
@@ -1566,7 +2073,7 @@ export default function Home() {
           : Number.NEGATIVE_INFINITY;
         return bTime - aTime || a.scholar.label.localeCompare(b.scholar.label);
       });
-  }, [feed, query, states, subscriptions.scholar]);
+  }, [feed, query, scholarProfiles, states, subscriptions.scholar]);
 
   const unreadCount = (feed?.items || []).filter(
     (article) =>
@@ -1601,11 +2108,32 @@ export default function Home() {
     : currentScholar;
 
   async function openScholar(scholar: Scholar) {
-    await selectSubscription(
-      "scholar",
-      scholar.label,
-      scholar.subscriptionId,
-    );
+    const cached = findCachedProfile(scholar);
+    const feedWorks = (feed?.items || [])
+      .filter((article) =>
+        article.matches.some(
+          (match) =>
+            match.kind === "scholar" &&
+            match.label.toLowerCase() === scholar.label.toLowerCase(),
+        ),
+      )
+      .map((article): ScholarWork => ({
+        id: article.id,
+        doi: article.doi,
+        title: article.title,
+        year: Number.parseInt(article.publishedAt.slice(0, 4), 10) || undefined,
+        venue: article.venue,
+        url: article.url,
+        abstract: article.abstract,
+      }));
+    await openScholarProfile({
+      ...scholar,
+      candidateId: scholar.subscriptionId,
+      value: scholar.subscriptionId,
+      representativeWorks: cached?.works.length
+        ? cached.works
+        : feedWorks,
+    });
   }
 
   return (
@@ -1674,9 +2202,12 @@ export default function Home() {
               }))}
               kind="scholar"
               activeId={activeSubscription?.id}
-              onSelect={(item) =>
-                void selectSubscription("scholar", item.label, item.id)
-              }
+              onSelect={(item) => {
+                const scholar = subscriptions.scholar.find(
+                  (candidate) => candidate.subscriptionId === item.id,
+                );
+                if (scholar) void openScholar(scholar);
+              }}
               onRemove={(item) =>
                 removeSubscription("scholar", item.label, item.id)
               }
@@ -1806,9 +2337,24 @@ export default function Home() {
                     档案已保存，但尚未确认学术索引 ID 或可解析代表作，自动更新可能不完整。
                   </small>
                 )}
+                {currentScholar.identityNeedsReview && (
+                  <small className="tracking-warning">
+                    旧版自动合并出的多个作者 ID 已被隔离。请用代表作或机构个人主页重新搜索并确认；收藏、已读和翻译没有受到影响。
+                  </small>
+                )}
                 {currentScholar.researchAreas?.length ? (
                   <small>
                     研究方向：{currentScholar.researchAreas.join("、")}
+                  </small>
+                ) : null}
+                {currentScholar.institutionalProfileUrl ? (
+                  <small className="institutional-verification">
+                    {currentScholar.institutionalProfileVerifiedAt
+                      ? "机构个人主页已核验"
+                      : "已保存机构个人主页"}
+                    {currentScholar.institutionalEvidence?.length
+                      ? `：${currentScholar.institutionalEvidence.join("、")}`
+                      : ""}
                   </small>
                 ) : null}
                 <nav>
@@ -1830,7 +2376,10 @@ export default function Home() {
                           ? "OpenAlex ↗"
                           : url.includes("semanticscholar.org")
                             ? "Semantic Scholar ↗"
-                            : "外部档案 ↗"}
+                            : url ===
+                                currentScholar.institutionalProfileUrl
+                              ? "机构个人主页 ↗"
+                              : "外部档案 ↗"}
                       </a>
                     ))}
                   {currentScholar.orcid && (
@@ -1896,7 +2445,10 @@ export default function Home() {
                   <span>{profile.works.length} 条</span>
                 </div>
                 <ol>
-                  {profile.works.map((work, index) => (
+                  {profile.works.map((work, index) => {
+                    const abstractKey = `profile:${work.id || `${work.title}-${index}`}`;
+                    const abstractExpanded = Boolean(expanded[abstractKey]);
+                    return (
                     <li key={work.id || `${work.title}-${index}`}>
                       <div>
                         <span>{work.year || "年份待确认"}</span>
@@ -1912,8 +2464,26 @@ export default function Home() {
                         )}
                       </h3>
                       {work.doi && <small>DOI: {work.doi}</small>}
+                      {work.abstract ? (
+                        <div className="profile-abstract">
+                          <button
+                            type="button"
+                            aria-expanded={abstractExpanded}
+                            onClick={() =>
+                              setExpanded((current) => ({
+                                ...current,
+                                [abstractKey]: !current[abstractKey],
+                              }))
+                            }
+                          >
+                            {abstractExpanded ? "收起摘要" : "展开摘要"}
+                          </button>
+                          {abstractExpanded ? <p>{work.abstract}</p> : null}
+                        </div>
+                      ) : null}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ol>
               </section>
             ) : (
@@ -2330,6 +2900,7 @@ export default function Home() {
                     setQueryVariants([]);
                     setAuthorContextName("");
                     setManualScholarName("");
+                    setScholarHomepage("");
                   }}
                 >
                   {kindLabel(kind)}
@@ -2372,8 +2943,8 @@ export default function Home() {
                     ? "输入期刊名，例如 Medical Anthropology"
                     : addKind === "scholar"
                       ? scholarSearchMode === "name"
-                        ? "输入中文名或罗马字姓名"
-                        : "输入论文标题、DOI、ORCID 或学术档案链接"
+                        ? "接受中文和拼音，但尽量使用英文"
+                        : "输入论文或书名、DOI、ISBN、ORCID 或档案链接"
                       : "输入需要重点标注的关键词"
                 }
                 onKeyDown={(event) => {
@@ -2404,12 +2975,158 @@ export default function Home() {
                       placeholder="例如 人类学"
                     />
                   </label>
+                  <label className="homepage-filter">
+                    <span>机构个人主页（推荐）</span>
+                    <input
+                      value={scholarHomepage}
+                      onChange={(event) =>
+                        setScholarHomepage(event.target.value)
+                      }
+                      placeholder="https://大学或研究机构的个人主页"
+                    />
+                  </label>
                 </div>
                 <p className="scholar-search-help">
                   {scholarSearchMode === "name"
-                    ? "会自动尝试拼音、姓名顺序、标点和轻微拼写差异；单位与方向会影响排序。"
-                    : "先解析作品，再列出作者供确认；适合重名或姓名写法不确定的情况。"}
+                    ? "输入至少两个字符即可获得姓名联想；不区分大小写，并允许常见拼写错误。机构主页可用于排除同名者。"
+                    : "可解析期刊论文、书籍与章节，再列出作者供确认；ISBN 适合核验专著。"}
                 </p>
+                <div className="api-access-row">
+                  <span>
+                    OpenAlex：
+                    <strong>
+                      {localSettings.openAlexConfigured
+                        ? `已配置 ${localSettings.openAlexKeyHint || ""}`
+                        : "免配置降级模式"}
+                    </strong>
+                    {" · "}Semantic Scholar：
+                    <strong>
+                      {localSettings.semanticScholarConfigured
+                        ? `已配置 ${localSettings.semanticScholarKeyHint || ""}`
+                        : "免配置基础额度"}
+                    </strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setApiSettingsOpen((open) => !open)}
+                  >
+                    {apiSettingsOpen ? "收起设置" : "接口设置"}
+                  </button>
+                </div>
+                {apiSettingsOpen ? (
+                  <section className="api-settings-panel">
+                    <div className="api-provider-settings">
+                      <div>
+                        <strong>OpenAlex 免费 API Key</strong>
+                        <p>
+                          配置后启用接近 1.0.0 的稳定作者主档案搜索、错拼容错、单位和主题信息。
+                          Key 只保存在当前解压文件夹的 data 目录。
+                        </p>
+                        <a
+                          href="https://openalex.org/settings/api"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          免费获取 OpenAlex API Key ↗
+                        </a>
+                      </div>
+                      <label>
+                        <span>OpenAlex API Key</span>
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          value={openAlexApiKeyInput}
+                          onChange={(event) =>
+                            setOpenAlexApiKeyInput(event.target.value)
+                          }
+                          placeholder={
+                            localSettings.openAlexConfigured
+                              ? "输入新 Key 可替换当前配置"
+                              : "粘贴 OpenAlex API Key"
+                          }
+                        />
+                      </label>
+                      <div className="api-settings-actions">
+                        {localSettings.openAlexConfigured ? (
+                          <button
+                            type="button"
+                            className="remove-api-key"
+                            disabled={apiSettingsSaving}
+                            onClick={() => void saveApiKey("openAlex", true)}
+                          >
+                            移除 Key
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          disabled={
+                            apiSettingsSaving ||
+                            openAlexApiKeyInput.trim().length < 8
+                          }
+                          onClick={() => void saveApiKey("openAlex")}
+                        >
+                          {apiSettingsSaving ? "正在保存…" : "保存到本地"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="api-provider-settings">
+                      <div>
+                        <strong>Semantic Scholar 免费 API Key（可选）</strong>
+                        <p>
+                          未配置 OpenAlex 时，系统会用 Semantic Scholar
+                          作为基础检索；配置其免费 Key 可减少频繁查询时的限流。
+                        </p>
+                        <a
+                          href="https://www.semanticscholar.org/product/api"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          申请 Semantic Scholar API Key ↗
+                        </a>
+                      </div>
+                      <label>
+                        <span>Semantic Scholar API Key</span>
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          value={semanticScholarApiKeyInput}
+                          onChange={(event) =>
+                            setSemanticScholarApiKeyInput(event.target.value)
+                          }
+                          placeholder={
+                            localSettings.semanticScholarConfigured
+                              ? "输入新 Key 可替换当前配置"
+                              : "粘贴 Semantic Scholar API Key"
+                          }
+                        />
+                      </label>
+                      <div className="api-settings-actions">
+                        {localSettings.semanticScholarConfigured ? (
+                        <button
+                          type="button"
+                          className="remove-api-key"
+                          disabled={apiSettingsSaving}
+                            onClick={() =>
+                              void saveApiKey("semanticScholar", true)
+                            }
+                        >
+                          移除 Key
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={
+                            apiSettingsSaving ||
+                            semanticScholarApiKeyInput.trim().length < 8
+                        }
+                          onClick={() => void saveApiKey("semanticScholar")}
+                      >
+                        {apiSettingsSaving ? "正在保存…" : "保存到本地"}
+                      </button>
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
               </>
             )}
 
@@ -2436,6 +3153,18 @@ export default function Home() {
               </div>
             ) : (
               <div className="search-results">
+                {addKind === "scholar" &&
+                scholarSearchMode === "name" &&
+                !localSettings.openAlexConfigured ? (
+                  <div className="api-key-callout">
+                    <span>
+                      当前仍可使用基础姓名搜索；部分姓名、缩写、错拼和最近发表可能不完整。
+                    </span>
+                    <button type="button" onClick={() => setApiSettingsOpen(true)}>
+                      配置免费 Key
+                    </button>
+                  </div>
+                ) : null}
                 {visibleSearching && <p className="search-hint">正在搜索公开学术索引…</p>}
                 {addKind === "scholar" && queryVariants.length > 1 && (
                   <p className="query-variants">
@@ -2448,7 +3177,9 @@ export default function Home() {
                   </p>
                 ))}
                 {!visibleSearching && addQuery.trim().length < 2 && (
-                  <p className="search-hint">输入至少两个字符开始搜索。</p>
+                  <p className="search-hint">
+                    输入至少两个字符，结果会随输入自动推荐。
+                  </p>
                 )}
                 {!visibleSearching &&
                   addQuery.trim().length >= 2 &&
@@ -2473,7 +3204,9 @@ export default function Home() {
                           ) : null}
                         </div>
                         <span>
-                          {result.trackingStatus === "limited"
+                          {result.scoreReasons?.includes("最可能的主档案")
+                            ? "最可能的主档案"
+                            : result.trackingStatus === "limited"
                             ? "需进一步核验"
                             : "可自动追踪"}
                         </span>
@@ -2510,14 +3243,30 @@ export default function Home() {
                         </p>
                       ) : null}
                       {result.representativeWorks?.length ? (
-                        <ol className="representative-works">
-                          {result.representativeWorks.slice(0, 3).map((work) => (
+                        <>
+                          <div className="latest-work-preview">
+                            <small>
+                              最近发表
+                              {result.representativeWorks[0].year
+                                ? ` · ${result.representativeWorks[0].year}`
+                                : ""}
+                            </small>
+                            <strong>{result.representativeWorks[0].title}</strong>
+                            {result.representativeWorks[0].venue ? (
+                              <span>{result.representativeWorks[0].venue}</span>
+                            ) : null}
+                          </div>
+                          {result.representativeWorks.length > 1 ? (
+                          <ol className="representative-works">
+                          {result.representativeWorks.slice(1, 3).map((work) => (
                             <li key={work.id || work.title}>
                               <span>{work.title}</span>
                               {work.year && <time>{work.year}</time>}
                             </li>
                           ))}
-                        </ol>
+                          </ol>
+                          ) : null}
+                        </>
                       ) : null}
                       <div className="scholar-result-meta">
                         <span>

@@ -16,10 +16,16 @@ type Scholar = {
   aliases?: string[];
   openAlexIds: string[];
   semanticScholarIds?: string[];
+  quarantinedOpenAlexIds?: string[];
+  quarantinedSemanticScholarIds?: string[];
+  identityNeedsReview?: boolean;
   institution: string;
   institutions?: string[];
   profileUrl?: string;
   profileUrls?: string[];
+  institutionalProfileUrl?: string;
+  institutionalProfileVerifiedAt?: string;
+  institutionalEvidence?: string[];
   orcid?: string;
   worksCount?: number;
   researchAreas?: string[];
@@ -134,6 +140,11 @@ const DEFAULT_SUBSCRIPTIONS: Subscriptions = {
 };
 
 const CURATED_PROFILE_WORKS: Record<string, Omit<Article, "matches">[]> = {};
+const REMOTE_CACHE_TTL = 15 * 60 * 1000;
+const remoteCache = new Map<
+  string,
+  { expiresAt: number; value?: unknown; pending?: Promise<unknown> }
+>();
 
 function curatedWorks(scholar: Scholar) {
   return (CURATED_PROFILE_WORKS[scholar.label] || []).map((item) => ({
@@ -312,6 +323,23 @@ function validateSubscriptions(input: unknown): Subscriptions {
               : [],
             openAlexIds: ids,
             semanticScholarIds: semanticIds,
+            quarantinedOpenAlexIds: Array.isArray(
+              value.quarantinedOpenAlexIds,
+            )
+              ? value.quarantinedOpenAlexIds
+                  .slice(0, 40)
+                  .map(openAlexId)
+                  .filter(Boolean)
+              : [],
+            quarantinedSemanticScholarIds: Array.isArray(
+              value.quarantinedSemanticScholarIds,
+            )
+              ? value.quarantinedSemanticScholarIds
+                  .slice(0, 40)
+                  .map(semanticScholarId)
+                  .filter(Boolean)
+              : [],
+            identityNeedsReview: Boolean(value.identityNeedsReview),
             institution,
             institutions: [
               ...new Set([institution, ...institutions].filter(Boolean)),
@@ -323,6 +351,23 @@ function validateSubscriptions(input: unknown): Subscriptions {
                   .map((item) => clean(item, 600))
                   .filter(Boolean)
               : undefined,
+            institutionalProfileUrl:
+              clean(value.institutionalProfileUrl, 1000) || undefined,
+            institutionalProfileVerifiedAt:
+              clean(value.institutionalProfileVerifiedAt, 80) &&
+              Number.isFinite(
+                Date.parse(clean(value.institutionalProfileVerifiedAt, 80)),
+              )
+                ? clean(value.institutionalProfileVerifiedAt, 80)
+                : undefined,
+            institutionalEvidence: Array.isArray(
+              value.institutionalEvidence,
+            )
+              ? value.institutionalEvidence
+                  .slice(0, 12)
+                  .map((item) => clean(item, 200))
+                  .filter(Boolean)
+              : [],
             orcid,
             worksCount:
               typeof value.worksCount === "number" ? value.worksCount : undefined,
@@ -520,15 +565,43 @@ function toArticle(work: OpenAlexWork, match: Match): Article | null {
 }
 
 async function openAlex<T>(url: URL): Promise<T> {
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.1.1",
-    },
-    signal: AbortSignal.timeout(18_000),
+  const apiKey =
+    typeof process !== "undefined"
+      ? clean(process.env.OPENALEX_API_KEY, 240)
+      : "";
+  if (apiKey) url.searchParams.set("api_key", apiKey);
+  const key = url.toString();
+  const cached = remoteCache.get(key);
+  if (cached?.value && cached.expiresAt > Date.now()) {
+    return cached.value as T;
+  }
+  if (cached?.pending) return cached.pending as Promise<T>;
+  const pending = (async () => {
+    const response = await fetch(url, {
+      headers: {
+        accept: "application/json",
+        "user-agent": "AnthropologyCanteen/1.1.1",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error(`OpenAlex ${response.status}`);
+    const value = (await response.json()) as T;
+    remoteCache.set(key, {
+      expiresAt: Date.now() + REMOTE_CACHE_TTL,
+      value,
+    });
+    return value;
+  })();
+  remoteCache.set(key, {
+    expiresAt: Date.now() + REMOTE_CACHE_TTL,
+    pending,
   });
-  if (!response.ok) throw new Error(`OpenAlex ${response.status}`);
-  return response.json() as Promise<T>;
+  try {
+    return await pending;
+  } catch (error) {
+    remoteCache.delete(key);
+    throw error;
+  }
 }
 
 async function fetchWorks(url: URL, match: Match) {
@@ -602,12 +675,18 @@ async function fetchSemanticScholarWorks(
     "fields",
     "title,abstract,year,publicationDate,venue,url,publicationTypes,externalIds,fieldsOfStudy,authors.authorId,authors.name",
   );
+  const semanticScholarApiKey =
+    typeof process !== "undefined"
+      ? clean(process.env.SEMANTIC_SCHOLAR_API_KEY, 240)
+      : "";
+  const headers: Record<string, string> = {
+    accept: "application/json",
+    "user-agent": "AnthropologyCanteen/1.1.1",
+  };
+  if (semanticScholarApiKey) headers["x-api-key"] = semanticScholarApiKey;
   const response = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.1.1",
-    },
-    signal: AbortSignal.timeout(18_000),
+    headers,
+    signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`Semantic Scholar ${response.status}`);
   const data = (await response.json()) as {
@@ -683,7 +762,7 @@ async function fetchCrossrefJournalWorks(
       accept: "application/json",
       "user-agent": "AnthropologyCanteen/1.1.1",
     },
-    signal: AbortSignal.timeout(18_000),
+    signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`Crossref ${response.status}`);
   const data = (await response.json()) as {
@@ -732,10 +811,6 @@ function crossrefWorkMatchesScholar(
           (placeholder) => normalizedEvidenceText(placeholder) === item,
         ),
     );
-  const topics = (scholar.researchAreas || [])
-    .map(normalizedEvidenceText)
-    .filter((item) => item.length >= 4);
-
   return (work.author || []).some((author) => {
     const authorName = crossrefAuthorName(author);
     const canonical = normalizedPersonName(authorName);
@@ -757,24 +832,7 @@ function crossrefWorkMatchesScholar(
     ) {
       return true;
     }
-    const subjectText = normalizedEvidenceText([
-      ...(work.subject || []),
-      ...(work.title || []),
-      ...(work["container-title"] || []),
-    ].join(" "));
-    if (
-      topics.some(
-        (topic) =>
-          subjectText.includes(topic) ||
-          topic
-            .split(/\s+/)
-            .filter((token) => token.length >= 5)
-            .some((token) => subjectText.includes(token)),
-      )
-    ) {
-      return true;
-    }
-    return distinctivePersonName(authorName);
+    return false;
   });
 }
 
@@ -788,7 +846,7 @@ async function fetchCrossrefScholarWorks(
   ]
     .map((item) => normalizeText(item))
     .filter((item, index, all) => item && all.indexOf(item) === index)
-    .slice(0, 3);
+    .slice(0, 1);
   const settled = await Promise.allSettled(
     queries.map(async (query) => {
       const url = new URL("https://api.crossref.org/works");
@@ -801,7 +859,7 @@ async function fetchCrossrefScholarWorks(
           accept: "application/json",
           "user-agent": "AnthropologyCanteen/1.1.1",
         },
-        signal: AbortSignal.timeout(18_000),
+        signal: AbortSignal.timeout(10_000),
       });
       if (!response.ok) throw new Error(`Crossref ${response.status}`);
       const data = (await response.json()) as {
@@ -829,9 +887,8 @@ async function fetchCrossrefScholarWorks(
 
 async function fetchJournalWorks(journal: Journal, fromDate: string) {
   const match: Match = { kind: "journal", label: journal.label };
-  let openAlexFailure: unknown;
-  try {
-    const items = await fetchWorks(
+  const settled = await Promise.allSettled([
+    fetchWorks(
       worksUrl(
         [
           `primary_location.source.issn:${journal.issn}`,
@@ -840,17 +897,91 @@ async function fetchJournalWorks(journal: Journal, fromDate: string) {
         20,
       ),
       match,
-    );
-    if (items.length) return items;
-  } catch (error) {
-    openAlexFailure = error;
+    ),
+    fetchCrossrefJournalWorks(journal, fromDate, match),
+  ]);
+  const results = settled.flatMap((result) =>
+    result.status === "fulfilled" ? result.value : [],
+  );
+  if (
+    results.length === 0 &&
+    settled.every((result) => result.status === "rejected")
+  ) {
+    throw new Error(`期刊 ${journal.label} 的公开索引暂时不可用`);
   }
+  return results;
+}
 
-  try {
-    return await fetchCrossrefJournalWorks(journal, fromDate, match);
-  } catch (crossrefFailure) {
-    throw openAlexFailure || crossrefFailure;
+async function fetchScholarWorks(scholar: Scholar, limit: number) {
+  const match: Match = { kind: "scholar", label: scholar.label };
+  const openAlexIds = [...new Set(scholar.openAlexIds)].slice(0, 30);
+  const indexedResults: Article[] = [];
+  if (openAlexIds.length) {
+    try {
+      indexedResults.push(...(await fetchWorks(
+        worksUrl(
+          [`authorships.author.id:${openAlexIds.join("|")}`],
+          Math.min(limit, 100),
+        ),
+        match,
+      )));
+    } catch {
+      // A secondary index can still keep the saved profile usable.
+    }
   }
+  const semanticId = (scholar.semanticScholarIds || [])[0];
+  if (semanticId) {
+    try {
+      indexedResults.push(
+        ...(await fetchSemanticScholarWorks(scholar, semanticId, limit)),
+      );
+    } catch {
+      // Name-only Crossref is used only when no stable provider ID exists.
+    }
+  }
+  if (indexedResults.length) {
+    return indexedResults.filter(
+      (article, index, all) =>
+        all.findIndex(
+          (item) =>
+            item.id === article.id ||
+            Boolean(item.doi && article.doi && item.doi === article.doi),
+        ) === index,
+    );
+  }
+  if (!openAlexIds.length && !semanticId) {
+    return fetchCrossrefScholarWorks(scholar, limit);
+  }
+  throw new Error(`学者 ${scholar.label} 的公开索引暂时不可用`);
+}
+
+async function runTasks<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency = 4,
+) {
+  const results: PromiseSettledResult<T>[] = new Array(tasks.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < tasks.length) {
+      const index = cursor;
+      cursor += 1;
+      try {
+        results[index] = {
+          status: "fulfilled",
+          value: await tasks[index](),
+        };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  }
+  await Promise.all(
+    Array.from(
+      { length: Math.min(concurrency, Math.max(tasks.length, 1)) },
+      () => worker(),
+    ),
+  );
+  return results;
 }
 
 function stringOverlap(left: string[] = [], right: string[] = []) {
@@ -996,6 +1127,18 @@ function scholarFromCandidate(
         ...candidate.profileUrls,
       ]),
     ],
+    institutionalProfileUrl:
+      candidate.institutionalProfileUrl ||
+      scholar.institutionalProfileUrl,
+    institutionalProfileVerifiedAt:
+      candidate.institutionalProfileVerifiedAt ||
+      scholar.institutionalProfileVerifiedAt,
+    institutionalEvidence: [
+      ...new Set([
+        ...(scholar.institutionalEvidence || []),
+        ...candidate.institutionalEvidence,
+      ]),
+    ],
     orcid,
     worksCount: Math.max(
       scholar.worksCount || 0,
@@ -1036,6 +1179,8 @@ function scholarFromCandidate(
   };
 }
 
+// Kept only for reading legacy subscription evidence during migration.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function resolveScholar(scholar: Scholar): Promise<Scholar> {
   const checkedAt = Date.parse(scholar.identityCheckedAt || "");
   if (
@@ -1132,6 +1277,16 @@ function mergeResolvedScholar(left: Scholar, right: Scholar): Scholar {
       ...(left.profileUrls || []),
       ...(right.profileUrls || []),
     ])],
+    institutionalProfileUrl:
+      left.institutionalProfileUrl ||
+      right.institutionalProfileUrl,
+    institutionalProfileVerifiedAt:
+      left.institutionalProfileVerifiedAt ||
+      right.institutionalProfileVerifiedAt,
+    institutionalEvidence: [...new Set([
+      ...(left.institutionalEvidence || []),
+      ...(right.institutionalEvidence || []),
+    ])],
     orcid,
     worksCount: Math.max(left.worksCount || 0, right.worksCount || 0) ||
       undefined,
@@ -1172,6 +1327,8 @@ function mergeResolvedScholar(left: Scholar, right: Scholar): Scholar {
   };
 }
 
+// Kept only for reading legacy subscription evidence during migration.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function mergeResolvedScholars(scholars: Scholar[]) {
   const merged: Scholar[] = [];
   for (const scholar of scholars) {
@@ -1327,14 +1484,8 @@ async function buildFeed(
   subscriptions: Subscriptions,
   historyScholar?: string,
 ) {
-  const jobs: Promise<Article[]>[] = [];
-  const resolvedScholars = mergeResolvedScholars(
-    await Promise.all(
-      subscriptions.scholar.map((scholar) =>
-        resolveScholar(scholar).catch(() => scholar),
-      ),
-    ),
-  );
+  const tasks: Array<() => Promise<Article[]>> = [];
+  const resolvedScholars = subscriptions.scholar;
 
   if (historyScholar) {
     const scholar = resolvedScholars.find(
@@ -1343,18 +1494,7 @@ async function buildFeed(
         item.label.toLowerCase() === historyScholar.toLowerCase(),
     );
     if (scholar) {
-      for (const id of scholar.openAlexIds) {
-        jobs.push(
-          fetchWorks(worksUrl([`author.id:${id}`], 100), {
-            kind: "scholar",
-            label: scholar.label,
-          }),
-        );
-      }
-      for (const id of scholar.semanticScholarIds || []) {
-        jobs.push(fetchSemanticScholarWorks(scholar, id, 100));
-      }
-      jobs.push(fetchCrossrefScholarWorks(scholar, 100));
+      tasks.push(() => fetchScholarWorks(scholar, 100));
     }
   } else {
     const since = new Date();
@@ -1362,25 +1502,14 @@ async function buildFeed(
     const fromDate = since.toISOString().slice(0, 10);
 
     for (const journal of subscriptions.journal) {
-      jobs.push(fetchJournalWorks(journal, fromDate));
+      tasks.push(() => fetchJournalWorks(journal, fromDate));
     }
     for (const scholar of resolvedScholars) {
-      for (const id of scholar.openAlexIds) {
-        jobs.push(
-          fetchWorks(
-            worksUrl([`author.id:${id}`], 18),
-            { kind: "scholar", label: scholar.label },
-          ),
-        );
-      }
-      for (const id of scholar.semanticScholarIds || []) {
-        jobs.push(fetchSemanticScholarWorks(scholar, id, 20));
-      }
-      jobs.push(fetchCrossrefScholarWorks(scholar, 40));
+      tasks.push(() => fetchScholarWorks(scholar, 30));
     }
   }
 
-  const settled = await Promise.allSettled(jobs);
+  const settled = await runTasks(tasks, 4);
   const groups = settled
     .filter(
       (result): result is PromiseFulfilledResult<Article[]> =>

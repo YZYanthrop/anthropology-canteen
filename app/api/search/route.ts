@@ -141,6 +141,10 @@ const ANTHROPOLOGY_JOURNALS = [
     aliases: ["anthropology and medicine"],
   },
 ];
+const journalSearchCache = new Map<
+  string,
+  { expiresAt: number; results: { label: string; value: string; detail: string }[] }
+>();
 
 function normalizeSearch(value = "") {
   return clean(value)
@@ -214,12 +218,17 @@ function mergeResults<T extends { value: string; label: string }>(
 }
 
 async function openAlex<T>(url: URL): Promise<T> {
+  const apiKey =
+    typeof process !== "undefined"
+      ? clean(process.env.OPENALEX_API_KEY).slice(0, 240)
+      : "";
+  if (apiKey) url.searchParams.set("api_key", apiKey);
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
       "user-agent": "AnthropologyCanteen/1.1.1",
     },
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`OpenAlex ${response.status}`);
   return response.json() as Promise<T>;
@@ -234,7 +243,7 @@ async function crossrefJournals(query: string) {
       accept: "application/json",
       "user-agent": "AnthropologyCanteen/1.1.1",
     },
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`Crossref ${response.status}`);
   const data = (await response.json()) as {
@@ -262,7 +271,7 @@ async function crossrefJournals(query: string) {
 
 export async function GET(request: NextRequest) {
   const kind = request.nextUrl.searchParams.get("kind");
-  const query = clean(request.nextUrl.searchParams.get("q") || "").slice(0, 100);
+  const query = clean(request.nextUrl.searchParams.get("q") || "").slice(0, 180);
   if (!["journal", "scholar"].includes(kind || "") || query.length < 2) {
     return NextResponse.json({ results: [] });
   }
@@ -270,6 +279,25 @@ export async function GET(request: NextRequest) {
   try {
     if (kind === "journal") {
       const curated = localJournalResults(query);
+      if (curated.length) {
+        return NextResponse.json(
+          { results: curated.slice(0, 12) },
+          {
+            headers: {
+              "cache-control": "public, max-age=3600",
+              "x-anthropology-canteen-source": "local-journal-index",
+            },
+          },
+        );
+      }
+      const cacheKey = normalizeSearch(query);
+      const cached = journalSearchCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return NextResponse.json(
+          { results: cached.results },
+          { headers: { "cache-control": "public, max-age=900" } },
+        );
+      }
       const url = new URL("https://api.openalex.org/sources");
       url.searchParams.set("search", query);
       url.searchParams.set("filter", "type:journal");
@@ -299,6 +327,10 @@ export async function GET(request: NextRequest) {
       const crossref =
         crossrefResult.status === "fulfilled" ? crossrefResult.value : [];
       const results = mergeResults(mergeResults(curated, indexed, 20), crossref);
+      journalSearchCache.set(cacheKey, {
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        results,
+      });
       return NextResponse.json({
         results,
         message:
@@ -316,11 +348,15 @@ export async function GET(request: NextRequest) {
     const topic = clean(
       request.nextUrl.searchParams.get("topic") || "",
     ).slice(0, 120);
+    const homepage = clean(
+      request.nextUrl.searchParams.get("homepage") || "",
+    ).slice(0, 1000);
     const result = await searchScholars({
       query,
       mode,
       institution,
       topic,
+      homepage,
     });
     return NextResponse.json(result, {
       headers: { "cache-control": "no-store" },

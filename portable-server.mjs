@@ -15,6 +15,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const clientRoot = resolve(root, "dist", "client");
 const dataRoot = resolve(root, "data");
 const dataFile = resolve(dataRoot, "anthropology-canteen-data.json");
+const settingsFile = resolve(dataRoot, "anthropology-canteen-settings.json");
 const pidFile = resolve(dataRoot, "anthropology-canteen-server.pid");
 
 const contentTypes = {
@@ -92,12 +93,13 @@ function cleanTimestamp(value, fallback = new Date().toISOString()) {
 
 function emptyLocalData() {
   return {
-    version: 5,
+    version: 7,
     savedAt: new Date().toISOString(),
     subscriptions: { journal: [], scholar: [], keyword: [] },
     states: {},
     feed: null,
     translations: {},
+    scholarProfiles: {},
   };
 }
 
@@ -106,6 +108,25 @@ function cleanOrcid(value) {
     .replace(/^https?:\/\/orcid\.org\//i, "")
     .toUpperCase();
   return /^\d{4}-\d{4}-\d{4}-[\dX]{4}$/.test(id) ? id : "";
+}
+
+function cleanPersonName(value) {
+  const source = clean(value, 180).replace(/\s+/g, " ");
+  if (!source || /\p{Script=Han}/u.test(source)) return source;
+  const letters = source.replace(/[^A-Za-z]/g, "");
+  if (
+    letters &&
+    letters !== letters.toLowerCase() &&
+    letters !== letters.toUpperCase()
+  ) {
+    return source;
+  }
+  return source
+    .toLowerCase()
+    .replace(/(^|[\s\-‐‑‒–—'’])([a-z])/g, (_match, separator, letter) =>
+      `${separator}${letter.toUpperCase()}`,
+    )
+    .replace(/\b([A-Z])\b(?!\.)/g, "$1.");
 }
 
 function cleanOpenAlexId(value) {
@@ -192,7 +213,11 @@ function cleanKeywordGroup(value) {
   };
 }
 
-function cleanSubscriptions(value = {}, migrationBaseline = new Date().toISOString()) {
+function cleanSubscriptions(
+  value = {},
+  migrationBaseline = new Date().toISOString(),
+  quarantineLegacyIdentity = false,
+) {
   const journal = Array.isArray(value.journal)
     ? value.journal
         .slice(0, 40)
@@ -209,19 +234,31 @@ function cleanSubscriptions(value = {}, migrationBaseline = new Date().toISOStri
         .map((item) => {
           const candidate =
             typeof item === "string" ? { label: item } : item;
-          const label = clean(candidate?.label, 180);
+          const label = cleanPersonName(candidate?.label);
           if (!label) return null;
-          const openAlexIds = Array.isArray(candidate?.openAlexIds)
+          const storedOpenAlexIds = Array.isArray(candidate?.openAlexIds)
             ? candidate.openAlexIds
                 .map(cleanOpenAlexId)
                 .filter(Boolean)
             : [];
-          const semanticScholarIds = Array.isArray(candidate?.semanticScholarIds)
+          const storedSemanticScholarIds = Array.isArray(
+            candidate?.semanticScholarIds,
+          )
             ? candidate.semanticScholarIds
                 .map((id) => clean(id, 160))
                 .filter(Boolean)
             : [];
           const orcid = cleanOrcid(candidate?.orcid) || undefined;
+          const identityNeedsReview =
+            quarantineLegacyIdentity &&
+            (storedOpenAlexIds.length > 1 ||
+              storedSemanticScholarIds.length > 1);
+          const openAlexIds = identityNeedsReview
+            ? []
+            : storedOpenAlexIds;
+          const semanticScholarIds = identityNeedsReview
+            ? []
+            : storedSemanticScholarIds;
           const institutions = Array.isArray(candidate?.institutions)
             ? candidate.institutions
                 .slice(0, 12)
@@ -249,6 +286,22 @@ function cleanSubscriptions(value = {}, migrationBaseline = new Date().toISOStri
               : [],
             openAlexIds,
             semanticScholarIds,
+            quarantinedOpenAlexIds: identityNeedsReview
+              ? storedOpenAlexIds
+              : Array.isArray(candidate?.quarantinedOpenAlexIds)
+                ? candidate.quarantinedOpenAlexIds
+                    .map(cleanOpenAlexId)
+                    .filter(Boolean)
+                : [],
+            quarantinedSemanticScholarIds: identityNeedsReview
+              ? storedSemanticScholarIds
+              : Array.isArray(candidate?.quarantinedSemanticScholarIds)
+                ? candidate.quarantinedSemanticScholarIds
+                    .map((id) => clean(id, 160))
+                    .filter(Boolean)
+                : [],
+            identityNeedsReview:
+              identityNeedsReview || Boolean(candidate?.identityNeedsReview),
             institution,
             institutions: [
               ...new Set([institution, ...institutions].filter(Boolean)),
@@ -260,6 +313,25 @@ function cleanSubscriptions(value = {}, migrationBaseline = new Date().toISOStri
                   .map((value) => clean(value, 800))
                   .filter(Boolean)
               : undefined,
+            institutionalProfileUrl:
+              clean(candidate?.institutionalProfileUrl, 1000) || undefined,
+            institutionalProfileVerifiedAt:
+              clean(candidate?.institutionalProfileVerifiedAt, 80) &&
+              Number.isFinite(
+                Date.parse(
+                  clean(candidate?.institutionalProfileVerifiedAt, 80),
+                ),
+              )
+                ? clean(candidate?.institutionalProfileVerifiedAt, 80)
+                : undefined,
+            institutionalEvidence: Array.isArray(
+              candidate?.institutionalEvidence,
+            )
+              ? candidate.institutionalEvidence
+                  .slice(0, 12)
+                  .map((item) => clean(item, 200))
+                  .filter(Boolean)
+              : [],
             orcid,
             worksCount:
               typeof candidate?.worksCount === "number"
@@ -295,7 +367,9 @@ function cleanSubscriptions(value = {}, migrationBaseline = new Date().toISOStri
               candidate?.followedAt,
               migrationBaseline,
             ),
-            identityCheckedAt:
+            identityCheckedAt: identityNeedsReview
+              ? undefined
+              :
               clean(candidate?.identityCheckedAt, 80) &&
               Number.isFinite(
                 Date.parse(clean(candidate?.identityCheckedAt, 80)),
@@ -306,7 +380,9 @@ function cleanSubscriptions(value = {}, migrationBaseline = new Date().toISOStri
               typeof candidate?.mergedRecordCount === "number"
                 ? Math.max(1, Math.floor(candidate.mergedRecordCount))
                 : 1,
-            mergeConfidence:
+            mergeConfidence: identityNeedsReview
+              ? "unconfirmed"
+              :
               ["verified", "high", "unconfirmed"].includes(
                 candidate?.mergeConfidence,
               )
@@ -316,7 +392,11 @@ function cleanSubscriptions(value = {}, migrationBaseline = new Date().toISOStri
                   : openAlexIds.length || semanticScholarIds.length
                     ? "high"
                     : "unconfirmed",
-            mergeEvidence: Array.isArray(candidate?.mergeEvidence)
+            mergeEvidence: identityNeedsReview
+              ? [
+                  "旧版自动合并记录已隔离，需通过 ORCID、代表作或机构主页重新核验",
+                ]
+              : Array.isArray(candidate?.mergeEvidence)
               ? candidate.mergeEvidence
                   .slice(0, 20)
                   .map((item) => clean(item, 160))
@@ -422,6 +502,153 @@ function cleanFeed(value) {
   };
 }
 
+function emptyLocalSettings() {
+  return {
+    version: 2,
+    openAlexApiKey: "",
+    semanticScholarApiKey: "",
+  };
+}
+
+function cleanApiKey(value) {
+  const key = clean(value, 240);
+  return key.length >= 8 && !/\s/.test(key) ? key : "";
+}
+
+function cleanLocalSettings(value = {}) {
+  return {
+    version: 2,
+    openAlexApiKey: cleanApiKey(value.openAlexApiKey),
+    semanticScholarApiKey: cleanApiKey(value.semanticScholarApiKey),
+  };
+}
+
+function publicLocalSettings(settings) {
+  const openAlexKey = cleanApiKey(settings?.openAlexApiKey);
+  const semanticScholarKey = cleanApiKey(
+    settings?.semanticScholarApiKey,
+  );
+  return {
+    version: 2,
+    openAlexConfigured: Boolean(openAlexKey),
+    openAlexKeyHint: openAlexKey ? `••••${openAlexKey.slice(-4)}` : "",
+    semanticScholarConfigured: Boolean(semanticScholarKey),
+    semanticScholarKeyHint: semanticScholarKey
+      ? `••••${semanticScholarKey.slice(-4)}`
+      : "",
+  };
+}
+
+function cleanScholarWork(value) {
+  const title = clean(value?.title, 1000);
+  const id = clean(value?.id, 1000) || title.toLowerCase();
+  if (!title || !id) return null;
+  const year =
+    typeof value?.year === "number" &&
+    Number.isFinite(value.year) &&
+    value.year > 1000 &&
+    value.year < 3000
+      ? Math.floor(value.year)
+      : undefined;
+  return {
+    id,
+    doi:
+      clean(value?.doi, 320)
+        .replace(/^https?:\/\/doi\.org\//i, "")
+        .toLowerCase() || undefined,
+    title,
+    year,
+    venue: clean(value?.venue, 500) || undefined,
+    url: clean(value?.url, 1000) || undefined,
+    abstract: clean(value?.abstract, 12_000) || undefined,
+    familyIds: Array.isArray(value?.familyIds)
+      ? value.familyIds
+          .slice(0, 20)
+          .map((item) => clean(item, 320))
+          .filter(Boolean)
+      : undefined,
+  };
+}
+
+function cleanScholarProfileCandidate(value) {
+  if (!value || typeof value !== "object") return null;
+  const subscription = cleanSubscriptions({
+    journal: [],
+    scholar: [value],
+    keyword: [],
+  }).scholar[0];
+  if (!subscription) return null;
+  const representativeWorks = Array.isArray(value.representativeWorks)
+    ? value.representativeWorks
+        .slice(0, 100)
+        .map(cleanScholarWork)
+        .filter(Boolean)
+    : [];
+  return {
+    ...subscription,
+    candidateId:
+      clean(value.candidateId, 300) || subscription.subscriptionId,
+    value:
+      clean(value.value, 500) ||
+      subscription.openAlexIds[0] ||
+      subscription.semanticScholarIds?.[0] ||
+      subscription.orcid ||
+      subscription.subscriptionId,
+    representativeWorks,
+    externalIds: {
+      openAlex:
+        cleanOpenAlexId(value.externalIds?.openAlex) ||
+        subscription.openAlexIds[0] ||
+        undefined,
+      semanticScholar:
+        clean(value.externalIds?.semanticScholar, 160) ||
+        subscription.semanticScholarIds?.[0] ||
+        undefined,
+      orcid:
+        cleanOrcid(value.externalIds?.orcid) ||
+        subscription.orcid ||
+        undefined,
+    },
+    identityWarnings: Array.isArray(value.identityWarnings)
+      ? value.identityWarnings
+          .slice(0, 12)
+          .map((item) => clean(item, 500))
+          .filter(Boolean)
+      : [],
+    scoreReasons: Array.isArray(value.scoreReasons)
+      ? value.scoreReasons
+          .slice(0, 12)
+          .map((item) => clean(item, 200))
+          .filter(Boolean)
+      : [],
+    score:
+      typeof value.score === "number" && Number.isFinite(value.score)
+        ? value.score
+        : 0,
+  };
+}
+
+function cleanScholarProfiles(value) {
+  const profiles = {};
+  if (!value || typeof value !== "object") return profiles;
+  for (const [storedKey, profile] of Object.entries(value).slice(0, 60)) {
+    const key = clean(storedKey, 300);
+    if (!key || !profile || typeof profile !== "object") continue;
+    const candidate = cleanScholarProfileCandidate(profile.candidate);
+    if (!candidate) continue;
+    const works = Array.isArray(profile.works)
+      ? profile.works.slice(0, 1000).map(cleanScholarWork).filter(Boolean)
+      : candidate.representativeWorks;
+    profiles[key] = {
+      candidate,
+      works,
+      updatedAt: cleanTimestamp(profile.updatedAt),
+      complete: Boolean(profile.complete),
+    };
+  }
+  return profiles;
+}
+
 function cleanSavedAt(value) {
   const savedAt = clean(value, 80);
   return Number.isFinite(Date.parse(savedAt)) ? savedAt : new Date().toISOString();
@@ -431,6 +658,7 @@ function cleanLocalData(value = {}, refreshSavedAt = false) {
   const now = new Date().toISOString();
   const savedAt = refreshSavedAt ? now : cleanSavedAt(value.savedAt);
   const migrationBaseline = Number(value.version) >= 4 ? savedAt : now;
+  const quarantineLegacyIdentity = [5, 6].includes(Number(value.version));
   const states = {};
   if (value.states && typeof value.states === "object") {
     for (const [id, state] of Object.entries(value.states).slice(0, 2000)) {
@@ -449,15 +677,19 @@ function cleanLocalData(value = {}, refreshSavedAt = false) {
   }
 
   return {
-    version: 5,
+    version: 7,
     savedAt,
     subscriptions: cleanSubscriptions(
       value.subscriptions,
       migrationBaseline,
+      quarantineLegacyIdentity,
     ),
     states,
-    feed: cleanFeed(value.feed),
+    feed: quarantineLegacyIdentity ? null : cleanFeed(value.feed),
     translations,
+    scholarProfiles: quarantineLegacyIdentity
+      ? {}
+      : cleanScholarProfiles(value.scholarProfiles),
   };
 }
 
@@ -468,6 +700,7 @@ function hasLocalDataContent(data) {
       data.subscriptions.keyword.length ||
       Object.keys(data.states).length ||
       Object.keys(data.translations).length ||
+      Object.keys(data.scholarProfiles).length ||
       data.feed?.items.length,
   );
 }
@@ -536,6 +769,97 @@ async function writeLocalDataFile(value) {
   return data;
 }
 
+async function findSiblingLocalSettings() {
+  const parentRoot = dirname(root);
+  let entries = [];
+  try {
+    entries = await readdir(parentRoot, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const candidates = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const siblingRoot = resolve(parentRoot, entry.name);
+    if (siblingRoot === root || !siblingRoot.startsWith(`${parentRoot}${sep}`)) {
+      continue;
+    }
+    const candidate = resolve(
+      siblingRoot,
+      "data",
+      "anthropology-canteen-settings.json",
+    );
+    try {
+      const info = await stat(candidate);
+      if (!info.isFile()) continue;
+      const settings = cleanLocalSettings(
+        parseJson(await readFile(candidate, "utf8")),
+      );
+      if (settings.openAlexApiKey || settings.semanticScholarApiKey) {
+        candidates.push({ settings, mtimeMs: info.mtimeMs });
+      }
+    } catch {
+      // Ignore unreadable or unrelated sibling settings.
+    }
+  }
+  return (
+    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)[0]?.settings || null
+  );
+}
+
+async function readLocalSettingsFile() {
+  await ensureDataRoot();
+  try {
+    return cleanLocalSettings(
+      parseJson(await readFile(settingsFile, "utf8")),
+    );
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    const settings =
+      (await findSiblingLocalSettings()) || emptyLocalSettings();
+    if (settings.openAlexApiKey || settings.semanticScholarApiKey) {
+      await writeFile(
+        settingsFile,
+        `${JSON.stringify(settings, null, 2)}\n`,
+        "utf8",
+      );
+    }
+    return settings;
+  }
+}
+
+async function writeLocalSettingsFile(value) {
+  await ensureDataRoot();
+  const settings = cleanLocalSettings(value);
+  await writeFile(
+    settingsFile,
+    `${JSON.stringify(settings, null, 2)}\n`,
+    "utf8",
+  );
+  applyRuntimeSettings(settings);
+  return settings;
+}
+
+function applyRuntimeSettings(settings) {
+  const openAlexKey = cleanApiKey(settings?.openAlexApiKey);
+  const semanticScholarKey = cleanApiKey(
+    settings?.semanticScholarApiKey,
+  );
+  if (openAlexKey) process.env.OPENALEX_API_KEY = openAlexKey;
+  else delete process.env.OPENALEX_API_KEY;
+  if (semanticScholarKey) {
+    process.env.SEMANTIC_SCHOLAR_API_KEY = semanticScholarKey;
+  } else {
+    delete process.env.SEMANTIC_SCHOLAR_API_KEY;
+  }
+}
+
+async function refreshRuntimeSettings() {
+  const settings = await readLocalSettingsFile();
+  applyRuntimeSettings(settings);
+  return settings;
+}
+
 async function handleLocalData(url, method, body) {
   if (url.pathname !== "/api/local-data") return undefined;
   try {
@@ -554,6 +878,62 @@ async function handleLocalData(url, method, body) {
   } catch {
     return jsonResponse(
       { message: "Anthropology Canteen could not read or write local data." },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleLocalSettings(url, method, body) {
+  if (url.pathname !== "/api/local-settings") return undefined;
+  try {
+    if (method === "GET" || method === "HEAD") {
+      const settings = await refreshRuntimeSettings();
+      return jsonResponse(
+        method === "HEAD" ? null : publicLocalSettings(settings),
+      );
+    }
+    if (method !== "PUT") {
+      return jsonResponse(
+        { message: "Only GET and PUT are supported." },
+        { status: 405, headers: { allow: "GET, PUT" } },
+      );
+    }
+    const input = parseJson(textFromBody(body));
+    const current = await readLocalSettingsFile();
+    const hasOpenAlexKey = Object.prototype.hasOwnProperty.call(
+      input || {},
+      "openAlexApiKey",
+    );
+    const hasSemanticScholarKey = Object.prototype.hasOwnProperty.call(
+      input || {},
+      "semanticScholarApiKey",
+    );
+    const rawOpenAlexKey = hasOpenAlexKey
+      ? clean(input?.openAlexApiKey, 240)
+      : current.openAlexApiKey;
+    const rawSemanticScholarKey = hasSemanticScholarKey
+      ? clean(input?.semanticScholarApiKey, 240)
+      : current.semanticScholarApiKey;
+    if (rawOpenAlexKey && !cleanApiKey(rawOpenAlexKey)) {
+      return jsonResponse(
+        { message: "The OpenAlex API key format is invalid." },
+        { status: 400 },
+      );
+    }
+    if (rawSemanticScholarKey && !cleanApiKey(rawSemanticScholarKey)) {
+      return jsonResponse(
+        { message: "The Semantic Scholar API key format is invalid." },
+        { status: 400 },
+      );
+    }
+    const settings = await writeLocalSettingsFile({
+      openAlexApiKey: rawOpenAlexKey,
+      semanticScholarApiKey: rawSemanticScholarKey,
+    });
+    return jsonResponse(publicLocalSettings(settings));
+  } catch {
+    return jsonResponse(
+      { message: "Anthropology Canteen could not save local settings." },
       { status: 500 },
     );
   }
@@ -654,6 +1034,13 @@ export function createAnthropologyServer({ autoClose = false } = {}) {
       let response =
         await handleLocalData(url, incoming.method || "GET", body);
       if (!response) {
+        response = await handleLocalSettings(
+          url,
+          incoming.method || "GET",
+          body,
+        );
+      }
+      if (!response) {
         response = handleRuntimeStatus(
           url,
           incoming.method || "GET",
@@ -662,6 +1049,7 @@ export function createAnthropologyServer({ autoClose = false } = {}) {
       }
       if (!response) response = await serveAsset(request);
       if (response.status === 404) {
+        await refreshRuntimeSettings();
         response = await worker.fetch(
           request,
           { ASSETS: { fetch: serveAsset } },
@@ -737,6 +1125,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   });
   server.listen(port, "127.0.0.1", async () => {
     await ensureDataRoot();
+    await refreshRuntimeSettings();
     await writeFile(pidFile, String(process.pid), "utf8");
     console.log("");
     console.log("Anthropology Canteen is ready.");
