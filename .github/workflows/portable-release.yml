@@ -33,7 +33,7 @@ jobs:
       - name: Check out the requested tag
         uses: actions/checkout@v6
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Require a normal tag matching package.json
@@ -121,9 +121,14 @@ jobs:
         shell: pwsh
         run: |
           $root = "outputs/${{ needs.validate-tag.outputs.windows_root }}"
-          ./packaging/windows/smoke-test.ps1 `
+          $smokeShell = Join-Path $PSHOME "pwsh.exe"
+          & $smokeShell -NoLogo -NoProfile -File `
+            ./packaging/windows/smoke-test.ps1 `
             -PackageRoot $root `
             -ZipPath "$root.zip"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows portable smoke test failed with exit code $LASTEXITCODE."
+          }
 
       - name: Upload Windows release-candidate artifact
         uses: actions/upload-artifact@v6

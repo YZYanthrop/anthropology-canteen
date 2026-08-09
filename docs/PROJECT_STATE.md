@@ -38,6 +38,13 @@ The `v1.1.1`, `macos-v1.1.1-beta.1`, and `v1.2.0` tags are immutable.
   build, test, and retain candidate artifacts for all three targets, but the
   workflow does not create a tag, GitHub Release, signature, notarization, or
   public publication.
+- The first `v1.2.0` tag run (`31301297604`) exposed a CI-shell false negative:
+  the Windows package completed every smoke assertion and printed its pass marker,
+  but an expected rejected-import probe left `$LASTEXITCODE=1` in the parent
+  shell. The immutable tag was not moved. Its remediation is harness-only: a
+  reviewed `main` workflow runs the tagged smoke in an independent PowerShell
+  process while every application, packaging, and archive input remains locked
+  to tag commit `aa8e3a25dcbe59cd57b83ecd94898efd343d36d0`.
 - Windows and macOS packages use the same transactional import implementation.
   It validates data/settings before changing files, refuses import while the
   local server is active, backs up replaced files, and rolls back a failed

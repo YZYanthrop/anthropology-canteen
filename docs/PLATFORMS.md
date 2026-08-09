@@ -97,8 +97,12 @@ system-wide security.
 - Final artifact names include the product version and target architecture.
 - Windows and macOS artifacts for a normal release come from the same commit
   and tag.
-- A normal tag run and a manual rerun of that tag use the same build definitions;
-  neither path publishes a GitHub Release automatically.
+- Normally, a tag run and a manual rerun use the same build definitions, and
+  neither path publishes a GitHub Release automatically. The documented
+  `v1.2.0` harness-only remediation is narrower: the manual run uses the reviewed
+  `main` workflow solely to launch the old tagged Windows smoke in an independent
+  PowerShell process, while all application, packaging, runtime, and archive
+  inputs are checked out from the immutable tag commit `aa8e3a25dcbe59cd57b83ecd94898efd343d36d0`.
 - The one-time `macos-v1.1.1-beta.1` bootstrap tag is an explicit exception:
   it leaves the formal `v1.1.1` tag untouched and must also rerun the Windows
   regression suite before publishing Mac beta artifacts.
