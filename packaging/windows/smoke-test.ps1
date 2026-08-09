@@ -264,9 +264,14 @@ try {
     Join-Path $ImportSource "anthropology-canteen-settings.json"
   ) -Encoding UTF8
   & $Node $Importer --source $ImportSource --target-root $ExtractedRoot
-  if ($LASTEXITCODE -eq 0) {
-    throw "The packaged data importer accepted invalid settings."
+  $RejectedImportExitCode = $LASTEXITCODE
+  if ($RejectedImportExitCode -ne 1) {
+    throw "The packaged data importer returned unexpected exit code $RejectedImportExitCode for invalid settings."
   }
+  # This non-zero exit is the expected result of the negative import probe.
+  # Clear it after the rejection assertion so pwsh does not report a false
+  # failure after the remaining PowerShell-only checks complete successfully.
+  $global:LASTEXITCODE = 0
   if ((Get-Content -LiteralPath (
         Join-Path $TargetData "anthropology-canteen-data.json"
       ) -Raw) -ne $ImportedDataText) {

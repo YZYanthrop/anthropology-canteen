@@ -68,7 +68,9 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(smoke, /process\.arch/);
   assert.match(smoke, /v24\.14\.0/);
   assert.match(smoke, /The packaged data importer failed/);
-  assert.match(smoke, /accepted invalid settings/);
+  assert.match(smoke, /\$RejectedImportExitCode = \$LASTEXITCODE/);
+  assert.match(smoke, /\$RejectedImportExitCode -ne 1/);
+  assert.match(smoke, /\$global:LASTEXITCODE = 0/);
   assert.match(smoke, /failed packaged import changed existing data/);
 
   assert.match(importLauncher, /runtime\\node\.exe/);
@@ -90,11 +92,15 @@ test("normal tags prepare all platform and source artifacts without publishing",
   assert.match(workflow, /tags:\n\s+- "v\*\.\*\.\*"/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /Existing normal release tag/);
+  assert.match(workflow, /ref: refs\/tags\/\$\{\{ env\.RELEASE_TAG \}\}/);
   assert.match(workflow, /\^v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+\$/);
   assert.match(workflow, /RELEASE_TAG.*v\$\{VERSION\}/);
   assert.match(workflow, /source_sha=\$SOURCE_SHA/);
   assert.match(workflow, /ref: \$\{\{ needs\.validate-tag\.outputs\.source_sha \}\}/);
   assert.match(workflow, /Windows x64 native package and smoke test/);
+  assert.match(workflow, /Join-Path \$PSHOME "pwsh\.exe"/);
+  assert.match(workflow, /Windows portable smoke test failed/);
+  assert.doesNotMatch(workflow, /\$global:LASTEXITCODE = 0/);
   assert.match(workflow, /runner: macos-15\n/);
   assert.match(workflow, /runner: macos-15-intel/);
   assert.match(workflow, /git archive --format=zip/);
