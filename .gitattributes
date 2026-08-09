@@ -1,0 +1,4 @@
+packaging/macos/*.sh text eol=lf
+packaging/macos/*.command text eol=lf
+packaging/macos/*.mjs text eol=lf
+.github/workflows/*.yml text eol=lf

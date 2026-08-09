@@ -45,31 +45,48 @@ that tag.
   root.
 - `.github/workflows/ci.yml` currently verifies Windows only and has no tag,
   packaging, artifact, or GitHub Release job.
+- `packaging/macos/` now contains the shared macOS packaging layer: a reliable
+  Finder-double-clickable command launcher, diagnostics, transactional data
+  import, native build/privacy checks, and native smoke tests. The unsigned
+  beta intentionally has no `.app` wrapper because App Translocation can break
+  access to sibling runtime files.
+- `.github/workflows/macos-portable.yml` reruns Windows shared-code regression
+  and builds/tests arm64 on `macos-15` plus x64 on `macos-15-intel`. Manual
+  dispatch uploads beta workflow artifacts only; it does not tag or publish a
+  GitHub Release.
 
 See `docs/ARCHITECTURE.md` and `docs/PLATFORMS.md` for boundaries.
 
 ## Active milestone
 
-Create a macOS portable beta for the existing 1.1.1 application without
-forking the product code:
+Complete native and human validation of the implemented macOS portable beta
+for the existing 1.1.1 application without forking the product code:
 
 1. Keep folder-local `data/` as the default on both systems. Add a configurable
    data root only if the final macOS package layout genuinely requires it, and
    keep the Windows default unchanged.
-2. Add macOS Apple Silicon and Intel runtime packaging and launch/import
-   helpers.
+2. Keep the implemented Apple Silicon and Intel runtime packaging and
+   launch/import helpers covered by deterministic tests.
 3. Preserve the “close the last Anthropology Canteen page, then stop the local
    server” behavior.
-4. Add native macOS CI smoke tests and automated GitHub release packaging,
-   using the same pinned Node.js release as Windows unless a documented
-   compatibility reason requires otherwise.
-5. Produce blank, unsigned beta artifacts first. Signing and notarization are a
+4. Run the implemented native macOS CI smoke tests. Workflow dispatch may
+   retain beta artifacts, but GitHub Release publication remains a separate,
+   explicitly authorized action.
+5. Inspect blank, unsigned beta artifacts first. Signing and notarization are a
    later optional stage requiring explicit credentials and authorization.
+
+Implementation is complete in the repository but has not yet run on a native
+Mac in this worktree. Do not call either Mac target stable until Actions passes
+and the Finder/Gatekeeper/default-browser experience is tested by a person.
+Connecting Windows ZIP packaging and tag triggers to one release workflow is
+the next milestone. The current workflow is PR/manual-dispatch Mac beta
+validation and does not claim that normal tags already build three platforms.
 
 Use a short-lived worktree branch named `codex/macos-portable-v1.1.1`. The
 initial test tag may be named `macos-v1.1.1-beta.1`; the product displayed by
-that beta remains 1.1.1. After the packaging infrastructure is merged, every
-normal product tag must generate all supported platform artifacts.
+that beta remains 1.1.1. After Windows packaging joins the same tag-driven
+workflow, every normal product tag must generate all supported platform
+artifacts; that three-platform automation is a next milestone.
 
 ## Update discipline
 

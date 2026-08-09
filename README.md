@@ -1,8 +1,32 @@
-# Anthropology Canteen Windows 便携版
+# Anthropology Canteen 便携版
 
 这是一个本地运行的版本，自带运行环境。使用者不需要安装 Node.js，也不需要账号。
 
 当前正式版本：`v1.1.1`。
+
+平台状态：Windows x64 是当前稳定便携版；macOS Apple Silicon 与 Intel
+现提供首个未签名 beta 的打包基础设施，尚未标记为稳定。两种平台使用同一套应用、
+本地服务器和 version 7 数据格式。
+
+## macOS 未签名 beta
+
+- 两个目标文件分别为
+  `Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.1.1.zip` 与
+  `Anthropology-Canteen-macOS-Intel-x64-v1.1.1.zip`，都自带 Node.js 24.14.0。
+- 首个 beta 的最低系统要求是 macOS 13.5；更早版本的 macOS 不在随包
+  Node.js 24.14.0 的支持范围内。
+- 完整解压后，Finder 双击 `Anthropology Canteen.command` 是推荐主入口；它会短暂显示
+  Terminal，服务器就绪并打开浏览器后脚本退出，服务器继续在后台运行。
+  `start-local.command` 是需要保留 Terminal 窗口的诊断入口。本 beta 不提供 `.app`，
+  以避免未签名下载应用发生 App Translocation 后找不到同目录运行文件。
+- 首次打开未签名 beta 时，只通过 Finder 的“打开”或“隐私与安全性”批准这个具体项目；
+  不要关闭 Gatekeeper，也不要降低系统整体安全设置。
+- 数据仍写在当前解压文件夹的 `data/`。旧版导入工具只接受
+  `anthropology-canteen-data.json`（或直接包含它的 `data` 文件夹），验证支持的数据/
+  设置 schema、检查正在运行的服务器、备份目标文件，并只在同目录存在时迁移设置文件。
+- 原生 Actions 会检查双架构启动、持久化、导入、SSE 自动关闭、ZIP 隐私和执行权限；
+  Finder、Gatekeeper、默认浏览器和字体显示仍需真人 Mac 测试。Apple Silicon 首测
+  是把 beta 称为可用前的必要条件，Intel 真人测试也强烈建议完成。
 
 ## 学者发现与作者档案
 

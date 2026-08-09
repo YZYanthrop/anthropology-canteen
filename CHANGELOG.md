@@ -2,6 +2,21 @@
 
 本项目从 `v1.0.0` 起采用[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] - macOS v1.1.1 beta
+
+- 新增 Apple Silicon arm64 与 Intel x64 的普通文件夹便携包；分别携带官方
+  Node.js 24.14.0 运行时、许可证、Finder 可双击的 `.command` 主入口、前台诊断和
+  旧版数据导入工具。未签名 beta 不提供可能受 App Translocation 影响的 `.app`。
+- macOS 继续使用解压目录内的 `data/` 和共享 `portable-server.mjs`，保留 90 秒未连接
+  退出、最后页面关闭约 8 秒退出及相邻旧版自动迁移语义，没有复制应用或服务器逻辑。
+- 手动导入会先验证受支持的数据版本、基本结构与可选 settings version 2 白名单字段，
+  活 PID 存在时拒绝导入，然后备份已有目标；无设置源时保留现有目标设置。
+- 新增 `macos-15` arm64、`macos-15-intel` x64 原生打包/smoke 工作流，并在
+  Windows 重跑共同代码回归。ZIP 只有一个版本化根目录，保留执行权限，生成 SHA-256，
+  且扫描用户数据、设置、PID、环境文件、开发依赖、缓存和个人路径。
+- 这是未签名、未公证的 beta 基础设施，尚未在本地 Windows 环境完成 Finder、
+  Gatekeeper、默认浏览器或真实 Mac 字体体验验证；没有移动 `v1.1.1` 标签或发布文件。
+
 ## [1.1.1] - 2026-08-07
 
 ### 学者搜索与身份模型重构

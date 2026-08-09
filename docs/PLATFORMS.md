@@ -5,8 +5,12 @@
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
 | Windows x64 | Stable in v1.1.1 | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | Planned for first beta | planned bundled `darwin-arm64` Node.js | not implemented yet | planned portable folder `data/` |
-| macOS Intel | Planned for first beta | planned bundled `darwin-x64` Node.js | not implemented yet | planned portable folder `data/` |
+| macOS Apple Silicon | Unsigned beta infrastructure; native/human validation pending | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | Unsigned beta infrastructure; native/human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+
+The first macOS beta requires macOS 13.5 or newer, matching the minimum
+supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
+are not supported by these beta archives.
 
 ## Shared files
 
@@ -34,10 +38,10 @@ the diagnostic CMD intentionally does not.
 
 ## macOS layer
 
-The macOS beta should add:
+The macOS beta packaging layer provides:
 
-- a launcher that selects the correct bundled Node.js architecture, starts the
-  local server without requiring a user-installed Node.js, waits for
+- architecture-specific packages with a Finder-double-clickable command that
+  starts the bundled Node.js in the background, waits for
   `/api/runtime-status`, and opens the default browser;
 - a diagnostic launcher when the background launch fails;
 - an old-version data import helper that copies only the approved local data
@@ -54,10 +58,12 @@ remain foreground-running.
 The Mac import helper must validate the chosen JSON, back up existing local
 data, and copy settings only when they are present beside the selected data.
 
-The first beta may be unsigned. Documentation must explain the one-time macOS
-Gatekeeper approval accurately and must not recommend disabling system-wide
-security. A polished signed/notarized app is a later optional distribution
-stage.
+The recommended `.command` briefly shows Terminal; the diagnostic command stays
+in Terminal intentionally. The unsigned beta intentionally has no `.app`
+wrapper because App Translocation may separate a downloaded app from the
+sibling runtime and compiled files it needs. Documentation explains approval
+of the specific downloaded item and never recommends disabling Gatekeeper or
+system-wide security.
 
 ## Artifact rules
 

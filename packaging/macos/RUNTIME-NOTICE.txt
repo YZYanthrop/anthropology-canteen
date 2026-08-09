@@ -1,0 +1,10 @@
+Anthropology Canteen macOS portable runtime notice
+
+This portable beta contains the official Node.js 24.14.0 executable for one
+macOS architecture. Node.js is distributed under its own license. A copy is
+included at runtime/LICENSE. The corresponding upstream source and license are:
+
+https://nodejs.org/dist/v24.14.0/
+https://github.com/nodejs/node/blob/v24.14.0/LICENSE
+
+Anthropology Canteen itself is licensed under the MIT License in LICENSE.

@@ -54,6 +54,9 @@ Windows `v1.1.1` 补做首个 Mac 测试包时，不移动 `v1.1.1` 标签；使
 
 ## 正常公开发布
 
+本节描述 Windows 包装接入同一 tag-driven workflow 后的下一里程碑目标；当前
+`macOS portable beta` 工作流没有标签触发，也不生成 Windows ZIP，不能按本节执行正式发布。
+
 1. 确认工作区干净，且不存在个人数据、密钥、缓存或旧构建产物。
 2. 更新 `package.json`、`CHANGELOG.md`、`docs/PROJECT_STATE.md` 和发布日期。
 3. 完成本地基础验证并提交：`chore: release vX.Y.Z`。
@@ -78,7 +81,24 @@ Windows `v1.1.1` 补做首个 Mac 测试包时，不移动 `v1.1.1` 标签；使
 4. 生成不含数据和密钥的未签名 beta 包。
 5. 合并到 `main` 后再使用 `macos-v1.1.1-beta.1` 测试标签，重跑 Windows 回归并由
    真实 Mac 用户完成首次启动验证。
-6. 将打包基础设施合并到 `main`；此后的正常标签自动生成所有平台包。
+6. 将打包基础设施合并到 `main`；待 Windows 包装也接入同一发布工作流后，正常标签才可
+   自动生成全部受支持平台包。当前 Mac beta 工作流不得被描述为完整的正式发布流水线。
+
+当前仓库中的 beta 生成入口是 GitHub Actions 的 `macOS portable beta`
+`workflow_dispatch`。它先在 Windows 重跑 lint、build 和全部离线测试，再分别在
+`macos-15`（arm64）与 `macos-15-intel`（x64）原生构建和 smoke，成功后上传：
+
+- `Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.1.1.zip` 及 SHA-256；
+- `Anthropology-Canteen-macOS-Intel-x64-v1.1.1.zip` 及 SHA-256。
+
+该工作流只生成有 14 天保留期的 Actions artifacts，不创建或移动标签，不创建
+GitHub Release，也不签名或公证。合并后若决定使用一次性测试标签，另行明确授权创建
+`macos-v1.1.1-beta.1`；不得把它改写成 `v1.1.1`，也不得覆盖现有 Windows Release。
+
+每个 Mac 原生 job 必须从共同源码重新构建，校验 runner 与随包 Node 架构，检查首次
+version 7 空白数据、PUT 后重启持久化、导入及备份、最后 SSE 断开约 8 秒退出、单根目录、
+ZIP 执行权限、SHA-256 和隐私黑名单。Actions 通过后仍需真人完成 Finder、Gatekeeper、
+默认浏览器与字体显示检查；Apple Silicon 必测，Intel 强烈建议测试。
 
 ## 数据与隐私检查
 
