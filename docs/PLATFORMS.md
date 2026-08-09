@@ -5,18 +5,19 @@
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
 | Windows x64 | Stable in v1.2.0 | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | Unsigned v1.2.0 portable release; native CI required, v1.1.1 beta M2 human validation passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
-| macOS Intel | Unsigned v1.2.0 portable release; native CI required, human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Apple Silicon | Unsigned v1.2.0 portable release; native CI passed, v1.1.1 beta M2 human validation passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | Unsigned v1.2.0 portable release; native CI passed, human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 
-The first macOS beta requires macOS 13.5 or newer, matching the minimum
+The macOS v1.2.0 packages require macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
-are not supported by these beta archives.
+are not supported by these portable archives.
 
 ## v1.2.0 unified release
 
 Version 1.2.0 publishes Windows x64, macOS Apple Silicon arm64, and macOS Intel
 x64 from one source commit, one `package.json` version, one compiled application,
-and the same local data/settings formats.
+and the same local data/settings formats in the
+[public v1.2.0 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.2.0).
 
 The unified workflow is build-only. A normal version tag builds and
 tests all three targets on native runners; manual dispatch can rerun an existing
@@ -115,6 +116,13 @@ permissions, HTTP endpoints, persistence, shutdown, and archive contents. They
 cannot fully replace a person's first-launch Finder, Gatekeeper, default-browser,
 and visual-font experience. The first beta requires one real Apple Silicon user
 test; an Intel user test is strongly preferred before calling Intel stable.
+
+The formal v1.2.0 remediation run, GitHub Actions
+[#31305111585](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/31305111585),
+passed shared verification, Windows x64 package/smoke, native Apple Silicon
+package/smoke, native Intel package/smoke, and the clean source archive. All
+three public product ZIPs and their sidecars were downloaded again after
+publication and matched the SHA-256 values in `CHANGELOG.md`.
 
 The first native matrix run, GitHub Actions
 [#31290870084](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/31290870084),

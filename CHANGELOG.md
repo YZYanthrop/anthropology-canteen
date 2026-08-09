@@ -28,6 +28,16 @@
 - `Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.2.0.zip`
 - `Anthropology-Canteen-macOS-Intel-x64-v1.2.0.zip`
 - 每个附件的 SHA-256 记录在同名 `.sha256` 文件及 GitHub Release 说明中。
+- [v1.2.0 GitHub Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.2.0)
+  来自不可移动标签提交 `aa8e3a25dcbe59cd57b83ecd94898efd343d36d0`；三平台原生构建与 smoke
+  在 [Actions #31305111585](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/31305111585)
+  全部通过。
+- 发布后的三个公开 ZIP 与 sidecar 已重新下载并核对：
+  - Windows x64：`779DA709836840745AF6829A4413D457FAA2E14EC51DC71E578107BE6F8B6BEA`；
+  - macOS Apple Silicon arm64：`FA43E0E42BEEB611C74E62EF8DE52496FF9DFBF834935F0AEB297F842A01F539`；
+  - macOS Intel x64：`FC2B6C02714B3C2A9165B43848D8B542D3B6AC7413F770204D58ED2619DDD306`。
+- 首次标签运行 #31301297604 的 Windows smoke 因预期失败用例遗留退出码而被 CI 误报；
+  标签未移动，后续运行只修复 CI 调用方式，并从同一标签提交完整重建所有平台。
 
 ## [macos-v1.1.1-beta.1] - 2026-08-09
 
