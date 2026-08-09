@@ -94,6 +94,13 @@ smoke 会故意执行一次应被拒绝的无效导入，只有确认该导入�
 工作流通过独立 `pwsh -File` 子进程运行标签内的 smoke，并明确要求子进程正常返回 0；
 真实断言或清理失败仍会终止 job。
 
+v1.2.0 的首次标签运行 #31301297604 正是上述负面导入退出码造成的 CI 误报；标签没有移动。
+修复经 PR #6 合并后，从 `main` 手动调度既有标签的运行
+[#31305111585](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/31305111585)
+将所有产物 job 锁定回标签提交 `aa8e3a25dcbe59cd57b83ecd94898efd343d36d0`，三平台、共享测试和源码归档全部通过。
+公开 [v1.2.0 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.2.0)
+的三个产品 ZIP 与 sidecar 随后都重新下载并通过 SHA-256 核对。
+
 源码归档必须在最终改动已经提交后从 Git 对象生成，而不是压缩当前工作目录。推荐使用
 单根目录的 `git archive`，以便只包含受版本控制的源码并排除 `data/`、依赖、构建产物、
 缓存和本机文件。v1.2.0 及后续正常版本都遵循下面的公开发布步骤。
@@ -112,9 +119,10 @@ smoke 会故意执行一次应被拒绝的无效导入，只有确认该导入�
    - macOS Apple Silicon ZIP；
    - macOS Intel ZIP。
 6. 检查三个标签构建任务、隐私扫描、原生 smoke 和 SHA-256 全部通过。
-7. 再次确认发布授权后，将同一标签构建出的三个文件附加到一个 GitHub Release；不要
+7. 再次确认发布授权后，将同一标签构建出的三个 ZIP 及其 `.sha256` sidecar 附加到一个
+   GitHub Release；不要
    混用手动运行、旧提交或旧平台版本的产物。
-8. 下载一次发布附件并核对 SHA-256；在 `CHANGELOG.md` 或 Release 说明中记录。
+8. 从公开 Release 下载发布附件并核对 SHA-256；在 `CHANGELOG.md` 或 Release 说明中记录。
 
 推送、建立 Release、配置 Apple 凭据、签名和公证都是外部操作，执行前必须得到
 使用者明确授权。

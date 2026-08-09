@@ -12,7 +12,8 @@ Last updated: 2026-08-09
 - Version 5 and 6 data are migrated defensively: previously auto-merged author
   IDs are quarantined while subscriptions and user states are preserved.
 - Current published distributions: Windows x64 plus unsigned macOS Apple
-  Silicon arm64 and Intel x64 portable ZIPs in one `v1.2.0` Release.
+  Silicon arm64 and Intel x64 portable ZIPs in one
+  [v1.2.0 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.2.0).
 - macOS bootstrap tag: `macos-v1.1.1-beta.1` at the validated build commit
   `c2ec6d1`; its GitHub Pre-release is
   [published here](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/macos-v1.1.1-beta.1).
@@ -45,6 +46,16 @@ The `v1.1.1`, `macos-v1.1.1-beta.1`, and `v1.2.0` tags are immutable.
   reviewed `main` workflow runs the tagged smoke in an independent PowerShell
   process while every application, packaging, and archive input remains locked
   to tag commit `aa8e3a25dcbe59cd57b83ecd94898efd343d36d0`.
+- The remediation run
+  [#31305111585](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/31305111585)
+  completed successfully: tag validation, shared verification, Windows x64,
+  native macOS arm64, native macOS x64, and the clean source archive all passed.
+  The published ZIPs and sidecars were then downloaded from the public Release
+  and rechecked against SHA-256.
+- Published product SHA-256 values are Windows
+  `779DA709836840745AF6829A4413D457FAA2E14EC51DC71E578107BE6F8B6BEA`,
+  macOS arm64 `FA43E0E42BEEB611C74E62EF8DE52496FF9DFBF834935F0AEB297F842A01F539`,
+  and macOS x64 `FC2B6C02714B3C2A9165B43848D8B542D3B6AC7413F770204D58ED2619DDD306`.
 - Windows and macOS packages use the same transactional import implementation.
   It validates data/settings before changing files, refuses import while the
   local server is active, backs up replaced files, and rolls back a failed
