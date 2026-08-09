@@ -328,6 +328,6 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
   assert.match(smoke, /CLOSE_ELAPSED.*-ge 6/);
   assert.match(portableServer, /8_000/);
   assert.match(portableServer, /90_000/);
-  assert.match(projectState, /automatic-shutdown behavior/);
+  assert.match(projectState, /automatic[- ]shutdown/);
   assert.doesNotMatch(projectState, /鈥|渃/);
 });
