@@ -4,14 +4,15 @@ Last updated: 2026-08-09
 
 ## Stable baseline
 
-- Current public product version: `v1.1.1`.
-- Stable Git tag: `v1.1.1` at commit `a03a32c`.
+- Current public product version: `v1.2.0`.
+- Stable Git tag: `v1.2.0`; Windows x64, macOS arm64, and macOS x64 artifacts
+  are built from that one immutable tag.
 - Local data schema: version 7.
 - Local API-key settings schema: version 2.
 - Version 5 and 6 data are migrated defensively: previously auto-merged author
   IDs are quarantined while subscriptions and user states are preserved.
-- Current published distributions: the stable Windows portable ZIP and an
-  unsigned macOS 1.1.1 beta Pre-release for Apple Silicon and Intel.
+- Current published distributions: Windows x64 plus unsigned macOS Apple
+  Silicon arm64 and Intel x64 portable ZIPs in one `v1.2.0` Release.
 - macOS bootstrap tag: `macos-v1.1.1-beta.1` at the validated build commit
   `c2ec6d1`; its GitHub Pre-release is
   [published here](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/macos-v1.1.1-beta.1).
@@ -20,33 +21,30 @@ Last updated: 2026-08-09
 - Source development requires Node.js 22.13 or newer and pnpm 11.9. The current
   Windows share package pins Node.js 24.14.0.
 
-The `v1.1.1` tag is immutable. macOS bootstrap work must not move or replace
-that tag.
+The `v1.1.1`, `macos-v1.1.1-beta.1`, and `v1.2.0` tags are immutable.
 
-## Prepared v1.2.0 candidate
+## v1.2.0 release baseline
 
-- The repository now prepares product version `1.2.0` as an unpublished source
-  candidate. The current public version and stable tag remain `v1.1.1`.
-- This is a release-alignment milestone: Windows x64, macOS Apple Silicon
-  arm64, and macOS Intel x64 are built from the same source commit and product
-  version. It does not create separate platform products or branches.
+- This release aligns Windows x64, macOS Apple Silicon arm64, and macOS Intel
+  x64 on the same source commit and product version. It does not create separate
+  platform products or branches.
 - The only user-visible source change is removal of the Ruth Benedict quotation
   from the right rail. The application architecture and feature set are
   otherwise unchanged.
 - Local data remains version 7 and local API-key settings remain version 2. No
   v1.2.0-specific data migration is required.
-- The unified portable workflow is build-only. A normal version tag starts the
-  build, and a manual dispatch can rerun an existing normal tag. Both paths may
+- The unified portable workflow remains build-only. A normal version tag starts
+  the build, and a manual dispatch can rerun an existing normal tag. Both paths may
   build, test, and retain candidate artifacts for all three targets, but the
   workflow does not create a tag, GitHub Release, signature, notarization, or
   public publication.
-- Creating or pushing `v1.2.0` and publishing its three platform artifacts is
-  deferred to a separate task with explicit authorization.
-- Local preparation verification passed on Windows: lint, production build,
-  all 31 deterministic tests, reproducible Windows x64 packaging, blank-data
-  privacy inspection, launcher startup, folder-local persistence, restart, and
-  automatic shutdown. The v1.2.0 macOS packages still require their native
-  arm64/x64 workflow jobs before publication.
+- Windows and macOS packages use the same transactional import implementation.
+  It validates data/settings before changing files, refuses import while the
+  local server is active, backs up replaced files, and rolls back a failed
+  installation.
+- Release verification covers lint, production build, all 31 deterministic
+  tests, reproducible packaging, blank-data privacy inspection, native launcher
+  startup, folder-local persistence, import, restart, and automatic shutdown.
 
 ## Current product contract
 
@@ -70,19 +68,20 @@ that tag.
 - `portable-server.mjs`: shared local HTTP server, local-data/settings APIs,
   migration, static assets, browser-session tracking, and automatic shutdown.
 - `tests/`: deterministic regression and portable-server tests.
-- Windows-only launch and migration helpers currently live at the repository
-  root.
+- Windows-only launch helpers live at the repository root.
+- `packaging/shared/import-data.mjs` is the transactional import implementation
+  packaged behind both platform-specific import launchers.
 - `packaging/windows/` provides reproducible Windows x64 runtime assembly,
   archive privacy checks, and a native startup/persistence/shutdown smoke test.
 - `.github/workflows/ci.yml` continues to provide the ordinary source
   regression check.
-- `packaging/macos/` now contains the shared macOS packaging layer: a reliable
-  Finder-double-clickable command launcher, diagnostics, transactional data
-  import, native build/privacy checks, and native smoke tests. The unsigned
+- `packaging/macos/` contains the macOS packaging layer: a reliable
+  Finder-double-clickable command launcher, diagnostics, native build/privacy
+  checks, and native smoke tests. The unsigned
   beta intentionally has no `.app` wrapper because App Translocation can break
   access to sibling runtime files.
 - The historical macOS beta workflow established native arm64 and x64 package
-  validation. The v1.2.0 candidate extends that model into one build-only
+  validation. v1.2.0 extends that model into one build-only
   `.github/workflows/portable-release.yml` workflow for Windows x64 and both
   macOS architectures; publication remains a separate authorized operation.
 
@@ -103,19 +102,16 @@ points to the exact build commit, and both architecture packages were
 published with SHA-256 files. The product displayed by that beta remains 1.1.1,
 and Intel has no recorded human test.
 
-The active milestone is the unpublished v1.2.0 source candidate:
+The active milestone is v1.2.x maintenance:
 
 1. Keep Windows x64, macOS Apple Silicon, and macOS Intel on one source commit,
    one product version, and one build-only workflow.
-2. Complete source verification and prepare a clean source archive without
-   user data, secrets, dependencies, generated output, or personal paths.
-3. In a separately authorized publication task, create and push the immutable
-   `v1.2.0` tag, inspect all three native build results, and publish them to one
-   GitHub Release only after every required job passes.
-4. Preserve folder-local data, blank-archive privacy, migration compatibility,
-   and current automatic-shutdown behavior on every platform.
-5. Keep signing and notarization optional and separately authorized; the
-   published 1.1.1 Mac beta remains unsigned and unnotarized.
+2. Preserve folder-local data, blank-archive privacy, migration compatibility,
+   transactional import, and automatic shutdown on every platform.
+3. Collect an Intel Mac human first-launch test when available; native Intel CI
+   is required for every published version even without that optional report.
+4. Keep signing and notarization optional and separately authorized; current
+   macOS packages remain unsigned and unnotarized.
 
 ## Update discipline
 

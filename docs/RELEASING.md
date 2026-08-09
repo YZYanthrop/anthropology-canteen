@@ -77,10 +77,9 @@ Codex 对话只负责组织工作，不代表独立的产品分支。代码、�
 - ZIP 中没有 `data/`、设置文件、密钥、个人路径、开发依赖或缓存；
 - 可执行权限、根目录结构、版本号和 SHA-256 正确。
 
-## v1.2.0 源码候选
+## v1.2.0 统一发布基线
 
-仓库已经准备 `v1.2.0` 源码候选，但当前公开正式版本和稳定标签仍是 `v1.1.1`。
-本次是三平台发布基线的整理：Windows x64、macOS Apple Silicon arm64 和 macOS
+v1.2.0 是统一三平台发布基线：Windows x64、macOS Apple Silicon arm64 和 macOS
 Intel x64 必须读取同一个 `package.json` 版本并从同一 Git 提交构建。本地数据仍为
 version 7，API-key settings 仍为 version 2，不需要新增数据迁移。
 
@@ -91,8 +90,7 @@ version 7，API-key settings 仍为 version 2，不需要新增数据迁移。
 
 源码归档必须在最终改动已经提交后从 Git 对象生成，而不是压缩当前工作目录。推荐使用
 单根目录的 `git archive`，以便只包含受版本控制的源码并排除 `data/`、依赖、构建产物、
-缓存和本机文件。`v1.2.0` 标签、正式附件及 GitHub Release 留给后续获得明确授权的
-发布任务处理。
+缓存和本机文件。v1.2.0 及后续正常版本都遵循下面的公开发布步骤。
 
 ## 正常公开发布
 

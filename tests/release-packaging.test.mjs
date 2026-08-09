@@ -39,6 +39,10 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
     new URL("../packaging/windows/README-Windows.txt", import.meta.url),
     "utf8",
   );
+  const importLauncher = await readFile(
+    new URL("../import-data-from-old-version.cmd", import.meta.url),
+    "utf8",
+  );
 
   assert.match(build, /\$NodeVersion = "24\.14\.0"/);
   assert.match(build, /node-v\$NodeVersion-win-x64\.zip/);
@@ -49,6 +53,8 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(build, /Assert-ChildPath/);
   assert.match(build, /Compress-Archive/);
   assert.match(build, /runtime\\LICENSE/);
+  assert.match(build, /packaging\\shared\\import-data\.mjs/);
+  assert.match(build, /tools\\import-data\.mjs/);
   assert.match(readme, /@PRODUCT_VERSION@/);
 
   assert.match(smoke, /blank version 7 structure/);
@@ -61,6 +67,13 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(smoke, /cscript\.exe/);
   assert.match(smoke, /process\.arch/);
   assert.match(smoke, /v24\.14\.0/);
+  assert.match(smoke, /The packaged data importer failed/);
+  assert.match(smoke, /accepted invalid settings/);
+  assert.match(smoke, /failed packaged import changed existing data/);
+
+  assert.match(importLauncher, /runtime\\node\.exe/);
+  assert.match(importLauncher, /tools\\import-data\.mjs/);
+  assert.doesNotMatch(importLauncher, /Copy-Item|ConvertFrom-Json/);
 
   assert.match(launcher, /%PORT%/);
   assert.match(launcher, /%ANTHROPOLOGY_CANTEEN_SKIP_OPEN%/);

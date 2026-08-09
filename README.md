@@ -2,44 +2,41 @@
 
 这是一个本地运行的版本，自带运行环境。使用者不需要安装 Node.js，也不需要账号。
 
-当前正式版本：`v1.1.1`。
+当前正式版本：`v1.2.0`。
 
-仓库中已经准备 `v1.2.0` 源码候选，但尚未创建 `v1.2.0` 标签或 GitHub Release。
-该候选把 Windows x64、macOS Apple Silicon 与 macOS Intel 纳入同一版本、同一源码
-提交和同一构建流程；三种平台继续使用同一套应用、本地服务器和 version 7 数据格式。
-正式发布、推送标签和上传附件将在另一个获得明确授权的任务中进行。
-
-## v1.2.0 发布候选（尚未发布）
+## v1.2.0 三平台发布
 
 - 本次版本用于把此前分别发布的 Windows 1.1.1 与 macOS 1.1.1 beta 整理为共同的
   三平台发布基线，不改变账号、存储、学者身份或信息流架构。
 - 唯一的页面内容调整是移除右侧栏中的人类学家引文；其余产品功能保持不变。
 - Windows x64、macOS arm64 与 macOS x64 必须从同一提交读取同一个 `package.json`
   版本并分别在原生 runner 构建、测试。
-- 统一工作流由正常版本标签触发，也可手动重新验证一个已经存在的正常标签；它只负责
-  构建、验证和上传临时构建产物，不会自行创建 GitHub Release、签名、公证或公开发布。
+- 三个平台从同一个 `v1.2.0` 标签分别在原生 runner 构建和测试，并发布在同一个
+  GitHub Release 中。
 - 本地数据仍为 version 7，API-key settings 仍为 version 2；从 1.1.1 更新不需要新的
   数据迁移。
+- Windows 与 macOS 使用同一个事务式导入器：导入前验证 data/settings schema、检查
+  正在运行的服务并备份目标；失败导入不会覆盖原有数据。
 
 ## macOS 便携版说明
 
-- 已发布的首个 1.1.1 未签名 beta 文件分别为
-  `Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.1.1.zip` 与
-  `Anthropology-Canteen-macOS-Intel-x64-v1.1.1.zip`，都自带 Node.js 24.14.0。
-- 首个 beta 的最低系统要求是 macOS 13.5；更早版本的 macOS 不在随包
+- v1.2.0 未签名便携包分别为
+  `Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.2.0.zip` 与
+  `Anthropology-Canteen-macOS-Intel-x64-v1.2.0.zip`，都自带 Node.js 24.14.0。
+- 最低系统要求是 macOS 13.5；更早版本的 macOS 不在随包
   Node.js 24.14.0 的支持范围内。
 - 完整解压后，Finder 双击 `Anthropology Canteen.command` 是推荐主入口；它会短暂显示
   Terminal，服务器就绪并打开浏览器后脚本退出，服务器继续在后台运行。
-  `start-local.command` 是需要保留 Terminal 窗口的诊断入口。本 beta 不提供 `.app`，
+  `start-local.command` 是需要保留 Terminal 窗口的诊断入口。本版本不提供 `.app`，
   以避免未签名下载应用发生 App Translocation 后找不到同目录运行文件。
-- 首次打开未签名 beta 时，只通过 Finder 的“打开”或“隐私与安全性”批准这个具体项目；
+- 首次打开未签名版本时，只通过 Finder 的“打开”或“隐私与安全性”批准这个具体项目；
   不要关闭 Gatekeeper，也不要降低系统整体安全设置。
 - 数据仍写在当前解压文件夹的 `data/`。旧版导入工具只接受
   `anthropology-canteen-data.json`（或直接包含它的 `data` 文件夹），验证支持的数据/
   设置 schema、检查正在运行的服务器、备份目标文件，并只在同目录存在时迁移设置文件。
 - 原生 Actions 会检查双架构启动、持久化、导入、SSE 自动关闭、ZIP 隐私和执行权限；
-  Finder、Gatekeeper、默认浏览器和字体显示仍需真人 Mac 测试。Apple Silicon 首测
-  是把 beta 称为可用前的必要条件，Intel 真人测试也强烈建议完成。
+  Finder、Gatekeeper、默认浏览器和字体显示仍需真人 Mac 测试。Apple Silicon 已有
+  v1.1.1 beta 的 M2 真人验证记录；Intel 真人测试仍强烈建议完成。
 
 ## 学者发现与作者档案
 

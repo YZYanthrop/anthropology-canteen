@@ -2,23 +2,32 @@
 
 本项目从 `v1.0.0` 起采用[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [1.2.0] - 尚未发布
+## [1.2.0] - 2026-08-09
 
-### 三平台发布候选
+### 三平台正式发布
 
 - 将 Windows x64、macOS Apple Silicon arm64 与 macOS Intel x64 整理为同一产品版本、
   同一源码提交和同一构建基线，不再把后续正式版本拆成平台专属发布。
-- 统一构建工作流由正常版本标签触发，也可手动重新验证一个已经存在的正常标签；它负责
-  在对应原生 runner 构建、测试并上传三个平台的临时构建产物和 SHA-256，但不会创建
-  GitHub Release，也不会签名、公证或公开发布。
-- 本次只准备源码候选。`v1.2.0` 标签、三平台正式附件和 GitHub Release 尚未创建，
-  必须在后续获得明确授权的发布任务中完成。
+- `v1.2.0` 标签在对应原生 runner 构建、测试 Windows x64、macOS Apple Silicon arm64
+  与 macOS Intel x64，并将三个便携包发布在同一个 GitHub Release；macOS 包未签名、
+  未公证。
+- 同一标签同时生成经过路径隐私检查的源码归档，避免混入 `data/`、依赖、构建产物、
+  缓存或本机文件。
 
 ### 界面与兼容性
 
 - 移除页面右侧栏中的 Ruth Benedict 引文，不再放置人类学家名言。
 - 应用功能与持久化结构保持不变：本地数据仍为 version 7，API-key settings 仍为
   version 2；1.1.1 用户的关注、关注日期、状态、翻译和缓存记录无需额外迁移。
+- Windows 与 macOS 改为共用事务式数据导入器。导入会先验证 data/settings schema、
+  检查正在运行的服务并备份目标；无效设置或中途失败不会留下部分覆盖的数据。
+
+### 发布文件
+
+- `Anthropology-Canteen-Windows-x64-v1.2.0.zip`
+- `Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.2.0.zip`
+- `Anthropology-Canteen-macOS-Intel-x64-v1.2.0.zip`
+- 每个附件的 SHA-256 记录在同名 `.sha256` 文件及 GitHub Release 说明中。
 
 ## [macos-v1.1.1-beta.1] - 2026-08-09
 

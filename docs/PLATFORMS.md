@@ -4,30 +4,27 @@
 
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
-| Windows x64 | Stable in v1.1.1 | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | Unsigned beta published; native CI and M2 human validation passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
-| macOS Intel | Unsigned beta published; native CI passed, human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| Windows x64 | Stable in v1.2.0 | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
+| macOS Apple Silicon | Unsigned v1.2.0 portable release; native CI required, v1.1.1 beta M2 human validation passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | Unsigned v1.2.0 portable release; native CI required, human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 
 The first macOS beta requires macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
 are not supported by these beta archives.
 
-## v1.2.0 release candidate
+## v1.2.0 unified release
 
-Version 1.2.0 is prepared in the repository but is not yet public. Its Windows
-x64, macOS Apple Silicon arm64, and macOS Intel x64 targets share one source
-commit, one `package.json` version, one compiled application, and the same local
-data/settings formats. The current public support statuses in the table above
-remain unchanged until an authorized publication task creates the `v1.2.0` tag
-and GitHub Release.
+Version 1.2.0 publishes Windows x64, macOS Apple Silicon arm64, and macOS Intel
+x64 from one source commit, one `package.json` version, one compiled application,
+and the same local data/settings formats.
 
-The candidate's unified workflow is build-only. A normal version tag builds and
+The unified workflow is build-only. A normal version tag builds and
 tests all three targets on native runners; manual dispatch can rerun an existing
 normal tag. It may upload temporary workflow artifacts and SHA-256 files, but it
 must not create or move tags, create a GitHub Release, sign, notarize, or publish
 files.
 
-The v1.2.0 candidate does not change data schema version 7 or API-key settings
+v1.2.0 does not change data schema version 7 or API-key settings
 schema version 2. Existing v1.1.1 data remains compatible on every target.
 
 ## Shared files
@@ -54,7 +51,12 @@ Current Windows-only files:
 downloads and checksum-verifies the pinned runtime, and smoke-tests the final
 archive rather than the staging directory.
 
-Windows behavior remains unchanged in the v1.2.0 candidate. The current share
+The Windows import launcher calls the same
+`packaging/shared/import-data.mjs` transaction used by macOS. The final-package
+smoke test verifies validated data/settings import, backups, and that invalid
+settings cannot partially replace existing data.
+
+Windows launch and persistence behavior remains unchanged in v1.2.0. The share
 package pins Node.js 24.14.0. Its hidden VBS launch uses `--auto-close`; the
 diagnostic CMD intentionally does not.
 

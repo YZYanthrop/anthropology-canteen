@@ -20,11 +20,28 @@ if "%AC_SOURCE_PATH%"=="" (
   exit /b 1
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $raw=$env:AC_SOURCE_PATH.Trim().Trim('\"'); $targetRoot=(Resolve-Path -LiteralPath '.').Path; $resolved=(Resolve-Path -LiteralPath $raw).Path; $candidate=Join-Path $resolved 'anthropology-canteen-data.json'; if (Test-Path -LiteralPath $candidate -PathType Leaf) { $source=$candidate; $sourceDir=$resolved } elseif ((Test-Path -LiteralPath $resolved -PathType Leaf) -and ((Split-Path -Leaf $resolved) -ieq 'anthropology-canteen-data.json')) { $source=$resolved; $sourceDir=Split-Path -Parent $resolved } else { throw 'Please choose the old data folder or anthropology-canteen-data.json.' }; $null = Get-Content -LiteralPath $source -Raw | ConvertFrom-Json; $destDir=Join-Path $targetRoot 'data'; New-Item -ItemType Directory -Path $destDir -Force | Out-Null; $dest=Join-Path $destDir 'anthropology-canteen-data.json'; if (Test-Path -LiteralPath $dest -PathType Leaf) { $backup=Join-Path $destDir ('anthropology-canteen-data.backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json'); Copy-Item -LiteralPath $dest -Destination $backup }; Copy-Item -LiteralPath $source -Destination $dest -Force; $settingsSource=Join-Path $sourceDir 'anthropology-canteen-settings.json'; if (Test-Path -LiteralPath $settingsSource -PathType Leaf) { $null = Get-Content -LiteralPath $settingsSource -Raw | ConvertFrom-Json; Copy-Item -LiteralPath $settingsSource -Destination (Join-Path $destDir 'anthropology-canteen-settings.json') -Force }; Write-Host ''; Write-Host 'Data imported to:' $dest"
+set "AC_SOURCE_PATH=%AC_SOURCE_PATH:"=%"
+set "AC_NODE=%~dp0runtime\node.exe"
+set "AC_IMPORTER=%~dp0tools\import-data.mjs"
+
+if not exist "%AC_NODE%" (
+  echo.
+  echo The bundled Node.js runtime is missing.
+  pause
+  exit /b 1
+)
+if not exist "%AC_IMPORTER%" (
+  echo.
+  echo The data import tool is missing.
+  pause
+  exit /b 1
+)
+
+"%AC_NODE%" "%AC_IMPORTER%" --source "%AC_SOURCE_PATH%" --target-root "%~dp0"
 
 if errorlevel 1 (
   echo.
-  echo Data import failed. Please check that the selected path exists.
+  echo Data import failed. Existing data was left unchanged.
   pause
   exit /b 1
 )

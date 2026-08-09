@@ -125,7 +125,8 @@ try {
   $Node = Join-Path $ExtractedRoot "runtime\node.exe"
   $Server = Join-Path $ExtractedRoot "portable-server.mjs"
   $Launcher = Join-Path $ExtractedRoot "Anthropology Canteen.vbs"
-  foreach ($Required in @($Node, $Server, $Launcher)) {
+  $Importer = Join-Path $ExtractedRoot "tools\import-data.mjs"
+  foreach ($Required in @($Node, $Server, $Launcher, $Importer)) {
     if (-not (Test-Path -LiteralPath $Required -PathType Leaf)) {
       throw "The extracted package is incomplete: $Required"
     }
@@ -211,6 +212,66 @@ try {
     throw "Local data did not persist after restart."
   }
   Stop-TestProcess
+
+  $ImportSource = Join-Path $TemporaryRoot "old-data"
+  $TargetData = Join-Path $ExtractedRoot "data"
+  New-Item -ItemType Directory -Path $ImportSource -Force | Out-Null
+  $ImportData = [ordered]@{
+    version = 7
+    subscriptions = [ordered]@{ journal = @(); scholar = @(); keyword = @() }
+    states = [ordered]@{ "imported-record" = [ordered]@{ read = $true } }
+  }
+  $ImportSettings = [ordered]@{
+    version = 2
+    openAlexApiKey = "smoke-openalex-key"
+    semanticScholarApiKey = ""
+  }
+  $ImportData | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $ImportSource "anthropology-canteen-data.json"
+  ) -Encoding UTF8
+  $ImportSettings | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $ImportSource "anthropology-canteen-settings.json"
+  ) -Encoding UTF8
+  '{"version":2,"openAlexApiKey":"original-key"}' | Set-Content `
+    -LiteralPath (Join-Path $TargetData "anthropology-canteen-settings.json") `
+    -Encoding UTF8
+
+  & $Node $Importer --source $ImportSource --target-root $ExtractedRoot
+  if ($LASTEXITCODE -ne 0) { throw "The packaged data importer failed." }
+  $ImportedData = Get-Content -LiteralPath (
+    Join-Path $TargetData "anthropology-canteen-data.json"
+  ) -Raw | ConvertFrom-Json
+  $ImportedSettings = Get-Content -LiteralPath (
+    Join-Path $TargetData "anthropology-canteen-settings.json"
+  ) -Raw | ConvertFrom-Json
+  if (-not $ImportedData.states.'imported-record'.read -or
+      $ImportedSettings.openAlexApiKey -ne "smoke-openalex-key") {
+    throw "The packaged data importer did not install validated files."
+  }
+  if ($null -eq (Get-ChildItem -LiteralPath $TargetData -File | Where-Object {
+        $_.Name -like "anthropology-canteen-data.backup-*.json"
+      } | Select-Object -First 1) -or
+      $null -eq (Get-ChildItem -LiteralPath $TargetData -File | Where-Object {
+        $_.Name -like "anthropology-canteen-settings.backup-*.json"
+      } | Select-Object -First 1)) {
+    throw "The packaged data importer did not back up existing files."
+  }
+
+  $ImportedDataText = Get-Content -LiteralPath (
+    Join-Path $TargetData "anthropology-canteen-data.json"
+  ) -Raw
+  "not-json" | Set-Content -LiteralPath (
+    Join-Path $ImportSource "anthropology-canteen-settings.json"
+  ) -Encoding UTF8
+  & $Node $Importer --source $ImportSource --target-root $ExtractedRoot
+  if ($LASTEXITCODE -eq 0) {
+    throw "The packaged data importer accepted invalid settings."
+  }
+  if ((Get-Content -LiteralPath (
+        Join-Path $TargetData "anthropology-canteen-data.json"
+      ) -Raw) -ne $ImportedDataText) {
+    throw "A failed packaged import changed existing data."
+  }
 
   Remove-Item -LiteralPath (Join-Path $ExtractedRoot "data") -Recurse -Force
   $AutoClosePort = Get-Random -Minimum 51000 -Maximum 59999

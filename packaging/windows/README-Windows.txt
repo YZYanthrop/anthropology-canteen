@@ -17,5 +17,6 @@ directory. The original ZIP is blank. Do not share a copy that you have already
 run if it contains a data directory.
 
 To move data from another extracted copy, close both copies and double-click
-import-data-from-old-version.cmd. Existing destination data is backed up before
-replacement.
+import-data-from-old-version.cmd. The importer validates data and optional API
+settings before changing anything, refuses to run while the app is active, and
+backs up existing destination files. A failed import leaves old data intact.

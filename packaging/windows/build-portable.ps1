@@ -164,9 +164,11 @@ try {
 
   Expand-Archive -LiteralPath $NodeArchivePath -DestinationPath $WorkRoot
   $NodeRoot = Join-Path $WorkRoot "node-v$NodeVersion-win-x64"
-  New-Item -ItemType Directory -Path (
-    Join-Path $StageRoot "runtime"
-  ) -Force | Out-Null
+  foreach ($Directory in @("runtime", "tools")) {
+    New-Item -ItemType Directory -Path (
+      Join-Path $StageRoot $Directory
+    ) -Force | Out-Null
+  }
 
   Copy-Item -LiteralPath (Join-Path $RepositoryRoot "dist") `
     -Destination $StageRoot -Recurse
@@ -179,6 +181,9 @@ try {
   }
   Copy-Item -LiteralPath (Join-Path $ScriptDirectory "RUNTIME-NOTICE.txt") `
     -Destination (Join-Path $StageRoot "RUNTIME-NOTICE.txt")
+  Copy-Item -LiteralPath (
+    Join-Path $RepositoryRoot "packaging\shared\import-data.mjs"
+  ) -Destination (Join-Path $StageRoot "tools\import-data.mjs")
   Copy-Item -LiteralPath (Join-Path $NodeRoot "node.exe") `
     -Destination (Join-Path $StageRoot "runtime\node.exe")
   Copy-Item -LiteralPath (Join-Path $NodeRoot "LICENSE") `
