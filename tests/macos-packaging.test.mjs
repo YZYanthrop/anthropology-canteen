@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const importer = fileURLToPath(
-  new URL("../packaging/macos/import-data.mjs", import.meta.url),
+  new URL("../packaging/shared/import-data.mjs", import.meta.url),
 );
 
 function validLocalData(states = {}, version = 7) {
@@ -25,7 +25,7 @@ function validLocalData(states = {}, version = 7) {
   };
 }
 
-test("macOS importer CLI entry runs from a path containing spaces", async () => {
+test("portable importer CLI entry runs from a path containing spaces", async () => {
   const root = await mkdtemp(join(tmpdir(), "anthropology canteen importer "));
   const scriptDirectory = join(root, "folder with spaces");
   const script = join(scriptDirectory, "import data.mjs");
@@ -41,7 +41,7 @@ test("macOS importer CLI entry runs from a path containing spaces", async () => 
   }
 });
 
-test("macOS import validates JSON, backs up targets, and copies only approved neighbors", async () => {
+test("portable import validates JSON, backs up targets, and copies only approved neighbors", async () => {
   const root = await mkdtemp(join(tmpdir(), "anthropology-canteen-mac-import-"));
   const source = join(root, "old-data");
   const target = join(root, "new-version");
@@ -91,7 +91,7 @@ test("macOS import validates JSON, backs up targets, and copies only approved ne
   }
 });
 
-test("macOS import rejects invalid neighboring settings before changing existing data", async () => {
+test("portable import rejects invalid neighboring settings before changing existing data", async () => {
   const root = await mkdtemp(join(tmpdir(), "anthropology-canteen-mac-invalid-"));
   const source = join(root, "old-data");
   const target = join(root, "new-version");
@@ -124,7 +124,7 @@ test("macOS import rejects invalid neighboring settings before changing existing
   }
 });
 
-test("macOS import leaves destination settings unchanged when the source has none", async () => {
+test("portable import leaves destination settings unchanged when the source has none", async () => {
   const root = await mkdtemp(join(tmpdir(), "anthropology-canteen-mac-no-settings-"));
   const source = join(root, "old-data");
   const target = join(root, "new-version");
@@ -156,7 +156,7 @@ test("macOS import leaves destination settings unchanged when the source has non
   }
 });
 
-test("macOS import rejects unsupported data and settings schemas", async () => {
+test("portable import rejects unsupported data and settings schemas", async () => {
   const root = await mkdtemp(join(tmpdir(), "anthropology-canteen-mac-schema-"));
   const source = join(root, "old-data");
   const target = join(root, "new-version");
@@ -202,7 +202,7 @@ test("macOS import rejects unsupported data and settings schemas", async () => {
   }
 });
 
-test("macOS import refuses to modify data while the target PID is alive", async () => {
+test("portable import refuses to modify data while the target PID is alive", async () => {
   const root = await mkdtemp(join(tmpdir(), "anthropology-canteen-mac-live-pid-"));
   const source = join(root, "old-data");
   const target = join(root, "new-version");
@@ -253,7 +253,7 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
     "utf8",
   );
   const workflow = await readFile(
-    new URL("../.github/workflows/macos-portable.yml", import.meta.url),
+    new URL("../.github/workflows/portable-release.yml", import.meta.url),
     "utf8",
   );
   const smoke = await readFile(
@@ -283,6 +283,8 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
   assert.match(build, /--max-time 300/);
   assert.match(build, /shasum -a 256 "\$ZIP_NAME"/);
   assert.match(build, /RUNTIME-NOTICE\.txt/);
+  assert.match(build, /packaging\/shared\/import-data\.mjs/);
+  assert.match(build, /@PRODUCT_VERSION@/);
   assert.doesNotMatch(build, /osacompile|Anthropology Canteen\.app/);
   assert.match(launcher, /--auto-close/);
   assert.match(launcher, /api\/runtime-status/);
@@ -296,11 +298,14 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
   assert.match(workflow, /runner: macos-15-intel/);
   assert.match(workflow, /runs-on: windows-latest/);
   assert.match(workflow, /workflow_dispatch:/);
-  assert.doesNotMatch(workflow, /pull_request:\s+paths:/);
-  assert.match(workflow, /artifact_name=\$\{ROOT\}-beta/);
-  assert.doesNotMatch(workflow, /name: .*v1\.1\.1-beta/);
-  assert.equal(workflow.match(/uses: pnpm\/action-setup@v6/g)?.length, 2);
-  assert.doesNotMatch(workflow, /git push|gh release|create-release/);
+  assert.match(workflow, /tags:\n\s+- "v\*\.\*\.\*"/);
+  assert.doesNotMatch(workflow, /pull_request:/);
+  assert.doesNotMatch(workflow, /-beta/);
+  assert.equal(workflow.match(/uses: pnpm\/action-setup@v6/g)?.length, 3);
+  assert.doesNotMatch(
+    workflow,
+    /git push|gh release|create-release|softprops\/action-gh-release|contents: write/,
+  );
   assert.match(smoke, /blank\.version !== 7/);
   assert.match(smoke, /process\.arch/);
   assert.match(smoke, /api\/browser-session/);
@@ -323,6 +328,6 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
   assert.match(smoke, /CLOSE_ELAPSED.*-ge 6/);
   assert.match(portableServer, /8_000/);
   assert.match(portableServer, /90_000/);
-  assert.match(projectState, /close the last Anthropology Canteen page/);
+  assert.match(projectState, /automatic[- ]shutdown/);
   assert.doesNotMatch(projectState, /鈥|渃/);
 });

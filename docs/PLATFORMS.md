@@ -4,13 +4,28 @@
 
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
-| Windows x64 | Stable in v1.1.1 | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | Unsigned beta published; native CI and M2 human validation passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
-| macOS Intel | Unsigned beta published; native CI passed, human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| Windows x64 | Stable in v1.2.0 | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
+| macOS Apple Silicon | Unsigned v1.2.0 portable release; native CI required, v1.1.1 beta M2 human validation passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | Unsigned v1.2.0 portable release; native CI required, human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 
 The first macOS beta requires macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
 are not supported by these beta archives.
+
+## v1.2.0 unified release
+
+Version 1.2.0 publishes Windows x64, macOS Apple Silicon arm64, and macOS Intel
+x64 from one source commit, one `package.json` version, one compiled application,
+and the same local data/settings formats.
+
+The unified workflow is build-only. A normal version tag builds and
+tests all three targets on native runners; manual dispatch can rerun an existing
+normal tag. It may upload temporary workflow artifacts and SHA-256 files, but it
+must not create or move tags, create a GitHub Release, sign, notarize, or publish
+files.
+
+v1.2.0 does not change data schema version 7 or API-key settings
+schema version 2. Existing v1.1.1 data remains compatible on every target.
 
 ## Shared files
 
@@ -32,13 +47,22 @@ Current Windows-only files:
 - `import-data-from-old-version.cmd`
 - packaged `runtime/node.exe`
 
-Windows behavior must remain unchanged when macOS support is added. The current
-share package pins Node.js 24.14.0. Its hidden VBS launch uses `--auto-close`;
-the diagnostic CMD intentionally does not.
+`packaging/windows/` assembles the versioned x64 ZIP from the shared build,
+downloads and checksum-verifies the pinned runtime, and smoke-tests the final
+archive rather than the staging directory.
+
+The Windows import launcher calls the same
+`packaging/shared/import-data.mjs` transaction used by macOS. The final-package
+smoke test verifies validated data/settings import, backups, and that invalid
+settings cannot partially replace existing data.
+
+Windows launch and persistence behavior remains unchanged in v1.2.0. The share
+package pins Node.js 24.14.0. Its hidden VBS launch uses `--auto-close`; the
+diagnostic CMD intentionally does not.
 
 ## macOS layer
 
-The macOS beta packaging layer provides:
+The macOS packaging layer, first validated by the v1.1.1 beta, provides:
 
 - architecture-specific packages with a Finder-double-clickable command that
   starts the bundled Node.js in the background, waits for
@@ -73,6 +97,8 @@ system-wide security.
 - Final artifact names include the product version and target architecture.
 - Windows and macOS artifacts for a normal release come from the same commit
   and tag.
+- A normal tag run and a manual rerun of that tag use the same build definitions;
+  neither path publishes a GitHub Release automatically.
 - The one-time `macos-v1.1.1-beta.1` bootstrap tag is an explicit exception:
   it leaves the formal `v1.1.1` tag untouched and must also rerun the Windows
   regression suite before publishing Mac beta artifacts.

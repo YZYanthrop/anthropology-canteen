@@ -1,7 +1,7 @@
 Option Explicit
 
 Dim shell, files, appFolder, nodePath, serverPath
-Dim healthUrl, browserUrl, attempt
+Dim healthUrl, browserUrl, attempt, port, skipOpen
 
 Set shell = CreateObject("WScript.Shell")
 Set files = CreateObject("Scripting.FileSystemObject")
@@ -9,8 +9,13 @@ Set files = CreateObject("Scripting.FileSystemObject")
 appFolder = files.GetParentFolderName(WScript.ScriptFullName)
 nodePath = files.BuildPath(appFolder, "runtime\node.exe")
 serverPath = files.BuildPath(appFolder, "portable-server.mjs")
-healthUrl = "http://127.0.0.1:3000/api/runtime-status"
-browserUrl = "http://anthropology-canteen.localhost:3000"
+port = shell.ExpandEnvironmentStrings("%PORT%")
+If port = "%PORT%" Or Not IsNumeric(port) Then port = "3000"
+If Len(port) > 5 Then port = "3000"
+If CLng(port) < 1 Or CLng(port) > 65535 Then port = "3000"
+skipOpen = shell.ExpandEnvironmentStrings("%ANTHROPOLOGY_CANTEEN_SKIP_OPEN%")
+healthUrl = "http://127.0.0.1:" & port & "/api/runtime-status"
+browserUrl = "http://anthropology-canteen.localhost:" & port
 
 If Not files.FileExists(nodePath) Then
   MsgBox "The portable runtime is incomplete. Extract the full ZIP first.", 48, "Anthropology Canteen"
@@ -23,7 +28,7 @@ End If
 
 For attempt = 1 To 120
   If IsReady(healthUrl) Then
-    shell.Run browserUrl, 1, False
+    If skipOpen <> "1" Then shell.Run browserUrl, 1, False
     WScript.Quit 0
   End If
   WScript.Sleep 500

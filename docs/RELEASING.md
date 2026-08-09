@@ -77,21 +77,38 @@ Codex 对话只负责组织工作，不代表独立的产品分支。代码、�
 - ZIP 中没有 `data/`、设置文件、密钥、个人路径、开发依赖或缓存；
 - 可执行权限、根目录结构、版本号和 SHA-256 正确。
 
+## v1.2.0 统一发布基线
+
+v1.2.0 是统一三平台发布基线：Windows x64、macOS Apple Silicon arm64 和 macOS
+Intel x64 必须读取同一个 `package.json` 版本并从同一 Git 提交构建。本地数据仍为
+version 7，API-key settings 仍为 version 2，不需要新增数据迁移。
+
+统一便携包工作流由正常 `vX.Y.Z` 标签触发，也可以手动重新运行一个已经存在的正常
+标签。两种入口都只构建、测试并上传有保留期限的工作流产物与 SHA-256，不创建或移动
+标签，不创建 GitHub Release，不签名、不公证，也不公开发布。三个正式候选包始终来自
+同一个经过校验的标签提交。
+
+源码归档必须在最终改动已经提交后从 Git 对象生成，而不是压缩当前工作目录。推荐使用
+单根目录的 `git archive`，以便只包含受版本控制的源码并排除 `data/`、依赖、构建产物、
+缓存和本机文件。v1.2.0 及后续正常版本都遵循下面的公开发布步骤。
+
 ## 正常公开发布
 
-本节描述 Windows 包装接入同一 tag-driven workflow 后的下一里程碑目标；当前
-`macOS portable beta` 工作流没有标签触发，也不生成 Windows ZIP，不能按本节执行正式发布。
+本节描述统一 build-only 工作流准备完成后的公开发布步骤。工作流不会自行发布；任何
+推送、标签和 GitHub Release 操作仍需单独授权。
 
 1. 确认工作区干净，且不存在个人数据、密钥、缓存或旧构建产物。
 2. 更新 `package.json`、`CHANGELOG.md`、`docs/PROJECT_STATE.md` 和发布日期。
-3. 完成本地基础验证并提交：`chore: release vX.Y.Z`。
-4. 在该提交创建带说明的 `vX.Y.Z` 标签并推送。
-5. GitHub Actions 从该标签生成并原生测试：
+3. 完成本地基础验证，在短期分支提交并合并到 `main`。
+4. 获得发布授权后，在最终提交创建带说明且不可移动的 `vX.Y.Z` 标签并推送。
+5. build-only GitHub Actions 从该标签生成并原生测试：
    - Windows x64 ZIP；
    - macOS Apple Silicon ZIP；
    - macOS Intel ZIP。
-6. 所有任务通过后，将三个文件附加到同一个 GitHub Release。
-7. 下载一次发布附件并核对 SHA-256；在 `CHANGELOG.md` 或 Release 说明中记录。
+6. 检查三个标签构建任务、隐私扫描、原生 smoke 和 SHA-256 全部通过。
+7. 再次确认发布授权后，将同一标签构建出的三个文件附加到一个 GitHub Release；不要
+   混用手动运行、旧提交或旧平台版本的产物。
+8. 下载一次发布附件并核对 SHA-256；在 `CHANGELOG.md` 或 Release 说明中记录。
 
 推送、建立 Release、配置 Apple 凭据、签名和公证都是外部操作，执行前必须得到
 使用者明确授权。

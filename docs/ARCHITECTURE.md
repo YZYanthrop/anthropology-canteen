@@ -63,6 +63,11 @@ validate the JSON, back up an existing destination, and bring the neighboring
 settings file only when present. Automatic neighboring-version migration keeps
 the newest data by `savedAt` and chooses settings independently by file time.
 
+`packaging/shared/import-data.mjs` implements the manual-import transaction for
+both platforms. Windows and macOS provide different interactive launchers, but
+validation, live-PID refusal, backups, settings allowlisting, and rollback stay
+identical.
+
 ## External academic data
 
 The server-side routes use OpenAlex, Semantic Scholar, Crossref, Open Library,
