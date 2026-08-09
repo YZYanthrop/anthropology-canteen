@@ -31,7 +31,9 @@ fi
 
 for ((attempt = 0; attempt < 90; attempt += 1)); do
   if is_ready; then
-    /usr/bin/open "$BROWSER_URL"
+    if [[ "${ANTHROPOLOGY_CANTEEN_SKIP_OPEN:-0}" != "1" ]]; then
+      /usr/bin/open "$BROWSER_URL"
+    fi
     exit 0
   fi
   /bin/sleep 1

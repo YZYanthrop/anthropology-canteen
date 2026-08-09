@@ -20,10 +20,12 @@ esac
 TEMP_ROOT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/anthropology-canteen-smoke.XXXXXX")"
 SERVER_PID=""
 SSE_PID=""
+ENTRY_PID=""
 
 cleanup() {
   if [[ -n "$SSE_PID" ]]; then /bin/kill "$SSE_PID" 2>/dev/null || true; fi
   if [[ -n "$SERVER_PID" ]]; then /bin/kill "$SERVER_PID" 2>/dev/null || true; fi
+  if [[ -n "$ENTRY_PID" ]]; then /bin/kill "$ENTRY_PID" 2>/dev/null || true; fi
   /bin/rm -rf "$TEMP_ROOT"
 }
 trap cleanup EXIT
@@ -52,6 +54,17 @@ stop_server() {
   fi
 }
 
+wait_stopped() {
+  local pid="$1"
+  for ((attempt = 0; attempt < 20; attempt += 1)); do
+    if ! /bin/kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    /bin/sleep 1
+  done
+  return 1
+}
+
 [[ ! -e "$PACKAGE_ROOT/data" ]] || fail "blank staging package already contains data"
 [[ -x "$PACKAGE_ROOT/Anthropology Canteen.command" ]] || fail "Finder launcher is not executable"
 [[ -x "$PACKAGE_ROOT/start-local.command" ]] || fail "diagnostic launcher is not executable"
@@ -77,6 +90,34 @@ SERVER="$EXTRACTED_ROOT/portable-server.mjs"
   cd "$(dirname "$ZIP_PATH")"
   /usr/bin/shasum -a 256 -c "$(basename "$ZIP_PATH").sha256"
 )
+
+ENTRY_PORT="$((31000 + RANDOM % 9000))"
+ENTRY_URL="http://127.0.0.1:$ENTRY_PORT"
+PID_FILE="$EXTRACTED_ROOT/data/anthropology-canteen-server.pid"
+if ! ANTHROPOLOGY_CANTEEN_SKIP_OPEN=1 PORT="$ENTRY_PORT" "$EXTRACTED_ROOT/Anthropology Canteen.command"; then
+  if [[ -f "$PID_FILE" ]]; then ENTRY_PID="$(/bin/cat "$PID_FILE")"; fi
+  fail "the extracted user launcher returned an error"
+fi
+for ((attempt = 0; attempt < 20 && ! -f "$PID_FILE"; attempt += 1)); do
+  /bin/sleep 1
+done
+[[ -f "$PID_FILE" ]] || fail "the user launcher did not create its PID file"
+ENTRY_PID="$(/bin/cat "$PID_FILE")"
+[[ "$ENTRY_PID" =~ ^[1-9][0-9]*$ ]] || fail "the user launcher wrote an invalid PID"
+/bin/kill -0 "$ENTRY_PID" 2>/dev/null || fail "the user launcher background process is not alive"
+/bin/ps -p "$ENTRY_PID" -o command= | /usr/bin/grep -q 'portable-server.mjs' || fail "the launcher PID is not the portable server"
+wait_ready "$ENTRY_URL" || fail "the extracted user launcher did not start the server"
+"$NODE" --input-type=module -e '
+  const status = await fetch(`${process.argv[1]}/api/runtime-status`).then((response) => response.json());
+  if (status.app !== "anthropology-canteen" || status.autoClose !== true) {
+    throw new Error("user launcher runtime status is invalid");
+  }
+' "$ENTRY_URL"
+/bin/kill "$ENTRY_PID"
+wait_stopped "$ENTRY_PID" || fail "the user launcher background process did not stop safely"
+ENTRY_PID=""
+[[ ! -e "$PID_FILE" ]] || fail "the user launcher PID file was not cleaned up"
+/bin/rm -rf "$EXTRACTED_ROOT/data"
 
 PORT="$((41000 + RANDOM % 10000))"
 BASE_URL="http://127.0.0.1:$PORT"

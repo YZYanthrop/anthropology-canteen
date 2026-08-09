@@ -287,6 +287,8 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
   assert.match(launcher, /--auto-close/);
   assert.match(launcher, /api\/runtime-status/);
   assert.match(launcher, /attempt < 90/);
+  assert.match(launcher, /ANTHROPOLOGY_CANTEEN_SKIP_OPEN:-0/);
+  assert.match(launcher, /!= "1"/);
   assert.match(importLauncher, /^read -p "Old data path: "/m);
   assert.doesNotMatch(importLauncher, /IFS= read -p "Old data path: "/);
   assert.doesNotMatch(importLauncher, /read -r -p "Old data path: "/);
@@ -307,6 +309,17 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
   assert.match(smoke, /NODE="\$EXTRACTED_ROOT\/runtime\/bin\/node"/);
   assert.match(smoke, /--target-root "\$EXTRACTED_ROOT"/);
   assert.doesNotMatch(smoke, /--target-root "\$PACKAGE_ROOT"/);
+  assert.match(
+    smoke,
+    /ANTHROPOLOGY_CANTEEN_SKIP_OPEN=1 PORT="\$ENTRY_PORT" "\$EXTRACTED_ROOT\/Anthropology Canteen\.command"/,
+  );
+  assert.match(smoke, /anthropology-canteen-server\.pid/);
+  assert.match(smoke, /kill -0 "\$ENTRY_PID"/);
+  assert.match(smoke, /portable-server\.mjs/);
+  assert.ok(
+    smoke.indexOf('ENTRY_PID="$(/bin/cat "$PID_FILE")"') <
+      smoke.indexOf("user launcher runtime status is invalid"),
+  );
   assert.match(smoke, /CLOSE_ELAPSED.*-ge 6/);
   assert.match(portableServer, /8_000/);
   assert.match(portableServer, /90_000/);
