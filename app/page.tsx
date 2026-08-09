@@ -2862,12 +2862,6 @@ export default function Home() {
               <span><i className="keyword" /> 关键词</span>
             </div>
           </section>
-
-          <blockquote>
-            “The purpose of anthropology is to make the world safe for human
-            differences.”
-            <cite>— Ruth Benedict</cite>
-          </blockquote>
         </aside>
       </div>
 

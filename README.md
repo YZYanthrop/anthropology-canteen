@@ -4,13 +4,26 @@
 
 当前正式版本：`v1.1.1`。
 
-平台状态：Windows x64 是当前稳定便携版；macOS Apple Silicon 与 Intel
-现提供首个未签名 beta 的打包基础设施，尚未标记为稳定。两种平台使用同一套应用、
-本地服务器和 version 7 数据格式。
+仓库中已经准备 `v1.2.0` 源码候选，但尚未创建 `v1.2.0` 标签或 GitHub Release。
+该候选把 Windows x64、macOS Apple Silicon 与 macOS Intel 纳入同一版本、同一源码
+提交和同一构建流程；三种平台继续使用同一套应用、本地服务器和 version 7 数据格式。
+正式发布、推送标签和上传附件将在另一个获得明确授权的任务中进行。
 
-## macOS 未签名 beta
+## v1.2.0 发布候选（尚未发布）
 
-- 两个目标文件分别为
+- 本次版本用于把此前分别发布的 Windows 1.1.1 与 macOS 1.1.1 beta 整理为共同的
+  三平台发布基线，不改变账号、存储、学者身份或信息流架构。
+- 唯一的页面内容调整是移除右侧栏中的人类学家引文；其余产品功能保持不变。
+- Windows x64、macOS arm64 与 macOS x64 必须从同一提交读取同一个 `package.json`
+  版本并分别在原生 runner 构建、测试。
+- 统一工作流由正常版本标签触发，也可手动重新验证一个已经存在的正常标签；它只负责
+  构建、验证和上传临时构建产物，不会自行创建 GitHub Release、签名、公证或公开发布。
+- 本地数据仍为 version 7，API-key settings 仍为 version 2；从 1.1.1 更新不需要新的
+  数据迁移。
+
+## macOS 便携版说明
+
+- 已发布的首个 1.1.1 未签名 beta 文件分别为
   `Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.1.1.zip` 与
   `Anthropology-Canteen-macOS-Intel-x64-v1.1.1.zip`，都自带 Node.js 24.14.0。
 - 首个 beta 的最低系统要求是 macOS 13.5；更早版本的 macOS 不在随包
@@ -92,7 +105,7 @@
 - 新版第一次打开时，如果发现浏览器里有旧版保存的数据，会自动迁移到上面的 `data` 文件中，并清除 Anthropology Canteen 自己的旧浏览器记录。
 - 学术数据检索和中文翻译仍然需要联网。
 - 关注学者或期刊之前发表的历史成果会保留在档案中供查阅，但不会计入“未读”；未读从实际关注日期开始计算。
-- 本版 v1.1.1 使用本地数据 version 7。若检测到 version 6 曾自动合并多个作者 ID，会隔离这些 ID并重新生成学者档案与信息流缓存；关注项、关注日期、收藏、已读、忽略和中文翻译都会保留。
+- v1.2.0 候选不改变 v1.1.1 的本地数据格式，仍使用 version 7。若检测到 version 6 曾自动合并多个作者 ID，会隔离这些 ID并重新生成学者档案与信息流缓存；关注项、关注日期、收藏、已读、忽略和中文翻译都会保留。
 
 ## 更新版本时保留自己的数据
 
@@ -139,6 +152,7 @@ pnpm dev
 ```powershell
 pnpm lint
 pnpm build
+node --test tests/*.test.mjs
 ```
 
 版本编号和发布流程见 [`docs/RELEASING.md`](docs/RELEASING.md)，版本变更见

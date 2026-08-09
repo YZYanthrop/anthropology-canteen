@@ -12,6 +12,24 @@ The first macOS beta requires macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
 are not supported by these beta archives.
 
+## v1.2.0 release candidate
+
+Version 1.2.0 is prepared in the repository but is not yet public. Its Windows
+x64, macOS Apple Silicon arm64, and macOS Intel x64 targets share one source
+commit, one `package.json` version, one compiled application, and the same local
+data/settings formats. The current public support statuses in the table above
+remain unchanged until an authorized publication task creates the `v1.2.0` tag
+and GitHub Release.
+
+The candidate's unified workflow is build-only. A normal version tag builds and
+tests all three targets on native runners; manual dispatch can rerun an existing
+normal tag. It may upload temporary workflow artifacts and SHA-256 files, but it
+must not create or move tags, create a GitHub Release, sign, notarize, or publish
+files.
+
+The v1.2.0 candidate does not change data schema version 7 or API-key settings
+schema version 2. Existing v1.1.1 data remains compatible on every target.
+
 ## Shared files
 
 The following must remain identical across platforms:
@@ -32,13 +50,17 @@ Current Windows-only files:
 - `import-data-from-old-version.cmd`
 - packaged `runtime/node.exe`
 
-Windows behavior must remain unchanged when macOS support is added. The current
-share package pins Node.js 24.14.0. Its hidden VBS launch uses `--auto-close`;
-the diagnostic CMD intentionally does not.
+`packaging/windows/` assembles the versioned x64 ZIP from the shared build,
+downloads and checksum-verifies the pinned runtime, and smoke-tests the final
+archive rather than the staging directory.
+
+Windows behavior remains unchanged in the v1.2.0 candidate. The current share
+package pins Node.js 24.14.0. Its hidden VBS launch uses `--auto-close`; the
+diagnostic CMD intentionally does not.
 
 ## macOS layer
 
-The macOS beta packaging layer provides:
+The macOS packaging layer, first validated by the v1.1.1 beta, provides:
 
 - architecture-specific packages with a Finder-double-clickable command that
   starts the bundled Node.js in the background, waits for
@@ -73,6 +95,8 @@ system-wide security.
 - Final artifact names include the product version and target architecture.
 - Windows and macOS artifacts for a normal release come from the same commit
   and tag.
+- A normal tag run and a manual rerun of that tag use the same build definitions;
+  neither path publishes a GitHub Release automatically.
 - The one-time `macos-v1.1.1-beta.1` bootstrap tag is an explicit exception:
   it leaves the formal `v1.1.1` tag untouched and must also rerun the Windows
   regression suite before publishing Mac beta artifacts.

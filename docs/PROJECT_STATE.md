@@ -23,6 +23,31 @@ Last updated: 2026-08-09
 The `v1.1.1` tag is immutable. macOS bootstrap work must not move or replace
 that tag.
 
+## Prepared v1.2.0 candidate
+
+- The repository now prepares product version `1.2.0` as an unpublished source
+  candidate. The current public version and stable tag remain `v1.1.1`.
+- This is a release-alignment milestone: Windows x64, macOS Apple Silicon
+  arm64, and macOS Intel x64 are built from the same source commit and product
+  version. It does not create separate platform products or branches.
+- The only user-visible source change is removal of the Ruth Benedict quotation
+  from the right rail. The application architecture and feature set are
+  otherwise unchanged.
+- Local data remains version 7 and local API-key settings remain version 2. No
+  v1.2.0-specific data migration is required.
+- The unified portable workflow is build-only. A normal version tag starts the
+  build, and a manual dispatch can rerun an existing normal tag. Both paths may
+  build, test, and retain candidate artifacts for all three targets, but the
+  workflow does not create a tag, GitHub Release, signature, notarization, or
+  public publication.
+- Creating or pushing `v1.2.0` and publishing its three platform artifacts is
+  deferred to a separate task with explicit authorization.
+- Local preparation verification passed on Windows: lint, production build,
+  all 31 deterministic tests, reproducible Windows x64 packaging, blank-data
+  privacy inspection, launcher startup, folder-local persistence, restart, and
+  automatic shutdown. The v1.2.0 macOS packages still require their native
+  arm64/x64 workflow jobs before publication.
+
 ## Current product contract
 
 - The app follows scholars first, journals second, and keyword families third.
@@ -47,17 +72,19 @@ that tag.
 - `tests/`: deterministic regression and portable-server tests.
 - Windows-only launch and migration helpers currently live at the repository
   root.
-- `.github/workflows/ci.yml` currently verifies Windows only and has no tag,
-  packaging, artifact, or GitHub Release job.
+- `packaging/windows/` provides reproducible Windows x64 runtime assembly,
+  archive privacy checks, and a native startup/persistence/shutdown smoke test.
+- `.github/workflows/ci.yml` continues to provide the ordinary source
+  regression check.
 - `packaging/macos/` now contains the shared macOS packaging layer: a reliable
   Finder-double-clickable command launcher, diagnostics, transactional data
   import, native build/privacy checks, and native smoke tests. The unsigned
   beta intentionally has no `.app` wrapper because App Translocation can break
   access to sibling runtime files.
-- `.github/workflows/macos-portable.yml` reruns Windows shared-code regression
-  and builds/tests arm64 on `macos-15` plus x64 on `macos-15-intel`. Manual
-  dispatch uploads beta workflow artifacts only; it does not tag or publish a
-  GitHub Release.
+- The historical macOS beta workflow established native arm64 and x64 package
+  validation. The v1.2.0 candidate extends that model into one build-only
+  `.github/workflows/portable-release.yml` workflow for Windows x64 and both
+  macOS architectures; publication remains a separate authorized operation.
 
 GitHub Actions run
 [#31290870084](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/31290870084)
@@ -70,22 +97,24 @@ See `docs/ARCHITECTURE.md` and `docs/PLATFORMS.md` for boundaries.
 
 ## Active milestone
 
-The one-time macOS 1.1.1 bootstrap is complete: the native matrix passed, the
-Apple Silicon M2 human check passed, the immutable beta tag points to the exact
-build commit, and both architecture packages are published with SHA-256 files.
-The product displayed by this beta remains 1.1.1, and Intel remains explicitly
-beta until an Intel human test is recorded.
+The one-time macOS 1.1.1 bootstrap remains complete historical work: the native
+matrix passed, the Apple Silicon M2 human check passed, the immutable beta tag
+points to the exact build commit, and both architecture packages were
+published with SHA-256 files. The product displayed by that beta remains 1.1.1,
+and Intel has no recorded human test.
 
-The next milestone is one normal tag-driven release workflow for later product
-versions:
+The active milestone is the unpublished v1.2.0 source candidate:
 
-1. Build and test Windows x64, macOS Apple Silicon, and macOS Intel from the
-   same source commit and normal `vX.Y.Z` tag.
-2. Publish all three platform archives and their SHA-256 values to one GitHub
-   Release only after every required job passes.
-3. Preserve folder-local data, blank-archive privacy, migration compatibility,
+1. Keep Windows x64, macOS Apple Silicon, and macOS Intel on one source commit,
+   one product version, and one build-only workflow.
+2. Complete source verification and prepare a clean source archive without
+   user data, secrets, dependencies, generated output, or personal paths.
+3. In a separately authorized publication task, create and push the immutable
+   `v1.2.0` tag, inspect all three native build results, and publish them to one
+   GitHub Release only after every required job passes.
+4. Preserve folder-local data, blank-archive privacy, migration compatibility,
    and current automatic-shutdown behavior on every platform.
-4. Keep signing and notarization optional and separately authorized; the
+5. Keep signing and notarization optional and separately authorized; the
    published 1.1.1 Mac beta remains unsigned and unnotarized.
 
 ## Update discipline

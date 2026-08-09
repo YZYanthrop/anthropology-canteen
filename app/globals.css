@@ -1449,19 +1449,6 @@ mark {
   gap: 4px;
 }
 
-.right-rail blockquote {
-  margin: 7px 8px 0;
-  color: #7d817f;
-  font: italic 12px/1.65 var(--font-serif), serif;
-}
-
-.right-rail cite {
-  display: block;
-  margin-top: 8px;
-  font: 500 8px var(--font-sans), sans-serif;
-  letter-spacing: 0.06em;
-}
-
 .toast {
   position: fixed;
   right: 24px;

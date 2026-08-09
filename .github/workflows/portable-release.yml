@@ -1,0 +1,235 @@
+name: Portable release artifacts
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing normal release tag, for example v1.2.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-tag:
+    name: Validate immutable release source
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    outputs:
+      source_sha: ${{ steps.metadata.outputs.source_sha }}
+      version: ${{ steps.metadata.outputs.version }}
+      windows_root: ${{ steps.metadata.outputs.windows_root }}
+      source_root: ${{ steps.metadata.outputs.source_root }}
+    steps:
+      - name: Check out the requested tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Require a normal tag matching package.json
+        id: metadata
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release artifacts require a normal vX.Y.Z tag." >&2
+            exit 1
+          fi
+          VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+          if [[ "$RELEASE_TAG" != "v${VERSION}" ]]; then
+            echo "Tag $RELEASE_TAG does not match package.json version $VERSION." >&2
+            exit 1
+          fi
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "windows_root=Anthropology-Canteen-Windows-x64-v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "source_root=Anthropology-Canteen-Source-v${VERSION}" >> "$GITHUB_OUTPUT"
+
+  verify-shared:
+    name: Verify shared application
+    needs: validate-tag
+    runs-on: windows-latest
+    steps:
+      - name: Check out the validated source commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-tag.outputs.source_sha }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint, build, and run deterministic tests
+        run: |
+          pnpm lint
+          pnpm build
+          node --test tests/*.test.mjs
+
+  windows-package:
+    name: Windows x64 native package and smoke test
+    needs: [validate-tag, verify-shared]
+    runs-on: windows-latest
+    steps:
+      - name: Check out the validated source commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-tag.outputs.source_sha }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+
+      - name: Install build Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+
+      - name: Install dependencies and build shared app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Build Windows x64 portable ZIP
+        shell: pwsh
+        run: ./packaging/windows/build-portable.ps1
+
+      - name: Run Windows package, persistence, shutdown, and privacy smoke tests
+        shell: pwsh
+        run: |
+          $root = "outputs/${{ needs.validate-tag.outputs.windows_root }}"
+          ./packaging/windows/smoke-test.ps1 `
+            -PackageRoot $root `
+            -ZipPath "$root.zip"
+
+      - name: Upload Windows release-candidate artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ needs.validate-tag.outputs.windows_root }}
+          path: |
+            outputs/${{ needs.validate-tag.outputs.windows_root }}.zip
+            outputs/${{ needs.validate-tag.outputs.windows_root }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+  macos-package:
+    name: ${{ matrix.label }} native package and smoke test
+    needs: [validate-tag, verify-shared]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS Apple Silicon arm64
+            runner: macos-15
+            arch: arm64
+            machine: arm64
+            artifact_arch: Apple-Silicon-arm64
+          - label: macOS Intel x64
+            runner: macos-15-intel
+            arch: x64
+            machine: x86_64
+            artifact_arch: Intel-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out the validated source commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-tag.outputs.source_sha }}
+
+      - name: Require the native runner architecture
+        shell: bash
+        run: test "$(uname -m)" = "${{ matrix.machine }}"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+
+      - name: Install build Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+
+      - name: Install dependencies and build shared app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Build native portable ZIP
+        shell: bash
+        run: bash packaging/macos/build-portable.sh "${{ matrix.arch }}"
+
+      - name: Run native package, persistence, import, shutdown, and privacy smoke tests
+        shell: bash
+        run: |
+          ROOT="outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}"
+          bash packaging/macos/smoke-test.sh "$ROOT" "$ROOT.zip" "${{ matrix.arch }}"
+
+      - name: Upload macOS release-candidate artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}
+          path: |
+            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}.zip
+            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  source-package:
+    name: Source archive from the validated tag
+    needs: [validate-tag, verify-shared]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the validated source commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-tag.outputs.source_sha }}
+
+      - name: Create and inspect the source archive
+        shell: bash
+        run: |
+          mkdir -p outputs
+          ROOT="${{ needs.validate-tag.outputs.source_root }}"
+          git archive --format=zip --prefix="${ROOT}/" --output="outputs/${ROOT}.zip" HEAD
+          if zipinfo -1 "outputs/${ROOT}.zip" | grep -E -i '(^|/)(data|node_modules|release|outputs|dist|\.env[^/]*|\.pnpm-store|\.next|\.vinext|\.wrangler)(/|$)' >/dev/null; then
+            echo "The source archive contains a generated or private path." >&2
+            exit 1
+          fi
+          (
+            cd outputs
+            sha256sum "${ROOT}.zip" >"${ROOT}.zip.sha256"
+          )
+
+      - name: Upload source release-candidate artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ needs.validate-tag.outputs.source_root }}
+          path: |
+            outputs/${{ needs.validate-tag.outputs.source_root }}.zip
+            outputs/${{ needs.validate-tag.outputs.source_root }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 30

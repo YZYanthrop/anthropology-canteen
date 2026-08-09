@@ -17,4 +17,9 @@ test("production build renders the main application shell", async () => {
   assert.match(html, /学者动态/);
   assert.match(html, /期刊更新/);
   assert.match(html, /关键词命中/);
+  assert.doesNotMatch(html, /Ruth Benedict/);
+  assert.doesNotMatch(
+    html,
+    /The purpose of anthropology is to make the world safe for human differences/,
+  );
 });

@@ -19,7 +19,7 @@ test("portable server upgrades version 2 data without losing saved content", asy
   const testRoot = await mkdtemp(
     join(tmpdir(), "anthropology-canteen-v7-test-"),
   );
-  const root = join(testRoot, "Anthropology-Canteen-v1.1.1");
+  const root = join(testRoot, "Anthropology-Canteen-v1.2.0");
   await mkdir(root);
   await cp(new URL("../dist", import.meta.url), join(root, "dist"), {
     recursive: true,

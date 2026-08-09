@@ -253,7 +253,7 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
     "utf8",
   );
   const workflow = await readFile(
-    new URL("../.github/workflows/macos-portable.yml", import.meta.url),
+    new URL("../.github/workflows/portable-release.yml", import.meta.url),
     "utf8",
   );
   const smoke = await readFile(
@@ -283,6 +283,7 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
   assert.match(build, /--max-time 300/);
   assert.match(build, /shasum -a 256 "\$ZIP_NAME"/);
   assert.match(build, /RUNTIME-NOTICE\.txt/);
+  assert.match(build, /@PRODUCT_VERSION@/);
   assert.doesNotMatch(build, /osacompile|Anthropology Canteen\.app/);
   assert.match(launcher, /--auto-close/);
   assert.match(launcher, /api\/runtime-status/);
@@ -296,11 +297,14 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
   assert.match(workflow, /runner: macos-15-intel/);
   assert.match(workflow, /runs-on: windows-latest/);
   assert.match(workflow, /workflow_dispatch:/);
-  assert.doesNotMatch(workflow, /pull_request:\s+paths:/);
-  assert.match(workflow, /artifact_name=\$\{ROOT\}-beta/);
-  assert.doesNotMatch(workflow, /name: .*v1\.1\.1-beta/);
-  assert.equal(workflow.match(/uses: pnpm\/action-setup@v6/g)?.length, 2);
-  assert.doesNotMatch(workflow, /git push|gh release|create-release/);
+  assert.match(workflow, /tags:\n\s+- "v\*\.\*\.\*"/);
+  assert.doesNotMatch(workflow, /pull_request:/);
+  assert.doesNotMatch(workflow, /-beta/);
+  assert.equal(workflow.match(/uses: pnpm\/action-setup@v6/g)?.length, 3);
+  assert.doesNotMatch(
+    workflow,
+    /git push|gh release|create-release|softprops\/action-gh-release|contents: write/,
+  );
   assert.match(smoke, /blank\.version !== 7/);
   assert.match(smoke, /process\.arch/);
   assert.match(smoke, /api\/browser-session/);
@@ -323,6 +327,6 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
   assert.match(smoke, /CLOSE_ELAPSED.*-ge 6/);
   assert.match(portableServer, /8_000/);
   assert.match(portableServer, /90_000/);
-  assert.match(projectState, /close the last Anthropology Canteen page/);
+  assert.match(projectState, /automatic-shutdown behavior/);
   assert.doesNotMatch(projectState, /鈥|渃/);
 });
