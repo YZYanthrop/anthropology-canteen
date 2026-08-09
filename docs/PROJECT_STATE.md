@@ -10,7 +10,11 @@ Last updated: 2026-08-09
 - Local API-key settings schema: version 2.
 - Version 5 and 6 data are migrated defensively: previously auto-merged author
   IDs are quarantined while subscriptions and user states are preserved.
-- Current published distribution: Windows portable ZIP.
+- Current published distributions: the stable Windows portable ZIP and an
+  unsigned macOS 1.1.1 beta Pre-release for Apple Silicon and Intel.
+- macOS bootstrap tag: `macos-v1.1.1-beta.1` at the validated build commit
+  `c2ec6d1`; its GitHub Pre-release is
+  [published here](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/macos-v1.1.1-beta.1).
 - The Windows package includes a bundled Node.js runtime and starts through
   `Anthropology Canteen.vbs`; `start-local.cmd` remains the diagnostic path.
 - Source development requires Node.js 22.13 or newer and pnpm 11.9. The current
@@ -59,41 +63,30 @@ GitHub Actions run
 [#31290870084](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/31290870084)
 completed successfully on 2026-08-09: the Windows regression and both native
 Mac package/smoke jobs passed, and the two unsigned beta artifacts were
-retained for 14 days. Human Finder/Gatekeeper/default-browser validation is
-still pending.
+retained for 14 days. An Apple Silicon M2 user subsequently confirmed normal
+launch and use. Intel has native CI coverage but no recorded human test.
 
 See `docs/ARCHITECTURE.md` and `docs/PLATFORMS.md` for boundaries.
 
 ## Active milestone
 
-Complete native and human validation of the implemented macOS portable beta
-for the existing 1.1.1 application without forking the product code:
+The one-time macOS 1.1.1 bootstrap is complete: the native matrix passed, the
+Apple Silicon M2 human check passed, the immutable beta tag points to the exact
+build commit, and both architecture packages are published with SHA-256 files.
+The product displayed by this beta remains 1.1.1, and Intel remains explicitly
+beta until an Intel human test is recorded.
 
-1. Keep folder-local `data/` as the default on both systems. Add a configurable
-   data root only if the final macOS package layout genuinely requires it, and
-   keep the Windows default unchanged.
-2. Keep the implemented Apple Silicon and Intel runtime packaging and
-   launch/import helpers covered by deterministic tests.
-3. Preserve the “close the last Anthropology Canteen page, then stop the local
-   server” behavior.
-4. Keep the now-passing native macOS CI smoke tests green. Workflow dispatch
-   may retain beta artifacts, but GitHub Release publication remains a
-   separate, explicitly authorized action.
-5. Inspect blank, unsigned beta artifacts first. Signing and notarization are a
-   later optional stage requiring explicit credentials and authorization.
+The next milestone is one normal tag-driven release workflow for later product
+versions:
 
-Implementation is complete and has passed the native GitHub-hosted Apple
-Silicon and Intel runners. Do not call either Mac target stable until the
-Finder/Gatekeeper/default-browser experience is tested by a person.
-Connecting Windows ZIP packaging and tag triggers to one release workflow is
-the next milestone. The current workflow is PR/manual-dispatch Mac beta
-validation and does not claim that normal tags already build three platforms.
-
-Use a short-lived worktree branch named `codex/macos-portable-v1.1.1`. The
-initial test tag may be named `macos-v1.1.1-beta.1`; the product displayed by
-that beta remains 1.1.1. After Windows packaging joins the same tag-driven
-workflow, every normal product tag must generate all supported platform
-artifacts; that three-platform automation is a next milestone.
+1. Build and test Windows x64, macOS Apple Silicon, and macOS Intel from the
+   same source commit and normal `vX.Y.Z` tag.
+2. Publish all three platform archives and their SHA-256 values to one GitHub
+   Release only after every required job passes.
+3. Preserve folder-local data, blank-archive privacy, migration compatibility,
+   and current automatic-shutdown behavior on every platform.
+4. Keep signing and notarization optional and separately authorized; the
+   published 1.1.1 Mac beta remains unsigned and unnotarized.
 
 ## Update discipline
 

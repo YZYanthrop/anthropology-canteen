@@ -2,7 +2,9 @@
 
 本项目从 `v1.0.0` 起采用[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [未发布] - macOS v1.1.1 beta
+## [未发布]
+
+## [macos-v1.1.1-beta.1] - 2026-08-09
 
 - 新增 Apple Silicon arm64 与 Intel x64 的普通文件夹便携包；分别携带官方
   Node.js 24.14.0 运行时、许可证、Finder 可双击的 `.command` 主入口、前台诊断和
@@ -15,8 +17,17 @@
   Windows 重跑共同代码回归。ZIP 只有一个版本化根目录，保留执行权限，生成 SHA-256，
   且扫描用户数据、设置、PID、环境文件、开发依赖、缓存和个人路径。
 - GitHub Actions 原生矩阵运行 #31290870084 已通过 Windows 回归、Apple Silicon
-  打包/smoke 和 Intel 打包/smoke，并生成两个保留 14 天的 beta artifact；仍未完成真人
-  Finder、Gatekeeper、默认浏览器或字体体验验证，也没有移动 `v1.1.1` 标签或创建 Release。
+  打包/smoke 和 Intel 打包/smoke；Apple Silicon M2 用户随后确认可以正常启动和试用，
+  Intel 包尚未记录真人测试。
+- 一次性标签 `macos-v1.1.1-beta.1` 指向实际构建提交 `c2ec6d1`，并发布为
+  [GitHub Pre-release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/macos-v1.1.1-beta.1)；
+  没有移动或覆盖现有 Windows `v1.1.1`。
+- 发布文件及 SHA-256：
+  - `Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.1.1.zip`：
+    `679B7EB994EBCDA6B0FC542E3431DE62A14833EA346CCC6B6BC4CF3398C7265B`；
+  - `Anthropology-Canteen-macOS-Intel-x64-v1.1.1.zip`：
+    `666BD2AC0088545CCAC67E8D85697CD0481073C3EFFF7CFC1DBA5E21136C3154`。
+- 两个公开 Release ZIP 在发布后重新下载，所得大小与 SHA-256 均再次通过核对。
 
 ## [1.1.1] - 2026-08-07
 

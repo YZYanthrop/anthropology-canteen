@@ -116,14 +116,30 @@ Codex 对话只负责组织工作，不代表独立的产品分支。代码、�
 - `Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.1.1.zip` 及 SHA-256；
 - `Anthropology-Canteen-macOS-Intel-x64-v1.1.1.zip` 及 SHA-256。
 
-该工作流只生成有 14 天保留期的 Actions artifacts，不创建或移动标签，不创建
-GitHub Release，也不签名或公证。合并后若决定使用一次性测试标签，另行明确授权创建
-`macos-v1.1.1-beta.1`；不得把它改写成 `v1.1.1`，也不得覆盖现有 Windows Release。
+该工作流本身只生成有 14 天保留期的 Actions artifacts，不创建或移动标签，不创建
+GitHub Release，也不签名或公证。经另行授权后，一次性启动阶段已创建 annotated 标签
+`macos-v1.1.1-beta.1`，精确指向运行 #31290870084 的构建提交 `c2ec6d1`，并发布
+[macOS v1.1.1 Beta 1 Pre-release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/macos-v1.1.1-beta.1)。
+它没有改写 `v1.1.1`，也没有覆盖现有 Windows Release。
 
 每个 Mac 原生 job 必须从共同源码重新构建，校验 runner 与随包 Node 架构，检查首次
 version 7 空白数据、PUT 后重启持久化、导入及备份、最后 SSE 断开约 8 秒退出、单根目录、
 ZIP 执行权限、SHA-256 和隐私黑名单。Actions 通过后仍需真人完成 Finder、Gatekeeper、
-默认浏览器与字体显示检查；Apple Silicon 必测，Intel 强烈建议测试。
+默认浏览器与字体显示检查；本次已由 Apple Silicon M2 用户确认可以正常启动和试用，
+Intel 真人测试仍为强烈建议但尚未记录。
+
+本次发布附件：
+
+- Apple Silicon ZIP SHA-256：
+  `679B7EB994EBCDA6B0FC542E3431DE62A14833EA346CCC6B6BC4CF3398C7265B`；
+- Intel ZIP SHA-256：
+  `666BD2AC0088545CCAC67E8D85697CD0481073C3EFFF7CFC1DBA5E21136C3154`。
+
+发布后已从公开 Release 附件端点重新下载两个 ZIP；重新计算的文件大小和 SHA-256
+均与发布前文件及 GitHub 服务器摘要一致。
+
+这一启动阶段完成后，后续版本不得继续使用平台专属正式标签；下一里程碑是由同一个正常
+`vX.Y.Z` 标签自动构建、测试并发布 Windows x64、macOS Apple Silicon 和 macOS Intel。
 
 ## 数据与隐私检查
 

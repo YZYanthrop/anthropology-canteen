@@ -5,8 +5,8 @@
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
 | Windows x64 | Stable in v1.1.1 | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | Unsigned beta; native CI passed, human validation pending | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
-| macOS Intel | Unsigned beta; native CI passed, human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Apple Silicon | Unsigned beta published; native CI and M2 human validation passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | Unsigned beta published; native CI passed, human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 
 The first macOS beta requires macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
@@ -90,3 +90,9 @@ The first native matrix run, GitHub Actions
 [#31290870084](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/31290870084),
 passed the Windows regression, Apple Silicon package/smoke job, and Intel
 package/smoke job on 2026-08-09.
+
+An Apple Silicon M2 user subsequently confirmed that the unsigned portable
+beta could be launched and used normally. The packages were published under
+the immutable bootstrap tag `macos-v1.1.1-beta.1` in the
+[macOS v1.1.1 Beta 1 Pre-release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/macos-v1.1.1-beta.1).
+An Intel human test remains recommended and is not yet recorded.
