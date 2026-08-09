@@ -32,6 +32,10 @@
 
 - Create a short-lived branch for each bounded change. Keep `main` releasable;
   do not maintain permanent Windows and macOS product branches.
+- A Codex task name or chat is not persistent project state. Before archiving
+  or deleting a temporary task, verify that its changes are committed, its
+  branch is merged or intentionally retained, and the applicable project
+  documents are updated.
 - Use `pnpm lint`, `pnpm build`, and `node --test tests/*.test.mjs` as the base
   verification set. Packaging changes also require a platform-specific startup
   smoke test, local-data persistence test, and blank-archive privacy check.
