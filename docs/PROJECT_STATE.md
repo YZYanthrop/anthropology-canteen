@@ -55,6 +55,13 @@ that tag.
   dispatch uploads beta workflow artifacts only; it does not tag or publish a
   GitHub Release.
 
+GitHub Actions run
+[#31290870084](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/31290870084)
+completed successfully on 2026-08-09: the Windows regression and both native
+Mac package/smoke jobs passed, and the two unsigned beta artifacts were
+retained for 14 days. Human Finder/Gatekeeper/default-browser validation is
+still pending.
+
 See `docs/ARCHITECTURE.md` and `docs/PLATFORMS.md` for boundaries.
 
 ## Active milestone
@@ -69,15 +76,15 @@ for the existing 1.1.1 application without forking the product code:
    launch/import helpers covered by deterministic tests.
 3. Preserve the “close the last Anthropology Canteen page, then stop the local
    server” behavior.
-4. Run the implemented native macOS CI smoke tests. Workflow dispatch may
-   retain beta artifacts, but GitHub Release publication remains a separate,
-   explicitly authorized action.
+4. Keep the now-passing native macOS CI smoke tests green. Workflow dispatch
+   may retain beta artifacts, but GitHub Release publication remains a
+   separate, explicitly authorized action.
 5. Inspect blank, unsigned beta artifacts first. Signing and notarization are a
    later optional stage requiring explicit credentials and authorization.
 
-Implementation is complete in the repository but has not yet run on a native
-Mac in this worktree. Do not call either Mac target stable until Actions passes
-and the Finder/Gatekeeper/default-browser experience is tested by a person.
+Implementation is complete and has passed the native GitHub-hosted Apple
+Silicon and Intel runners. Do not call either Mac target stable until the
+Finder/Gatekeeper/default-browser experience is tested by a person.
 Connecting Windows ZIP packaging and tag triggers to one release workflow is
 the next milestone. The current workflow is PR/manual-dispatch Mac beta
 validation and does not claim that normal tags already build three platforms.

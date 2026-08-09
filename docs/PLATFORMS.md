@@ -5,8 +5,8 @@
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
 | Windows x64 | Stable in v1.1.1 | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | Unsigned beta infrastructure; native/human validation pending | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
-| macOS Intel | Unsigned beta infrastructure; native/human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Apple Silicon | Unsigned beta; native CI passed, human validation pending | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | Unsigned beta; native CI passed, human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 
 The first macOS beta requires macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
@@ -85,3 +85,8 @@ permissions, HTTP endpoints, persistence, shutdown, and archive contents. They
 cannot fully replace a person's first-launch Finder, Gatekeeper, default-browser,
 and visual-font experience. The first beta requires one real Apple Silicon user
 test; an Intel user test is strongly preferred before calling Intel stable.
+
+The first native matrix run, GitHub Actions
+[#31290870084](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/31290870084),
+passed the Windows regression, Apple Silicon package/smoke job, and Intel
+package/smoke job on 2026-08-09.

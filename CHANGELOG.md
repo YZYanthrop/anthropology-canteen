@@ -14,8 +14,9 @@
 - 新增 `macos-15` arm64、`macos-15-intel` x64 原生打包/smoke 工作流，并在
   Windows 重跑共同代码回归。ZIP 只有一个版本化根目录，保留执行权限，生成 SHA-256，
   且扫描用户数据、设置、PID、环境文件、开发依赖、缓存和个人路径。
-- 这是未签名、未公证的 beta 基础设施，尚未在本地 Windows 环境完成 Finder、
-  Gatekeeper、默认浏览器或真实 Mac 字体体验验证；没有移动 `v1.1.1` 标签或发布文件。
+- GitHub Actions 原生矩阵运行 #31290870084 已通过 Windows 回归、Apple Silicon
+  打包/smoke 和 Intel 打包/smoke，并生成两个保留 14 天的 beta artifact；仍未完成真人
+  Finder、Gatekeeper、默认浏览器或字体体验验证，也没有移动 `v1.1.1` 标签或创建 Release。
 
 ## [1.1.1] - 2026-08-07
 
