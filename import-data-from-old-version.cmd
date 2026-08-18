@@ -9,7 +9,8 @@ echo.
 echo Use this only if you unpacked a new version into a new folder.
 echo Close Anthropology Canteen first, then drag the old data folder
 echo or the old anthropology-canteen-data.json file into this window.
-echo If that folder contains API settings, they will be imported too.
+echo If that folder contains API settings or email-reminder files,
+echo they will be imported too. The old files are not deleted.
 echo.
 set /p AC_SOURCE_PATH=Old data path:
 

@@ -19,7 +19,7 @@ test("portable server upgrades version 2 data without losing saved content", asy
   const testRoot = await mkdtemp(
     join(tmpdir(), "anthropology-canteen-v7-test-"),
   );
-  const root = join(testRoot, "Anthropology-Canteen-v1.2.0");
+  const root = join(testRoot, "Anthropology-Canteen-v1.3.0");
   await mkdir(root);
   await cp(new URL("../dist", import.meta.url), join(root, "dist"), {
     recursive: true,
@@ -28,6 +28,14 @@ test("portable server upgrades version 2 data without losing saved content", asy
     new URL("../portable-server.mjs", import.meta.url),
     join(root, "portable-server.mjs"),
   );
+  for (const file of [
+    "reminder-utils.mjs",
+    "reminder-mail.mjs",
+    "reminder-worker.mjs",
+    "reminder-scheduler.mjs",
+  ]) {
+    await copyFile(new URL(`../${file}`, import.meta.url), join(root, file));
+  }
   const moduleUrl = pathToFileURL(join(root, "portable-server.mjs"));
   moduleUrl.searchParams.set("test", String(Date.now()));
   const { createAnthropologyServer } = await import(moduleUrl.href);

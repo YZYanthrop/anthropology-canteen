@@ -4,13 +4,28 @@
 
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
-| Windows x64 | Stable in v1.2.0 | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | Unsigned v1.2.0 portable release; native CI passed, v1.1.1 beta M2 human validation passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
-| macOS Intel | Unsigned v1.2.0 portable release; native CI passed, human validation pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| Windows x64 | v1.3.0 released; native package, reminder smoke, and user test passed | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
+| macOS Apple Silicon | v1.3.0 released; unsigned native package and reminder smoke passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | v1.3.0 released; unsigned native package and reminder smoke passed | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 
-The macOS v1.2.0 packages require macOS 13.5 or newer, matching the minimum
+The macOS v1.3.0 packages require macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
 are not supported by these portable archives.
+
+## v1.3.0 local reminder capability
+
+The v1.3.0 release adds an optional local reminder worker. Windows uses a
+current-user Task Scheduler task and macOS uses a per-user LaunchAgent. Both
+invoke the same one-shot worker once per day; the worker decides whether a
+weekly or monthly digest is due. `RunAtLoad`/`StartWhenAvailable` provide a
+best-effort catch-up after login or wake, but a powered-off or offline computer
+cannot send on time. The web page and server still close normally after the
+last browser page is closed.
+
+SMTP authorization codes never enter browser responses, logs, process
+arguments, or archives. Windows stores encrypted DPAPI ciphertext in `data/`;
+macOS stores the secret in Keychain. Outlook/Hotmail/Live are supported as
+recipients; v1.3.0 does not implement Outlook sender OAuth.
 
 ## v1.2.0 unified release
 
@@ -28,12 +43,27 @@ files.
 v1.2.0 does not change data schema version 7 or API-key settings
 schema version 2. Existing v1.1.1 data remains compatible on every target.
 
+## v1.3.0 native release validation
+
+The v1.3.0 workflow keeps the same build-only publication boundary. Before the
+immutable tag is created, a manual `candidate_sha` run may build and test the
+exact final `main` commit on all native runners. The normal tag push then
+rebuilds from `refs/tags/v1.3.0`; a manual `tag` input is reserved for rerunning
+an existing immutable tag. Exactly one source selector is accepted.
+
+The final-package smoke tests exercise Windows DPAPI and current-user Task
+Scheduler registration, macOS Keychain and per-user LaunchAgent registration,
+and an offline reminder worker run. All temporary credentials, scheduler
+entries, plist files, and reminder state are removed before each job ends.
+
 ## Shared files
 
 The following must remain identical across platforms:
 
 - `app/`
 - `portable-server.mjs`, except for shared cross-platform options
+- `reminder-worker.mjs`, `reminder-mail.mjs`, `reminder-utils.mjs`, and
+  `reminder-scheduler.mjs`
 - compiled `dist/`
 - data and settings schemas
 - provider behavior and regression tests
@@ -47,6 +77,8 @@ Current Windows-only files:
 - `start-local.cmd`
 - `import-data-from-old-version.cmd`
 - packaged `runtime/node.exe`
+- `tools/register-windows-reminder.ps1`, `tools/unregister-windows-reminder.ps1`,
+  and `tools/dpapi-helper.ps1`
 
 `packaging/windows/` assembles the versioned x64 ZIP from the shared build,
 downloads and checksum-verifies the pinned runtime, and smoke-tests the final
@@ -61,6 +93,16 @@ Windows launch and persistence behavior remains unchanged in v1.2.0. The share
 package pins Node.js 24.14.0. Its hidden VBS launch uses `--auto-close`; the
 diagnostic CMD intentionally does not.
 
+For v1.3.0, Windows and macOS launchers append a per-launch query value to the
+friendly localhost URL. Together with non-cacheable HTML responses, this keeps
+a browser from displaying an older unstyled shell after a portable upgrade.
+The Windows final-package smoke test requests the actual compiled CSS and
+JavaScript and verifies a late neighboring-data migration after a blank first
+launch.
+Launchers also compare the running server's package root with their own folder.
+If an older extracted copy is still using the default port, the current copy
+selects a later local port instead of silently opening the older program.
+
 ## macOS layer
 
 The macOS packaging layer, first validated by the v1.1.1 beta, provides:
@@ -73,6 +115,8 @@ The macOS packaging layer, first validated by the v1.1.1 beta, provides:
   files and never overwrites newer data silently;
 - packaging scripts that preserve executable permissions;
 - Apple Silicon and Intel native smoke tests in GitHub Actions.
+- a small Swift Keychain helper used by the optional reminder worker; the
+  helper receives a secret through stdin rather than command-line arguments.
 
 The Mac runtime should initially pin Node.js 24.14.0 to match Windows and ship
 the same Node license/notice obligations. Auto-close parity means a 90-second
@@ -95,11 +139,16 @@ system-wide security.
 - Every platform archive begins with one versioned root directory.
 - A share archive contains no `data/`, `.env`, API key, personal path,
   `node_modules`, package-manager store, source cache, or old generated output.
+- A share archive contains no SMTP credential, reminder state, scheduler plist,
+  Task Scheduler registration, or email address.
 - Final artifact names include the product version and target architecture.
 - Windows and macOS artifacts for a normal release come from the same commit
   and tag.
 - Normally, a tag run and a manual rerun use the same build definitions, and
-  neither path publishes a GitHub Release automatically. The documented
+  neither path publishes a GitHub Release automatically. A pre-tag
+  `candidate_sha` run is an explicit safety gate; it builds the exact final
+  commit before a normal tag exists, while the formal tag run remains the only
+  source of publishable attachments. The documented
   `v1.2.0` harness-only remediation is narrower: the manual run uses the reviewed
   `main` workflow solely to launch the old tagged Windows smoke in an independent
   PowerShell process, while all application, packaging, runtime, and archive

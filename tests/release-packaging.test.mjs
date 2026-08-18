@@ -6,7 +6,7 @@ test("product version and provider User-Agents stay aligned", async () => {
   const metadata = JSON.parse(
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );
-  assert.equal(metadata.version, "1.2.0");
+  assert.equal(metadata.version, "1.3.0");
 
   for (const file of [
     "../app/lib/scholar-search.ts",
@@ -55,6 +55,9 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(build, /runtime\\LICENSE/);
   assert.match(build, /packaging\\shared\\import-data\.mjs/);
   assert.match(build, /tools\\import-data\.mjs/);
+  assert.match(build, /reminder-worker\.mjs/);
+  assert.match(build, /nodemailer/);
+  assert.match(build, /dpapi-helper\.ps1/);
   assert.match(readme, /@PRODUCT_VERSION@/);
 
   assert.match(smoke, /blank version 7 structure/);
@@ -68,6 +71,12 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(smoke, /process\.arch/);
   assert.match(smoke, /v24\.14\.0/);
   assert.match(smoke, /The packaged data importer failed/);
+  assert.match(smoke, /dpapi-helper\.ps1/);
+  assert.match(smoke, /CryptProtectData|Invoke-PackagedDpapi/);
+  assert.match(smoke, /RegisterReminder|register-windows-reminder/);
+  assert.match(smoke, /Get-ScheduledTask/);
+  assert.match(smoke, /reminder-worker\.mjs/);
+  assert.match(smoke, /baselineComplete/);
   assert.match(smoke, /\$RejectedImportExitCode = \$LASTEXITCODE/);
   assert.match(smoke, /\$RejectedImportExitCode -ne 1/);
   assert.match(smoke, /\$global:LASTEXITCODE = 0/);
@@ -81,6 +90,11 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(launcher, /%ANTHROPOLOGY_CANTEEN_SKIP_OPEN%/);
   assert.match(launcher, /skipOpen <> "1"/);
   assert.match(launcher, /--auto-close/);
+  assert.match(launcher, /\?launch=/);
+  assert.match(launcher, /packageRoot/);
+  assert.match(launcher, /IsAnthropologyReady/);
+  assert.match(smoke, /older browser cache/);
+  assert.match(smoke, /retry neighboring-version migration/);
 });
 
 test("normal tags prepare all platform and source artifacts without publishing", async () => {
@@ -91,8 +105,11 @@ test("normal tags prepare all platform and source artifacts without publishing",
 
   assert.match(workflow, /tags:\n\s+- "v\*\.\*\.\*"/);
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /Existing normal release tag/);
-  assert.match(workflow, /ref: refs\/tags\/\$\{\{ env\.RELEASE_TAG \}\}/);
+  assert.match(workflow, /Existing immutable normal release tag/);
+  assert.match(workflow, /candidate_sha/);
+  assert.match(workflow, /exactly one of tag or candidate_sha/);
+  assert.match(workflow, /full 40-character commit SHA/);
+  assert.match(workflow, /ref: refs\/tags\/\$\{\{ github\.event_name == 'workflow_dispatch'/);
   assert.match(workflow, /\^v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+\$/);
   assert.match(workflow, /RELEASE_TAG.*v\$\{VERSION\}/);
   assert.match(workflow, /source_sha=\$SOURCE_SHA/);

@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
   readFile,
@@ -10,6 +11,20 @@ import {
 import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import worker from "./dist/server/index.js";
+import {
+  cleanReminderConfig,
+  deleteReminderSecret,
+  readReminderSecret,
+  readReminderState,
+  saveReminderSecret,
+  withReminderLock,
+  writeJsonAtomic,
+} from "./reminder-utils.mjs";
+import {
+  getSchedulerStatus,
+  installScheduler,
+  uninstallScheduler,
+} from "./reminder-scheduler.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const clientRoot = resolve(root, "dist", "client");
@@ -17,6 +32,9 @@ const dataRoot = resolve(root, "data");
 const dataFile = resolve(dataRoot, "anthropology-canteen-data.json");
 const settingsFile = resolve(dataRoot, "anthropology-canteen-settings.json");
 const pidFile = resolve(dataRoot, "anthropology-canteen-server.pid");
+const runtimeSessionToken = randomUUID();
+let activeReminderJobs = 0;
+const reminderRequestTimes = new Map();
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -192,7 +210,7 @@ function generatedKeywordVariants(root) {
   return [root, `${root}s`, `${root}ed`, `${root}ing`, `${root}al`];
 }
 
-function cleanKeywordGroup(value) {
+function cleanKeywordGroup(value, followedAt = new Date().toISOString()) {
   const candidate =
     typeof value === "string"
       ? { root: value, variants: [value] }
@@ -210,6 +228,7 @@ function cleanKeywordGroup(value) {
     variants: [
       ...new Set([root, ...variants, ...generatedKeywordVariants(root)]),
     ].slice(0, 10),
+    followedAt: cleanTimestamp(candidate.followedAt, followedAt),
   };
 }
 
@@ -409,7 +428,7 @@ function cleanSubscriptions(
   const keyword = Array.isArray(value.keyword)
     ? value.keyword
         .slice(0, 60)
-        .map(cleanKeywordGroup)
+        .map((item) => cleanKeywordGroup(item, migrationBaseline))
         .filter(Boolean)
         .filter(
           (item, index, all) =>
@@ -504,9 +523,10 @@ function cleanFeed(value) {
 
 function emptyLocalSettings() {
   return {
-    version: 2,
+    version: 3,
     openAlexApiKey: "",
     semanticScholarApiKey: "",
+    reminders: cleanReminderConfig({}),
   };
 }
 
@@ -517,9 +537,10 @@ function cleanApiKey(value) {
 
 function cleanLocalSettings(value = {}) {
   return {
-    version: 2,
+    version: 3,
     openAlexApiKey: cleanApiKey(value.openAlexApiKey),
     semanticScholarApiKey: cleanApiKey(value.semanticScholarApiKey),
+    reminders: cleanReminderConfig(value.reminders || {}),
   };
 }
 
@@ -529,13 +550,17 @@ function publicLocalSettings(settings) {
     settings?.semanticScholarApiKey,
   );
   return {
-    version: 2,
+    version: 3,
     openAlexConfigured: Boolean(openAlexKey),
     openAlexKeyHint: openAlexKey ? `••••${openAlexKey.slice(-4)}` : "",
     semanticScholarConfigured: Boolean(semanticScholarKey),
     semanticScholarKeyHint: semanticScholarKey
       ? `••••${semanticScholarKey.slice(-4)}`
       : "",
+    remindersConfigured: Boolean(
+      settings?.reminders?.sender && settings?.reminders?.recipient,
+    ),
+    remindersEnabled: Boolean(settings?.reminders?.enabled),
   };
 }
 
@@ -753,11 +778,22 @@ async function readLocalDataFile() {
   await ensureDataRoot();
   try {
     const text = await readFile(dataFile, "utf8");
-    return cleanLocalData(parseJson(text));
+    const data = cleanLocalData(parseJson(text));
+    // A first launch may have created an empty file before the user places the
+    // new portable folder beside the old version. Keep retrying neighboring
+    // migration while the current file is still genuinely empty.
+    if (!hasLocalDataContent(data)) {
+      const siblingData = await findSiblingLocalData();
+      if (siblingData) {
+        await writeJsonAtomic(dataFile, siblingData);
+        return siblingData;
+      }
+    }
+    return data;
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
     const data = (await findSiblingLocalData()) || emptyLocalData();
-    await writeFile(dataFile, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+    await writeJsonAtomic(dataFile, data);
     return data;
   }
 }
@@ -765,7 +801,7 @@ async function readLocalDataFile() {
 async function writeLocalDataFile(value) {
   await ensureDataRoot();
   const data = cleanLocalData(value, true);
-  await writeFile(dataFile, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  await writeJsonAtomic(dataFile, data);
   return data;
 }
 
@@ -792,10 +828,16 @@ async function findSiblingLocalSettings() {
     try {
       const info = await stat(candidate);
       if (!info.isFile()) continue;
-      const settings = cleanLocalSettings(
-        parseJson(await readFile(candidate, "utf8")),
-      );
-      if (settings.openAlexApiKey || settings.semanticScholarApiKey) {
+      const raw = parseJson(await readFile(candidate, "utf8"));
+      const settings = cleanLocalSettings(raw);
+      const rawReminders = raw?.reminders;
+      if (
+        settings.openAlexApiKey ||
+        settings.semanticScholarApiKey ||
+        rawReminders?.sender ||
+        rawReminders?.enabled ||
+        rawReminders?.installationId
+      ) {
         candidates.push({ settings, mtimeMs: info.mtimeMs });
       }
     } catch {
@@ -817,12 +859,14 @@ async function readLocalSettingsFile() {
     if (error?.code !== "ENOENT") throw error;
     const settings =
       (await findSiblingLocalSettings()) || emptyLocalSettings();
-    if (settings.openAlexApiKey || settings.semanticScholarApiKey) {
-      await writeFile(
-        settingsFile,
-        `${JSON.stringify(settings, null, 2)}\n`,
-        "utf8",
-      );
+    if (
+      settings.openAlexApiKey ||
+      settings.semanticScholarApiKey ||
+      settings.reminders?.sender ||
+      settings.reminders?.enabled ||
+      settings.reminders?.installationId
+    ) {
+      await writeJsonAtomic(settingsFile, settings);
     }
     return settings;
   }
@@ -831,11 +875,7 @@ async function readLocalSettingsFile() {
 async function writeLocalSettingsFile(value) {
   await ensureDataRoot();
   const settings = cleanLocalSettings(value);
-  await writeFile(
-    settingsFile,
-    `${JSON.stringify(settings, null, 2)}\n`,
-    "utf8",
-  );
+  await writeJsonAtomic(settingsFile, settings);
   applyRuntimeSettings(settings);
   return settings;
 }
@@ -860,6 +900,225 @@ async function refreshRuntimeSettings() {
   return settings;
 }
 
+function reminderConfigHash(config) {
+  const value = {
+    provider: config.provider,
+    sender: config.sender,
+    recipient: config.recipient,
+    host: config.host,
+    port: config.port,
+    security: config.security,
+    username: config.username,
+    format: config.format,
+    schedule: config.schedule,
+  };
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function reminderPublicConfig(config) {
+  return {
+    enabled: Boolean(config.enabled),
+    installationId: config.installationId,
+    provider: config.provider,
+    sender: config.sender,
+    recipient: config.recipient,
+    host: config.host,
+    port: config.port,
+    security: config.security,
+    username: config.username,
+    format: config.format,
+    schedule: config.schedule,
+    schedulerPath: config.schedulerPath,
+  };
+}
+
+function reminderRequestAuthorized(headers) {
+  const token = headers?.["x-anthropology-canteen-session"];
+  const origin = headers?.origin;
+  const host = headers?.host || "";
+  if (token !== runtimeSessionToken) return false;
+  if (!origin) return true;
+  return origin === `http://${host}` || origin === `http://localhost:${host.split(":").pop()}`;
+}
+
+function reminderRequestAllowed(headers, pathname) {
+  const token = headers?.["x-anthropology-canteen-session"] || "unknown";
+  const key = `${token}:${pathname}`;
+  const now = Date.now();
+  const recent = (reminderRequestTimes.get(key) || []).filter(
+    (timestamp) => now - timestamp < 60_000,
+  );
+  if (recent.length >= 12) {
+    reminderRequestTimes.set(key, recent);
+    return false;
+  }
+  recent.push(now);
+  reminderRequestTimes.set(key, recent);
+  return true;
+}
+
+async function readReminderStatus() {
+  const settings = await readLocalSettingsFile();
+  const config = cleanReminderConfig(settings.reminders);
+  const state = await readReminderState(root);
+  const scheduler = await getSchedulerStatus(root, config);
+  const secret = await readReminderSecret(root, config);
+  return {
+    version: 1,
+    platform: process.platform,
+    config: reminderPublicConfig(config),
+    credentialConfigured: Boolean(secret),
+    tested: Boolean(config.testedConfigHash && config.testedConfigHash === reminderConfigHash(config)),
+    scheduler,
+    state: {
+      baselineComplete: state.baselineComplete,
+      lastAttemptAt: state.lastAttemptAt,
+      lastCheckAt: state.lastCheckAt,
+      lastSuccessfulCheckAt: state.lastSuccessfulCheckAt,
+      lastSuccessfulSendAt: state.lastSuccessfulSendAt,
+      nextDueAt: state.nextDueAt,
+      lastError: state.lastError,
+      lastResult: state.lastResult,
+    },
+    sessionToken: runtimeSessionToken,
+  };
+}
+
+async function runReminderJob(options = {}) {
+  activeReminderJobs += 1;
+  try {
+    const reminderModule = await import("./reminder-worker.mjs");
+    return await reminderModule.runReminderOnce(options);
+  } finally {
+    activeReminderJobs = Math.max(0, activeReminderJobs - 1);
+  }
+}
+
+async function handleReminders(url, method, body, headers) {
+  if (url.pathname !== "/api/reminders/status" && !url.pathname.startsWith("/api/reminders/")) {
+    return undefined;
+  }
+  if (method === "GET" && url.pathname === "/api/reminders/status") {
+    try {
+      return jsonResponse(await readReminderStatus());
+    } catch {
+      return jsonResponse({ message: "无法读取邮件提醒状态。" }, { status: 500 });
+    }
+  }
+  if (!reminderRequestAuthorized(headers)) {
+    return jsonResponse({ message: "邮件提醒请求未通过本地会话验证。" }, { status: 403 });
+  }
+  if (!reminderRequestAllowed(headers, url.pathname)) {
+    return jsonResponse(
+      { message: "邮件提醒操作过于频繁，请稍后再试。" },
+      { status: 429, headers: { "retry-after": "60" } },
+    );
+  }
+  try {
+    const settings = await readLocalSettingsFile();
+    const current = cleanReminderConfig(settings.reminders);
+    if (url.pathname === "/api/reminders/config" && method === "PUT") {
+      const input = parseJson(textFromBody(body), {});
+      if (Object.prototype.hasOwnProperty.call(input || {}, "port") && ![465, 587].includes(Number(input.port))) {
+        return jsonResponse({ message: "SMTP 只允许 465（TLS）或 587（STARTTLS），禁止 25 端口。" }, { status: 400 });
+      }
+      const next = cleanReminderConfig({ ...current, ...(input || {}), enabled: false, testedConfigHash: "", schedulerPath: "" });
+      if (!next.sender || !next.recipient) {
+        return jsonResponse({ message: "请填写有效的发件邮箱和收件邮箱。" }, { status: 400 });
+      }
+      if (next.provider === "custom" && (!next.host || ![465, 587].includes(next.port))) {
+        return jsonResponse({ message: "自定义 SMTP 只允许 465 或 587 端口。" }, { status: 400 });
+      }
+      if ((next.port === 465 && next.security !== "tls") || (next.port === 587 && next.security !== "starttls")) {
+        return jsonResponse({ message: "465 必须使用 TLS，587 必须使用 STARTTLS。" }, { status: 400 });
+      }
+      if (next.username !== next.sender) {
+        return jsonResponse({ message: "发件地址必须与 SMTP 认证邮箱一致。" }, { status: 400 });
+      }
+      if (current.enabled || current.schedulerPath) await uninstallScheduler(root, current);
+      await withReminderLock(root, () =>
+        writeLocalSettingsFile({ ...settings, reminders: next }),
+      );
+      return jsonResponse(await readReminderStatus());
+    }
+    if (url.pathname === "/api/reminders/credential" && method === "POST") {
+      const input = parseJson(textFromBody(body), {});
+      if (current.enabled || current.schedulerPath) await uninstallScheduler(root, current);
+      await withReminderLock(root, async () => {
+        await saveReminderSecret(root, current, clean(input?.secret, 500));
+      });
+      const next = { ...current, testedConfigHash: "", enabled: false, schedulerPath: "", configuredAt: new Date().toISOString() };
+      await withReminderLock(root, () =>
+        writeLocalSettingsFile({ ...settings, reminders: next }),
+      );
+      return jsonResponse(await readReminderStatus());
+    }
+    if (url.pathname === "/api/reminders/credential" && method === "DELETE") {
+      await uninstallScheduler(root, current);
+      await withReminderLock(root, async () => {
+        await deleteReminderSecret(root, current);
+      });
+      const next = { ...current, enabled: false, testedConfigHash: "", schedulerPath: "" };
+      await withReminderLock(root, () =>
+        writeLocalSettingsFile({ ...settings, reminders: next }),
+      );
+      return jsonResponse(await readReminderStatus());
+    }
+    if (url.pathname === "/api/reminders/test" && method === "POST") {
+      await runReminderJob({ test: true });
+      const next = { ...current, testedConfigHash: reminderConfigHash(current) };
+      await withReminderLock(root, () =>
+        writeLocalSettingsFile({ ...settings, reminders: next }),
+      );
+      return jsonResponse(await readReminderStatus());
+    }
+    if (url.pathname === "/api/reminders/enable" && method === "POST") {
+      if (!current.sender || !current.recipient || !current.testedConfigHash || current.testedConfigHash !== reminderConfigHash(current)) {
+        return jsonResponse({ message: "请先保存配置并发送测试邮件。" }, { status: 400 });
+      }
+      const wasEnabled = current.enabled;
+      const next = { ...current, enabled: true, enabledAt: current.enabledAt || new Date().toISOString() };
+      await withReminderLock(root, () =>
+        writeLocalSettingsFile({ ...settings, reminders: next }),
+      );
+      try {
+        if (!wasEnabled) await runReminderJob({ force: true });
+        const scheduler = await installScheduler(root, next);
+        await withReminderLock(root, () =>
+          writeLocalSettingsFile({
+            ...settings,
+            reminders: {
+              ...next,
+              schedulerPath: scheduler.plist || scheduler.taskName || root,
+            },
+          }),
+        );
+        return jsonResponse({ ...(await readReminderStatus()), scheduler });
+      } catch (error) {
+        await withReminderLock(root, () =>
+          writeLocalSettingsFile({ ...settings, reminders: { ...next, enabled: false } }),
+        );
+        throw error;
+      }
+    }
+    if (url.pathname === "/api/reminders/run-now" && method === "POST") {
+      const result = await runReminderJob({ force: true });
+      return jsonResponse({ ...(await readReminderStatus()), result });
+    }
+    if (url.pathname === "/api/reminders/disable" && method === "POST") {
+      await uninstallScheduler(root, current);
+      const next = { ...current, enabled: false, schedulerPath: "" };
+      await withReminderLock(root, () =>
+        writeLocalSettingsFile({ ...settings, reminders: next }),
+      );
+      return jsonResponse(await readReminderStatus());
+    }
+    return jsonResponse({ message: "Unsupported reminder operation." }, { status: 405 });
+  } catch (error) {
+    return jsonResponse({ message: String(error?.message || "邮件提醒操作失败").slice(0, 600) }, { status: 500 });
+  }
+}
+
 async function handleLocalData(url, method, body) {
   if (url.pathname !== "/api/local-data") return undefined;
   try {
@@ -873,7 +1132,9 @@ async function handleLocalData(url, method, body) {
         { status: 405, headers: { allow: "GET, PUT" } },
       );
     }
-    const data = await writeLocalDataFile(parseJson(textFromBody(body)));
+    const data = await withReminderLock(root, () =>
+      writeLocalDataFile(parseJson(textFromBody(body))),
+    );
     return jsonResponse(data);
   } catch {
     return jsonResponse(
@@ -926,10 +1187,13 @@ async function handleLocalSettings(url, method, body) {
         { status: 400 },
       );
     }
-    const settings = await writeLocalSettingsFile({
-      openAlexApiKey: rawOpenAlexKey,
-      semanticScholarApiKey: rawSemanticScholarKey,
-    });
+    const settings = await withReminderLock(root, () =>
+      writeLocalSettingsFile({
+        openAlexApiKey: rawOpenAlexKey,
+        semanticScholarApiKey: rawSemanticScholarKey,
+        reminders: current.reminders,
+      }),
+    );
     return jsonResponse(publicLocalSettings(settings));
   } catch {
     return jsonResponse(
@@ -954,9 +1218,38 @@ function handleRuntimeStatus(url, method, autoClose) {
           app: "anthropology-canteen",
           mode: "portable",
           autoClose,
+          packageRoot: root,
+          sessionToken: runtimeSessionToken,
         },
   );
 }
+
+export async function fetchFeedForReminder(subscriptions) {
+  await refreshRuntimeSettings();
+  const request = new Request("http://anthropology-canteen.localhost/api/feed", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ subscriptions }),
+  });
+  const response = await worker.fetch(
+    request,
+    { ASSETS: { fetch: serveAsset } },
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  if (!response.ok) {
+    throw new Error(`学术数据刷新失败（HTTP ${response.status}）。`);
+  }
+  return response.json();
+}
+
+export {
+  dataRoot,
+  emptyLocalData,
+  readLocalDataFile,
+  readLocalSettingsFile,
+  writeLocalDataFile,
+  writeLocalSettingsFile,
+};
 
 export function createAnthropologyServer({ autoClose = false } = {}) {
   const browserSessions = new Set();
@@ -1010,7 +1303,8 @@ export function createAnthropologyServer({ autoClose = false } = {}) {
             autoClose &&
             browserSessionSeen &&
             browserSessions.size === 0 &&
-            !shuttingDown
+            !shuttingDown &&
+            activeReminderJobs === 0
           ) {
             clearCloseTimer();
             closeTimer = setTimeout(
@@ -1033,6 +1327,14 @@ export function createAnthropologyServer({ autoClose = false } = {}) {
       });
       let response =
         await handleLocalData(url, incoming.method || "GET", body);
+      if (!response) {
+        response = await handleReminders(
+          url,
+          incoming.method || "GET",
+          body,
+          incoming.headers,
+        );
+      }
       if (!response) {
         response = await handleLocalSettings(
           url,
@@ -1062,6 +1364,16 @@ export function createAnthropologyServer({ autoClose = false } = {}) {
 
       outgoing.statusCode = response.status;
       response.headers.forEach((value, key) => outgoing.setHeader(key, value));
+      const responseType = response.headers.get("content-type") || "";
+      if (responseType.startsWith("text/html")) {
+        // Every portable version uses the same friendly localhost origin.
+        // Never let an older HTML shell point at removed hashed assets.
+        outgoing.setHeader("cache-control", "no-cache, no-store, must-revalidate");
+        outgoing.setHeader("pragma", "no-cache");
+        outgoing.setHeader("expires", "0");
+      } else if (url.pathname.startsWith("/assets/")) {
+        outgoing.setHeader("cache-control", "public, max-age=31536000, immutable");
+      }
       if (incoming.method === "HEAD" || !response.body) {
         outgoing.end();
         return;

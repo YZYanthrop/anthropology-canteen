@@ -22,6 +22,8 @@ $TemporaryRoot = Join-Path (
 ) ("anthropology-canteen-windows-smoke-" + [guid]::NewGuid().ToString("N"))
 $ServerProcess = $null
 $EntryProcessId = $null
+$WindowsPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+$WindowsSmokeTaskName = ""
 
 function Test-ProcessAlive {
   param([Parameter(Mandatory = $true)][int]$ProcessId)
@@ -84,6 +86,22 @@ function Invoke-JsonPut {
     -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 100)
 }
 
+function Invoke-PackagedDpapi {
+  param(
+    [Parameter(Mandatory = $true)][ValidateSet("protect", "unprotect")][string]$Mode,
+    [Parameter(Mandatory = $true)][string]$InputText,
+    [Parameter(Mandatory = $true)][string]$Helper
+  )
+  $Output = $InputText | & $script:WindowsPowerShell -NoProfile -NonInteractive `
+    -ExecutionPolicy Bypass -File $Helper -Mode $Mode
+  $ExitCode = $LASTEXITCODE
+  $global:LASTEXITCODE = 0
+  if ($ExitCode -ne 0) {
+    throw "The packaged DPAPI helper failed with exit code $ExitCode."
+  }
+  return (($Output | Out-String).Trim())
+}
+
 New-Item -ItemType Directory -Path $TemporaryRoot -Force | Out-Null
 try {
   if (Test-Path -LiteralPath (Join-Path $PackageRoot "data")) {
@@ -122,6 +140,15 @@ try {
   $ExtractDirectory = Join-Path $TemporaryRoot "archive"
   Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractDirectory
   $ExtractedRoot = Join-Path $ExtractDirectory $Roots[0]
+  $TextExtensions = @(".js", ".mjs", ".json", ".txt", ".cmd", ".ps1", ".vbs", ".html", ".css", ".map")
+  $SecretMarker = Get-ChildItem -LiteralPath $ExtractedRoot -File -Recurse |
+    Where-Object { $TextExtensions -contains $_.Extension.ToLowerInvariant() } |
+    Select-String -Pattern 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' `
+      -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($null -ne $SecretMarker) {
+    throw "The extracted package contains a high-confidence secret marker."
+  }
   $Node = Join-Path $ExtractedRoot "runtime\node.exe"
   $Server = Join-Path $ExtractedRoot "portable-server.mjs"
   $Launcher = Join-Path $ExtractedRoot "Anthropology Canteen.vbs"
@@ -141,6 +168,60 @@ try {
     throw "The bundled Node.js runtime version is not v24.14.0."
   }
 
+  $DpapiHelper = Join-Path $ExtractedRoot "tools\dpapi-helper.ps1"
+  $RegisterReminder = Join-Path $ExtractedRoot "tools\register-windows-reminder.ps1"
+  $UnregisterReminder = Join-Path $ExtractedRoot "tools\unregister-windows-reminder.ps1"
+  $ReminderWorker = Join-Path $ExtractedRoot "reminder-worker.mjs"
+  foreach ($RequiredReminderFile in @($DpapiHelper, $RegisterReminder, $UnregisterReminder, $ReminderWorker)) {
+    if (-not (Test-Path -LiteralPath $RequiredReminderFile -PathType Leaf)) {
+      throw "The extracted reminder package is incomplete: $RequiredReminderFile"
+    }
+  }
+
+  $ReminderSecret = "windows-smoke-secret-$([guid]::NewGuid().ToString('N'))"
+  $ReminderCiphertext = Invoke-PackagedDpapi -Mode protect -InputText $ReminderSecret -Helper $DpapiHelper
+  if ([string]::IsNullOrWhiteSpace($ReminderCiphertext) -or
+      $ReminderCiphertext -match [regex]::Escape($ReminderSecret)) {
+    throw "The packaged DPAPI helper returned an invalid or plaintext ciphertext."
+  }
+  $ReminderPlaintext = Invoke-PackagedDpapi -Mode unprotect -InputText $ReminderCiphertext -Helper $DpapiHelper
+  if ($ReminderPlaintext -ne $ReminderSecret) {
+    throw "The packaged DPAPI helper did not round-trip the test credential."
+  }
+
+  $WindowsSmokeTaskName = "Anthropology Canteen Smoke $([guid]::NewGuid().ToString('N'))"
+  & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $RegisterReminder `
+    -TaskName $WindowsSmokeTaskName `
+    -NodePath $Node `
+    -WorkerPath $ReminderWorker `
+    -RootPath $ExtractedRoot `
+    -Time "23:59"
+  $RegisterExitCode = $LASTEXITCODE
+  $global:LASTEXITCODE = 0
+  if ($RegisterExitCode -ne 0) {
+    throw "The packaged Windows reminder task registration failed with exit code $RegisterExitCode."
+  }
+  $RegisteredTask = Get-ScheduledTask -TaskName $WindowsSmokeTaskName -ErrorAction Stop
+  $RegisteredAction = @($RegisteredTask.Actions)[0]
+  if ([System.IO.Path]::GetFullPath([string]$RegisteredAction.Execute) -ne
+      [System.IO.Path]::GetFullPath($Node) -or
+      [string]$RegisteredAction.WorkingDirectory -ne [System.IO.Path]::GetFullPath($ExtractedRoot) -or
+      [string]$RegisteredAction.Arguments -notmatch [regex]::Escape($ReminderWorker)) {
+    throw "The packaged Windows reminder task points to the wrong runtime or package root."
+  }
+  if (@($RegisteredTask.Triggers).Count -lt 2 -or
+      [string]$RegisteredTask.Principal.RunLevel -ne "Limited") {
+    throw "The packaged Windows reminder task does not have the expected triggers or privilege level."
+  }
+  & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $UnregisterReminder `
+    -TaskName $WindowsSmokeTaskName
+  $UnregisterExitCode = $LASTEXITCODE
+  $global:LASTEXITCODE = 0
+  if ($UnregisterExitCode -ne 0 -or (Get-ScheduledTask -TaskName $WindowsSmokeTaskName -ErrorAction SilentlyContinue)) {
+    throw "The packaged Windows reminder task did not unregister cleanly."
+  }
+  $WindowsSmokeTaskName = ""
+
   $EntryPort = Get-Random -Minimum 31000 -Maximum 39999
   $PreviousPort = $env:PORT
   $PreviousSkipOpen = $env:ANTHROPOLOGY_CANTEEN_SKIP_OPEN
@@ -159,6 +240,10 @@ try {
     -Uri "$EntryUrl/api/runtime-status" -TimeoutSec 5
   if ($EntryStatus.autoClose -ne $true) {
     throw "The VBS launcher did not enable automatic shutdown."
+  }
+  if ([System.IO.Path]::GetFullPath([string]$EntryStatus.packageRoot) -ne
+      [System.IO.Path]::GetFullPath($ExtractedRoot)) {
+    throw "The VBS launcher connected to a different extracted copy."
   }
   $PidFile = Join-Path $ExtractedRoot "data\anthropology-canteen-server.pid"
   for ($Attempt = 0; $Attempt -lt 20 -and
@@ -192,6 +277,32 @@ try {
   if ($HomeResponse.StatusCode -ne 200) {
     throw "The home page did not return HTTP 200."
   }
+  if ($HomeResponse.Headers.'Cache-Control' -notmatch 'no-store') {
+    throw "The portable HTML shell can be reused from an older browser cache."
+  }
+  $AssetPaths = @(
+    [regex]::Matches($HomeResponse.Content, '(?:href|src)="(?<path>/assets/[^"]+)"') |
+      ForEach-Object { $_.Groups['path'].Value } |
+      Sort-Object -Unique
+  )
+  if ($AssetPaths.Count -lt 2) {
+    throw "The home page did not reference its compiled CSS and JavaScript assets."
+  }
+  $SawCss = $false
+  $SawJavaScript = $false
+  foreach ($AssetPath in $AssetPaths) {
+    $AssetResponse = Invoke-WebRequest -UseBasicParsing `
+      -Uri "$BaseUrl$AssetPath" -TimeoutSec 5
+    if ($AssetResponse.StatusCode -ne 200) {
+      throw "A compiled page asset did not return HTTP 200: $AssetPath"
+    }
+    $AssetType = [string]$AssetResponse.Headers.'Content-Type'
+    if ($AssetType -match '^text/css') { $SawCss = $true }
+    if ($AssetType -match 'javascript') { $SawJavaScript = $true }
+  }
+  if (-not $SawCss -or -not $SawJavaScript) {
+    throw "The final package did not serve both CSS and JavaScript assets."
+  }
   $Blank = Invoke-RestMethod -UseBasicParsing -Uri "$BaseUrl/api/local-data"
   if ($Blank.version -ne 7 -or
       $Blank.subscriptions.journal.Count -ne 0 -or
@@ -199,6 +310,35 @@ try {
       $Blank.subscriptions.keyword.Count -ne 0) {
     throw "The first local-data response is not a blank version 7 structure."
   }
+  $SiblingRoot = Join-Path $ExtractDirectory "Anthropology-Canteen-Windows-x64-v1.2.0"
+  $SiblingData = Join-Path $SiblingRoot "data"
+  New-Item -ItemType Directory -Path $SiblingData -Force | Out-Null
+  [ordered]@{
+    version = 7
+    savedAt = "2026-08-17T00:00:00.000Z"
+    subscriptions = [ordered]@{
+      journal = @()
+      scholar = @([ordered]@{
+        label = "Migration Test Scholar"
+        subscriptionId = "migration-test-scholar"
+        followedAt = "2026-08-01T00:00:00.000Z"
+      })
+      keyword = @()
+    }
+    states = [ordered]@{}
+    feed = $null
+    translations = [ordered]@{}
+    scholarProfiles = [ordered]@{}
+  } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $SiblingData "anthropology-canteen-data.json"
+  ) -Encoding UTF8
+  $Migrated = Invoke-RestMethod -UseBasicParsing -Uri "$BaseUrl/api/local-data"
+  if ($Migrated.subscriptions.scholar.Count -ne 1 -or
+      $Migrated.subscriptions.scholar[0].label -ne "Migration Test Scholar") {
+    throw "An already-created blank data file did not retry neighboring-version migration."
+  }
+  Remove-Item -LiteralPath $SiblingRoot -Recurse -Force
+  $Blank = $Migrated
   $Blank.states | Add-Member -NotePropertyName "smoke-record" `
     -NotePropertyValue ([pscustomobject]@{ saved = $true }) -Force
   $Saved = Invoke-JsonPut -Uri "$BaseUrl/api/local-data" -Body $Blank
@@ -222,15 +362,34 @@ try {
     states = [ordered]@{ "imported-record" = [ordered]@{ read = $true } }
   }
   $ImportSettings = [ordered]@{
-    version = 2
+    version = 3
     openAlexApiKey = "smoke-openalex-key"
     semanticScholarApiKey = ""
+    reminders = [ordered]@{
+      installationId = "windows-smoke-reminder-id"
+      provider = "qq"
+      sender = "sender@example.com"
+      recipient = "recipient@example.com"
+    }
   }
   $ImportData | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
     Join-Path $ImportSource "anthropology-canteen-data.json"
   ) -Encoding UTF8
   $ImportSettings | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
     Join-Path $ImportSource "anthropology-canteen-settings.json"
+  ) -Encoding UTF8
+  [ordered]@{
+    version = 1
+    baselines = [ordered]@{}
+    items = [ordered]@{}
+  } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $ImportSource "anthropology-canteen-reminder-state.json"
+  ) -Encoding UTF8
+  [ordered]@{
+    version = 1
+    ciphertext = "smoke-dpapi-ciphertext"
+  } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $ImportSource "anthropology-canteen-reminder-secret.json"
   ) -Encoding UTF8
   '{"version":2,"openAlexApiKey":"original-key"}' | Set-Content `
     -LiteralPath (Join-Path $TargetData "anthropology-canteen-settings.json") `
@@ -244,8 +403,17 @@ try {
   $ImportedSettings = Get-Content -LiteralPath (
     Join-Path $TargetData "anthropology-canteen-settings.json"
   ) -Raw | ConvertFrom-Json
+  $ImportedReminderState = Get-Content -LiteralPath (
+    Join-Path $TargetData "anthropology-canteen-reminder-state.json"
+  ) -Raw | ConvertFrom-Json
+  $ImportedReminderSecret = Get-Content -LiteralPath (
+    Join-Path $TargetData "anthropology-canteen-reminder-secret.json"
+  ) -Raw | ConvertFrom-Json
   if (-not $ImportedData.states.'imported-record'.read -or
-      $ImportedSettings.openAlexApiKey -ne "smoke-openalex-key") {
+      $ImportedSettings.openAlexApiKey -ne "smoke-openalex-key" -or
+      $ImportedSettings.reminders.installationId -ne "windows-smoke-reminder-id" -or
+      $ImportedReminderState.version -ne 1 -or
+      $ImportedReminderSecret.ciphertext -ne "smoke-dpapi-ciphertext") {
     throw "The packaged data importer did not install validated files."
   }
   if ($null -eq (Get-ChildItem -LiteralPath $TargetData -File | Where-Object {
@@ -276,6 +444,54 @@ try {
         Join-Path $TargetData "anthropology-canteen-data.json"
       ) -Raw) -ne $ImportedDataText) {
     throw "A failed packaged import changed existing data."
+  }
+
+  $ReminderDataRoot = Join-Path $ExtractedRoot "data"
+  New-Item -ItemType Directory -Path $ReminderDataRoot -Force | Out-Null
+  [ordered]@{
+    version = 7
+    subscriptions = [ordered]@{ journal = @(); scholar = @(); keyword = @() }
+    states = [ordered]@{}
+    feed = $null
+    translations = [ordered]@{}
+    scholarProfiles = [ordered]@{}
+  } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $ReminderDataRoot "anthropology-canteen-data.json"
+  ) -Encoding UTF8
+  [ordered]@{
+    version = 3
+    openAlexApiKey = ""
+    semanticScholarApiKey = ""
+    reminders = [ordered]@{
+      enabled = $true
+      installationId = "windows-worker-smoke-id"
+      provider = "custom"
+      sender = "sender@example.com"
+      recipient = "recipient@example.com"
+      host = "smtp.example.com"
+      port = 465
+      security = "tls"
+      username = "sender@example.com"
+      schedule = [ordered]@{ cadence = "daily"; time = "23:59"; weekday = 1; monthDay = 1 }
+    }
+  } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $ReminderDataRoot "anthropology-canteen-settings.json"
+  ) -Encoding UTF8
+  [ordered]@{ version = 1; ciphertext = $ReminderCiphertext } |
+    ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+      Join-Path $ReminderDataRoot "anthropology-canteen-reminder-secret.json"
+    ) -Encoding UTF8
+  & $Node $ReminderWorker --force
+  $WorkerExitCode = $LASTEXITCODE
+  $global:LASTEXITCODE = 0
+  if ($WorkerExitCode -ne 0) {
+    throw "The packaged reminder worker failed offline with exit code $WorkerExitCode."
+  }
+  $WorkerState = Get-Content -LiteralPath (
+    Join-Path $ReminderDataRoot "anthropology-canteen-reminder-state.json"
+  ) -Raw | ConvertFrom-Json
+  if (-not $WorkerState.baselineComplete -or $WorkerState.lastResult -ne "no-updates") {
+    throw "The packaged reminder worker did not complete its blank offline run."
   }
 
   Remove-Item -LiteralPath (Join-Path $ExtractedRoot "data") -Recurse -Force
@@ -311,6 +527,15 @@ try {
   Write-Output "Windows x64 portable smoke test passed."
 } finally {
   Stop-TestProcess
+  if (-not [string]::IsNullOrWhiteSpace($WindowsSmokeTaskName)) {
+    try {
+      & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $UnregisterReminder `
+        -TaskName $WindowsSmokeTaskName
+    } catch {
+      # Preserve the original smoke failure; the task may already be absent.
+    }
+    $global:LASTEXITCODE = 0
+  }
   if ($null -ne $EntryProcessId -and
       (Test-ProcessAlive -ProcessId $EntryProcessId)) {
     Stop-Process -Id $EntryProcessId -Force -ErrorAction SilentlyContinue
