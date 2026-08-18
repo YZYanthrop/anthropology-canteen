@@ -157,6 +157,10 @@ system-wide security.
   it leaves the formal `v1.1.1` tag untouched and must also rerun the Windows
   regression suite before publishing Mac beta artifacts.
 - The release process records a SHA-256 digest for every published artifact.
+- v1.3.0 is published from tag commit `218d1d75f4f82eadbb991f637f562aec6cc57bb9`.
+  The formal native run [#32140570991](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32140570991)
+  passed all six jobs; the public Release lists the three platform ZIP sizes
+  and SHA-256 values.
 
 ## Validation limits
 
