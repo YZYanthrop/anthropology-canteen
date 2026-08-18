@@ -35,6 +35,12 @@
 - 正式附件从同一不可变标签在 Windows x64、macOS arm64 和 macOS x64 原生 runner 重新构建，
   并通过 Keychain、LaunchAgent、DPAPI、任务计划、提醒 worker、启动、持久化和隐私检查。
 - macOS 便携包未签名、未公证；三个正式平台包及其 SHA-256 sidecar 发布在同一个 GitHub Release。
+- 正式标签提交为 `218d1d75f4f82eadbb991f637f562aec6cc57bb9`，三平台原生构建与 smoke
+  在 [Actions #32140570991](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32140570991)
+  全部通过。公开附件大小与摘要如下：
+  - Windows x64（43,251,467 bytes）：`CF4B74FC3E8AD790BEE432C15E3A0FF57A90E24C8976DC9A1A0534B6442BBF0D`；
+  - macOS Apple Silicon arm64（46,470,417 bytes）：`DB89E9CF79BCC2791CCC499F1CD33A64E489ADA45DF3132134CB5322964A18B6`；
+  - macOS Intel x64（47,674,795 bytes）：`1B2E49F2906CB281E347DB8B620CB150CFEA7C206B2031F4E399A3370A92811F`。
 
 ## [1.2.0] - 2026-08-09
 

@@ -171,6 +171,10 @@ empty, including when an earlier first launch already created that blank file.
   migration, persistence, transactional import, automatic close, DPAPI,
   Task Scheduler, Keychain, LaunchAgent, offline reminder worker, archive
   privacy, and package-root identity.
+- The immutable tag points to `218d1d75f4f82eadbb991f637f562aec6cc57bb9`.
+  Formal run [#32140570991](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32140570991)
+  passed all six jobs. The public Release records the three ZIP sizes and
+  SHA-256 values; its macOS packages remain unsigned and unnotarized.
 - macOS packages remain unsigned and unnotarized; signing and notarization are
   separate, explicitly authorized work.
 
