@@ -2,9 +2,7 @@
 
 这是一个本地运行的版本，自带运行环境。使用者不需要安装 Node.js，也不需要账号。
 
-当前正式版本：[v1.2.0](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.2.0)。
-
-当前源码与便携包候选版本为 `v1.3.0`，尚未创建或发布新的 GitHub Release。
+当前正式版本：[v1.3.0](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.0)。
 
 ## v1.3.0 本机邮件提醒（可选）
 
@@ -14,6 +12,18 @@
 - 第一次启用只建立当前成果基线；新增关注项也只从关注时起算。邮件提醒账本与网页未读状态独立，不会把历史发表变成几百条未读。
 - 电脑关机、用户未登录或断网时不能准点发信；登录或唤醒后会补跑，且同一成果不会重复发送。没有新内容时不发邮件。
 - 凭据不会写入浏览器、普通设置响应、日志或分享包：Windows 使用 DPAPI，macOS 使用登录钥匙串。分享前不要把运行过的 `data/` 文件夹一起发送。
+
+本版本已在 Windows x64、macOS Apple Silicon arm64 和 macOS Intel x64 原生环境完成
+便携包验证。macOS 版本是未签名、未公证的普通文件夹便携版，不提供 `.app`；首次打开时
+请只对下载的项目使用 Finder“打开”或“隐私与安全性”批准，不要降低系统整体安全设置。
+
+## v1.3.0 三平台发布
+
+- Windows x64、macOS arm64 与 macOS x64 来自同一个不可变 `v1.3.0` 标签和同一源码提交。
+- 邮件提醒使用当前用户的 Windows 任务计划程序或 macOS LaunchAgent；凭据分别保存在
+  Windows DPAPI 和 macOS 登录钥匙串中。
+- 正式附件与 SHA-256 sidecar 位于同一个
+  [v1.3.0 GitHub Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.0)。
 
 ## v1.2.0 三平台发布
 

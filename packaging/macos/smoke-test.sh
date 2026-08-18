@@ -21,11 +21,25 @@ TEMP_ROOT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/anthropology-canteen-smoke.XXXX
 SERVER_PID=""
 SSE_PID=""
 ENTRY_PID=""
+KEYCHAIN_HELPER=""
+KEYCHAIN_SERVICE="org.anthropology-canteen.smtp"
+KEYCHAIN_ACCOUNT=""
+LAUNCHD_LABEL=""
+LAUNCHD_PLIST=""
+USER_HOME="$(/usr/bin/printenv HOME || true)"
+USER_UID="$(/usr/bin/id -u)"
 
 cleanup() {
   if [[ -n "$SSE_PID" ]]; then /bin/kill "$SSE_PID" 2>/dev/null || true; fi
   if [[ -n "$SERVER_PID" ]]; then /bin/kill "$SERVER_PID" 2>/dev/null || true; fi
   if [[ -n "$ENTRY_PID" ]]; then /bin/kill "$ENTRY_PID" 2>/dev/null || true; fi
+  if [[ -n "$LAUNCHD_LABEL" ]]; then
+    /bin/launchctl bootout "gui/$USER_UID/$LAUNCHD_LABEL" 2>/dev/null || true
+  fi
+  if [[ -n "$LAUNCHD_PLIST" ]]; then /bin/rm -f "$LAUNCHD_PLIST"; fi
+  if [[ -x "$KEYCHAIN_HELPER" && -n "$KEYCHAIN_ACCOUNT" ]]; then
+    "$KEYCHAIN_HELPER" delete "$KEYCHAIN_SERVICE" "$KEYCHAIN_ACCOUNT" >/dev/null 2>&1 || true
+  fi
   /bin/rm -rf "$TEMP_ROOT"
 }
 trap cleanup EXIT
@@ -79,6 +93,9 @@ fi
 
 /usr/bin/unzip -q "$ZIP_PATH" -d "$TEMP_ROOT/archive"
 EXTRACTED_ROOT="$TEMP_ROOT/archive/$ARCHIVE_ROOTS"
+if /usr/bin/find "$EXTRACTED_ROOT" -type f ! -path '*/runtime/bin/node' -exec /usr/bin/grep -I -E -l 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' {} + | /usr/bin/grep -q .; then
+  fail "the extracted package contains a high-confidence secret marker"
+fi
 NODE="$EXTRACTED_ROOT/runtime/bin/node"
 SERVER="$EXTRACTED_ROOT/portable-server.mjs"
 [[ ! -e "$EXTRACTED_ROOT/data" ]] || fail "blank extracted package already contains data"
@@ -86,6 +103,77 @@ SERVER="$EXTRACTED_ROOT/portable-server.mjs"
 [[ -x "$EXTRACTED_ROOT/Anthropology Canteen.command" ]] || fail "ZIP did not preserve launcher execute permission"
 [[ "$($NODE -p 'process.arch')" == "$EXPECTED_NODE_ARCH" ]] || fail "extracted runtime architecture mismatch"
 [[ "$($NODE --version)" == "v24.14.0" ]] || fail "extracted runtime version mismatch"
+
+KEYCHAIN_HELPER="$EXTRACTED_ROOT/tools/anthropology-canteen-keychain"
+[[ -x "$KEYCHAIN_HELPER" ]] || fail "ZIP did not include an executable Keychain helper"
+[[ -n "$USER_HOME" ]] || fail "the native smoke runner has no user home"
+KEYCHAIN_ACCOUNT="macos-smoke-${TARGET_ARCH}-$(/bin/date +%s)-$RANDOM"
+KEYCHAIN_SECRET="macos-smoke-secret-${TARGET_ARCH}-${RANDOM}"
+printf '%s' "$KEYCHAIN_SECRET" | "$KEYCHAIN_HELPER" set "$KEYCHAIN_SERVICE" "$KEYCHAIN_ACCOUNT"
+KEYCHAIN_READ="$("$KEYCHAIN_HELPER" get "$KEYCHAIN_SERVICE" "$KEYCHAIN_ACCOUNT")"
+[[ "$KEYCHAIN_READ" == "$KEYCHAIN_SECRET" ]] || fail "the packaged Keychain helper did not round-trip the test credential"
+"$KEYCHAIN_HELPER" delete "$KEYCHAIN_SERVICE" "$KEYCHAIN_ACCOUNT"
+if "$KEYCHAIN_HELPER" get "$KEYCHAIN_SERVICE" "$KEYCHAIN_ACCOUNT" >/dev/null 2>&1; then
+  fail "the packaged Keychain helper did not delete the test credential"
+fi
+
+INSTALLATION_ID="macos-smoke-${TARGET_ARCH}-$(/bin/date +%s)-$RANDOM"
+LAUNCHD_LABEL="org.anthropology-canteen.reminder.${INSTALLATION_ID:0:24}"
+LAUNCHD_PLIST="$USER_HOME/Library/LaunchAgents/$LAUNCHD_LABEL.plist"
+(
+  cd "$EXTRACTED_ROOT"
+  ROOT="$EXTRACTED_ROOT" INSTALLATION_ID="$INSTALLATION_ID" "$NODE" --input-type=module -e '
+    import { installScheduler } from "./reminder-scheduler.mjs";
+    const result = await installScheduler(process.env.ROOT, {
+      installationId: process.env.INSTALLATION_ID,
+      schedule: { cadence: "daily", time: "23:59", weekday: 1, monthDay: 1 },
+    });
+    if (result.platform !== "macos" || result.path !== process.env.ROOT) {
+      throw new Error("LaunchAgent install returned the wrong package identity");
+    }
+  '
+)
+/bin/launchctl print "gui/$USER_UID/$LAUNCHD_LABEL" >/dev/null 2>&1 || fail "the packaged LaunchAgent was not loaded"
+[[ -f "$LAUNCHD_PLIST" ]] || fail "the packaged LaunchAgent plist was not created"
+/usr/bin/grep -Fq "$EXTRACTED_ROOT" "$LAUNCHD_PLIST" || fail "LaunchAgent plist points to another package root"
+/usr/bin/grep -Fq "$NODE" "$LAUNCHD_PLIST" || fail "LaunchAgent plist points to another runtime"
+/usr/bin/grep -Fq "reminder-worker.mjs" "$LAUNCHD_PLIST" || fail "LaunchAgent plist omits the reminder worker"
+if /usr/bin/grep -Fq "$KEYCHAIN_SECRET" "$LAUNCHD_PLIST"; then
+  fail "LaunchAgent plist contains the test credential"
+fi
+(
+  cd "$EXTRACTED_ROOT"
+  ROOT="$EXTRACTED_ROOT" INSTALLATION_ID="$INSTALLATION_ID" "$NODE" --input-type=module -e '
+    import { uninstallScheduler } from "./reminder-scheduler.mjs";
+    await uninstallScheduler(process.env.ROOT, { installationId: process.env.INSTALLATION_ID });
+  '
+)
+[[ ! -e "$LAUNCHD_PLIST" ]] || fail "the packaged LaunchAgent plist was not removed"
+if /bin/launchctl print "gui/$USER_UID/$LAUNCHD_LABEL" >/dev/null 2>&1; then
+  fail "the packaged LaunchAgent remained loaded after uninstall"
+fi
+LAUNCHD_LABEL=""
+LAUNCHD_PLIST=""
+
+KEYCHAIN_ACCOUNT="$INSTALLATION_ID"
+printf '%s' "$KEYCHAIN_SECRET" | "$KEYCHAIN_HELPER" set "$KEYCHAIN_SERVICE" "$KEYCHAIN_ACCOUNT"
+/bin/mkdir -p "$EXTRACTED_ROOT/data"
+/bin/cat >"$EXTRACTED_ROOT/data/anthropology-canteen-data.json" <<'JSON'
+{"version":7,"subscriptions":{"journal":[],"scholar":[],"keyword":[]},"states":{},"feed":null,"translations":{},"scholarProfiles":{}}
+JSON
+/bin/cat >"$EXTRACTED_ROOT/data/anthropology-canteen-settings.json" <<JSON
+{"version":3,"openAlexApiKey":"","semanticScholarApiKey":"","reminders":{"enabled":true,"installationId":"$INSTALLATION_ID","credentialRef":"$INSTALLATION_ID","provider":"custom","sender":"sender@example.com","recipient":"recipient@example.com","host":"smtp.example.com","port":465,"security":"tls","username":"sender@example.com","schedule":{"cadence":"daily","time":"23:59","weekday":1,"monthDay":1}}}
+JSON
+(cd "$EXTRACTED_ROOT" && "$NODE" reminder-worker.mjs --force)
+WORKER_STATE="$EXTRACTED_ROOT/data/anthropology-canteen-reminder-state.json"
+[[ -f "$WORKER_STATE" ]] || fail "the packaged reminder worker did not create state during its offline run"
+ROOT="$EXTRACTED_ROOT" "$NODE" --input-type=module -e '
+  const fs = await import("node:fs/promises");
+  const state = JSON.parse(await fs.readFile(process.env.ROOT + "/data/anthropology-canteen-reminder-state.json", "utf8"));
+  if (!state.baselineComplete || state.lastResult !== "no-updates") throw new Error("offline reminder worker did not complete a blank run");
+'
+"$KEYCHAIN_HELPER" delete "$KEYCHAIN_SERVICE" "$KEYCHAIN_ACCOUNT"
+/bin/rm -rf "$EXTRACTED_ROOT/data"
 (
   cd "$(dirname "$ZIP_PATH")"
   /usr/bin/shasum -a 256 -c "$(basename "$ZIP_PATH").sha256"

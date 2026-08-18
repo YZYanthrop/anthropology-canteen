@@ -4,17 +4,17 @@
 
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
-| Windows x64 | v1.3.0 source ready; local portable and user test passed; formal same-commit build pending | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | v1.3.0 source ready; unsigned native build and reminder smoke pending | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
-| macOS Intel | v1.3.0 source ready; unsigned native build and reminder smoke pending | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| Windows x64 | v1.3.0 released; native package, reminder smoke, and user test passed | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
+| macOS Apple Silicon | v1.3.0 released; unsigned native package and reminder smoke passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | v1.3.0 released; unsigned native package and reminder smoke passed | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 
-The macOS v1.2.0 packages require macOS 13.5 or newer, matching the minimum
+The macOS v1.3.0 packages require macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
 are not supported by these portable archives.
 
 ## v1.3.0 local reminder capability
 
-The v1.3.0 candidate adds an optional local reminder worker. Windows uses a
+The v1.3.0 release adds an optional local reminder worker. Windows uses a
 current-user Task Scheduler task and macOS uses a per-user LaunchAgent. Both
 invoke the same one-shot worker once per day; the worker decides whether a
 weekly or monthly digest is due. `RunAtLoad`/`StartWhenAvailable` provide a
@@ -42,6 +42,19 @@ files.
 
 v1.2.0 does not change data schema version 7 or API-key settings
 schema version 2. Existing v1.1.1 data remains compatible on every target.
+
+## v1.3.0 native release validation
+
+The v1.3.0 workflow keeps the same build-only publication boundary. Before the
+immutable tag is created, a manual `candidate_sha` run may build and test the
+exact final `main` commit on all native runners. The normal tag push then
+rebuilds from `refs/tags/v1.3.0`; a manual `tag` input is reserved for rerunning
+an existing immutable tag. Exactly one source selector is accepted.
+
+The final-package smoke tests exercise Windows DPAPI and current-user Task
+Scheduler registration, macOS Keychain and per-user LaunchAgent registration,
+and an offline reminder worker run. All temporary credentials, scheduler
+entries, plist files, and reminder state are removed before each job ends.
 
 ## Shared files
 
@@ -132,7 +145,10 @@ system-wide security.
 - Windows and macOS artifacts for a normal release come from the same commit
   and tag.
 - Normally, a tag run and a manual rerun use the same build definitions, and
-  neither path publishes a GitHub Release automatically. The documented
+  neither path publishes a GitHub Release automatically. A pre-tag
+  `candidate_sha` run is an explicit safety gate; it builds the exact final
+  commit before a normal tag exists, while the formal tag run remains the only
+  source of publishable attachments. The documented
   `v1.2.0` harness-only remediation is narrower: the manual run uses the reviewed
   `main` workflow solely to launch the old tagged Windows smoke in an independent
   PowerShell process, while all application, packaging, runtime, and archive

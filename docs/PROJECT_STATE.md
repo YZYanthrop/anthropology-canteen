@@ -4,18 +4,17 @@ Last updated: 2026-08-18
 
 ## Stable baseline
 
-- Current public product version: `v1.2.0`.
-- Stable Git tag: `v1.2.0`; Windows x64, macOS arm64, and macOS x64 artifacts
+- Current public product version: `v1.3.0`.
+- Stable Git tag: `v1.3.0`; Windows x64, macOS arm64, and macOS x64 artifacts
   are built from that one immutable tag.
 - Local data schema: version 7.
-- Local API-key settings schema: version 2.
-- v1.3.0 candidate settings schema: version 3, with optional local reminder
-  configuration; the main research data schema remains version 7.
+- Local API-key and reminder settings schema: version 3; the main research data
+  schema remains version 7.
 - Version 5 and 6 data are migrated defensively: previously auto-merged author
   IDs are quarantined while subscriptions and user states are preserved.
 - Current published distributions: Windows x64 plus unsigned macOS Apple
   Silicon arm64 and Intel x64 portable ZIPs in one
-  [v1.2.0 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.2.0).
+  [v1.3.0 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.0).
 - macOS bootstrap tag: `macos-v1.1.1-beta.1` at the validated build commit
   `c2ec6d1`; its GitHub Pre-release is
   [published here](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/macos-v1.1.1-beta.1).
@@ -24,7 +23,7 @@ Last updated: 2026-08-18
 - Source development requires Node.js 22.13 or newer and pnpm 11.9. The current
   Windows share package pins Node.js 24.14.0.
 
-The `v1.1.1`, `macos-v1.1.1-beta.1`, and `v1.2.0` tags are immutable.
+The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, and `v1.3.0` tags are immutable.
 
 ## v1.2.0 release baseline
 
@@ -64,6 +63,21 @@ The `v1.1.1`, `macos-v1.1.1-beta.1`, and `v1.2.0` tags are immutable.
 - Release verification covers lint, production build, all 31 deterministic
   tests, reproducible packaging, blank-data privacy inspection, native launcher
   startup, folder-local persistence, import, restart, and automatic shutdown.
+
+## v1.3.0 release baseline
+
+- v1.3.0 adds an opt-in local SMTP reminder worker. It runs once from the
+  current-user Windows Task Scheduler or macOS LaunchAgent and exits after the
+  check; no hosted service or account is required.
+- Main research data remains version 7 and settings are version 3. Existing
+  subscriptions, saved states, translations, caches, API keys, reminder
+  baselines, and encrypted credentials migrate through the transactional
+  importer without partial replacement.
+- Windows DPAPI, macOS Keychain, scheduler registration, offline worker runs,
+  native startup, persistence, import, automatic shutdown, and blank-archive
+  privacy are part of the final-package smoke coverage.
+- The three public platform ZIPs are built from the immutable `v1.3.0` tag;
+  macOS artifacts remain unsigned and unnotarized.
 
 ## Current product contract
 
@@ -124,7 +138,7 @@ points to the exact build commit, and both architecture packages were
 published with SHA-256 files. The product displayed by that beta remains 1.1.1,
 and Intel has no recorded human test.
 
-The active milestone is v1.3.0 local reminder readiness:
+The v1.3.0 local-reminder milestone is complete:
 
 1. Keep Windows x64, macOS Apple Silicon, and macOS Intel on one source commit,
    one product version, and one build-only workflow.
@@ -138,31 +152,27 @@ The active milestone is v1.3.0 local reminder readiness:
 5. Keep signing and notarization optional and separately authorized; current
    macOS packages remain unsigned and unnotarized.
 
-The v1.3.0 candidate also treats the stable friendly localhost origin as an
+The v1.3.0 release also treats the stable friendly localhost origin as an
 upgrade boundary: launchers use a per-launch query, portable HTML responses are
 not cacheable, and package smoke tests request the compiled CSS and JavaScript.
 Neighboring-version migration is retried while the new local-data file remains
 empty, including when an earlier first launch already created that blank file.
 
-## v1.3.0 source handoff status
+## v1.3.0 release status
 
-- The shared 1.3.0 source candidate is prepared for the separate Windows and
-  macOS packaging task. `package.json`, provider User-Agents, docs, launchers,
-  packaging definitions, and tests use one product version.
-- Lint, production build, and all 35 deterministic tests pass locally. The
-  Windows final-package smoke covers compiled CSS/JavaScript, blank-first-run
-  neighboring migration, persistence, transactional import, automatic close,
-  archive privacy, and package-root identity. A two-copy test also confirmed
-  that the second copy selects a new port instead of opening the first copy.
-- The user confirmed the corrected Windows test package works normally on the
-  target machine. That local test ZIP is evidence only and is not a formal
-  release artifact or a build input for macOS.
-- Remaining release gates are same-commit native Windows x64, macOS arm64, and
-  macOS x64 builds; native macOS Keychain/LaunchAgent smoke; the planned real
-  SMTP delivery checks; final archive/privacy review; and explicit publication
-  authorization.
-- Public stable version and tag remain v1.2.0. No v1.3.0 tag, GitHub Release,
-  signature, notarization, or publication has been created.
+- The shared 1.3.0 source, package metadata, launchers, packaging definitions,
+  and tests use one product version. Lint, production build, and all 35
+  deterministic tests pass locally.
+- The user confirmed the corrected Windows test package works normally and has
+  confirmed a real SMTP test message was received. No mailbox, provider,
+  address, or credential is recorded here.
+- The formal tag run rebuilds Windows x64, macOS arm64, and macOS x64 from the
+  same immutable commit. Native smoke covers CSS/JavaScript, neighboring
+  migration, persistence, transactional import, automatic close, DPAPI,
+  Task Scheduler, Keychain, LaunchAgent, offline reminder worker, archive
+  privacy, and package-root identity.
+- macOS packages remain unsigned and unnotarized; signing and notarization are
+  separate, explicitly authorized work.
 
 ## Update discipline
 

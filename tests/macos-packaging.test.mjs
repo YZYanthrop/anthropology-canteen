@@ -346,6 +346,11 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
   assert.match(smoke, /did not persist across restart/);
   assert.match(smoke, /ZIP did not preserve/);
   assert.match(smoke, /NODE="\$EXTRACTED_ROOT\/runtime\/bin\/node"/);
+  assert.match(smoke, /anthropology-canteen-keychain/);
+  assert.match(smoke, /LaunchAgent/);
+  assert.match(smoke, /launchctl print/);
+  assert.match(smoke, /reminder-worker\.mjs --force/);
+  assert.match(smoke, /KEYCHAIN_SECRET/);
   assert.match(smoke, /--target-root "\$EXTRACTED_ROOT"/);
   assert.doesNotMatch(smoke, /--target-root "\$PACKAGE_ROOT"/);
   assert.match(

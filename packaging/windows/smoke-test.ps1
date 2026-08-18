@@ -22,6 +22,8 @@ $TemporaryRoot = Join-Path (
 ) ("anthropology-canteen-windows-smoke-" + [guid]::NewGuid().ToString("N"))
 $ServerProcess = $null
 $EntryProcessId = $null
+$WindowsPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+$WindowsSmokeTaskName = ""
 
 function Test-ProcessAlive {
   param([Parameter(Mandatory = $true)][int]$ProcessId)
@@ -84,6 +86,22 @@ function Invoke-JsonPut {
     -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 100)
 }
 
+function Invoke-PackagedDpapi {
+  param(
+    [Parameter(Mandatory = $true)][ValidateSet("protect", "unprotect")][string]$Mode,
+    [Parameter(Mandatory = $true)][string]$InputText,
+    [Parameter(Mandatory = $true)][string]$Helper
+  )
+  $Output = $InputText | & $script:WindowsPowerShell -NoProfile -NonInteractive `
+    -ExecutionPolicy Bypass -File $Helper -Mode $Mode
+  $ExitCode = $LASTEXITCODE
+  $global:LASTEXITCODE = 0
+  if ($ExitCode -ne 0) {
+    throw "The packaged DPAPI helper failed with exit code $ExitCode."
+  }
+  return (($Output | Out-String).Trim())
+}
+
 New-Item -ItemType Directory -Path $TemporaryRoot -Force | Out-Null
 try {
   if (Test-Path -LiteralPath (Join-Path $PackageRoot "data")) {
@@ -122,6 +140,15 @@ try {
   $ExtractDirectory = Join-Path $TemporaryRoot "archive"
   Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractDirectory
   $ExtractedRoot = Join-Path $ExtractDirectory $Roots[0]
+  $TextExtensions = @(".js", ".mjs", ".json", ".txt", ".cmd", ".ps1", ".vbs", ".html", ".css", ".map")
+  $SecretMarker = Get-ChildItem -LiteralPath $ExtractedRoot -File -Recurse |
+    Where-Object { $TextExtensions -contains $_.Extension.ToLowerInvariant() } |
+    Select-String -Pattern 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' `
+      -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($null -ne $SecretMarker) {
+    throw "The extracted package contains a high-confidence secret marker."
+  }
   $Node = Join-Path $ExtractedRoot "runtime\node.exe"
   $Server = Join-Path $ExtractedRoot "portable-server.mjs"
   $Launcher = Join-Path $ExtractedRoot "Anthropology Canteen.vbs"
@@ -140,6 +167,60 @@ try {
   if ((& $Node --version).Trim() -ne "v24.14.0") {
     throw "The bundled Node.js runtime version is not v24.14.0."
   }
+
+  $DpapiHelper = Join-Path $ExtractedRoot "tools\dpapi-helper.ps1"
+  $RegisterReminder = Join-Path $ExtractedRoot "tools\register-windows-reminder.ps1"
+  $UnregisterReminder = Join-Path $ExtractedRoot "tools\unregister-windows-reminder.ps1"
+  $ReminderWorker = Join-Path $ExtractedRoot "reminder-worker.mjs"
+  foreach ($RequiredReminderFile in @($DpapiHelper, $RegisterReminder, $UnregisterReminder, $ReminderWorker)) {
+    if (-not (Test-Path -LiteralPath $RequiredReminderFile -PathType Leaf)) {
+      throw "The extracted reminder package is incomplete: $RequiredReminderFile"
+    }
+  }
+
+  $ReminderSecret = "windows-smoke-secret-$([guid]::NewGuid().ToString('N'))"
+  $ReminderCiphertext = Invoke-PackagedDpapi -Mode protect -InputText $ReminderSecret -Helper $DpapiHelper
+  if ([string]::IsNullOrWhiteSpace($ReminderCiphertext) -or
+      $ReminderCiphertext -match [regex]::Escape($ReminderSecret)) {
+    throw "The packaged DPAPI helper returned an invalid or plaintext ciphertext."
+  }
+  $ReminderPlaintext = Invoke-PackagedDpapi -Mode unprotect -InputText $ReminderCiphertext -Helper $DpapiHelper
+  if ($ReminderPlaintext -ne $ReminderSecret) {
+    throw "The packaged DPAPI helper did not round-trip the test credential."
+  }
+
+  $WindowsSmokeTaskName = "Anthropology Canteen Smoke $([guid]::NewGuid().ToString('N'))"
+  & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $RegisterReminder `
+    -TaskName $WindowsSmokeTaskName `
+    -NodePath $Node `
+    -WorkerPath $ReminderWorker `
+    -RootPath $ExtractedRoot `
+    -Time "23:59"
+  $RegisterExitCode = $LASTEXITCODE
+  $global:LASTEXITCODE = 0
+  if ($RegisterExitCode -ne 0) {
+    throw "The packaged Windows reminder task registration failed with exit code $RegisterExitCode."
+  }
+  $RegisteredTask = Get-ScheduledTask -TaskName $WindowsSmokeTaskName -ErrorAction Stop
+  $RegisteredAction = @($RegisteredTask.Actions)[0]
+  if ([System.IO.Path]::GetFullPath([string]$RegisteredAction.Execute) -ne
+      [System.IO.Path]::GetFullPath($Node) -or
+      [string]$RegisteredAction.WorkingDirectory -ne [System.IO.Path]::GetFullPath($ExtractedRoot) -or
+      [string]$RegisteredAction.Arguments -notmatch [regex]::Escape($ReminderWorker)) {
+    throw "The packaged Windows reminder task points to the wrong runtime or package root."
+  }
+  if (@($RegisteredTask.Triggers).Count -lt 2 -or
+      [string]$RegisteredTask.Principal.RunLevel -ne "Limited") {
+    throw "The packaged Windows reminder task does not have the expected triggers or privilege level."
+  }
+  & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $UnregisterReminder `
+    -TaskName $WindowsSmokeTaskName
+  $UnregisterExitCode = $LASTEXITCODE
+  $global:LASTEXITCODE = 0
+  if ($UnregisterExitCode -ne 0 -or (Get-ScheduledTask -TaskName $WindowsSmokeTaskName -ErrorAction SilentlyContinue)) {
+    throw "The packaged Windows reminder task did not unregister cleanly."
+  }
+  $WindowsSmokeTaskName = ""
 
   $EntryPort = Get-Random -Minimum 31000 -Maximum 39999
   $PreviousPort = $env:PORT
@@ -365,6 +446,54 @@ try {
     throw "A failed packaged import changed existing data."
   }
 
+  $ReminderDataRoot = Join-Path $ExtractedRoot "data"
+  New-Item -ItemType Directory -Path $ReminderDataRoot -Force | Out-Null
+  [ordered]@{
+    version = 7
+    subscriptions = [ordered]@{ journal = @(); scholar = @(); keyword = @() }
+    states = [ordered]@{}
+    feed = $null
+    translations = [ordered]@{}
+    scholarProfiles = [ordered]@{}
+  } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $ReminderDataRoot "anthropology-canteen-data.json"
+  ) -Encoding UTF8
+  [ordered]@{
+    version = 3
+    openAlexApiKey = ""
+    semanticScholarApiKey = ""
+    reminders = [ordered]@{
+      enabled = $true
+      installationId = "windows-worker-smoke-id"
+      provider = "custom"
+      sender = "sender@example.com"
+      recipient = "recipient@example.com"
+      host = "smtp.example.com"
+      port = 465
+      security = "tls"
+      username = "sender@example.com"
+      schedule = [ordered]@{ cadence = "daily"; time = "23:59"; weekday = 1; monthDay = 1 }
+    }
+  } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $ReminderDataRoot "anthropology-canteen-settings.json"
+  ) -Encoding UTF8
+  [ordered]@{ version = 1; ciphertext = $ReminderCiphertext } |
+    ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+      Join-Path $ReminderDataRoot "anthropology-canteen-reminder-secret.json"
+    ) -Encoding UTF8
+  & $Node $ReminderWorker --force
+  $WorkerExitCode = $LASTEXITCODE
+  $global:LASTEXITCODE = 0
+  if ($WorkerExitCode -ne 0) {
+    throw "The packaged reminder worker failed offline with exit code $WorkerExitCode."
+  }
+  $WorkerState = Get-Content -LiteralPath (
+    Join-Path $ReminderDataRoot "anthropology-canteen-reminder-state.json"
+  ) -Raw | ConvertFrom-Json
+  if (-not $WorkerState.baselineComplete -or $WorkerState.lastResult -ne "no-updates") {
+    throw "The packaged reminder worker did not complete its blank offline run."
+  }
+
   Remove-Item -LiteralPath (Join-Path $ExtractedRoot "data") -Recurse -Force
   $AutoClosePort = Get-Random -Minimum 51000 -Maximum 59999
   $AutoCloseUrl = "http://127.0.0.1:$AutoClosePort"
@@ -398,6 +527,15 @@ try {
   Write-Output "Windows x64 portable smoke test passed."
 } finally {
   Stop-TestProcess
+  if (-not [string]::IsNullOrWhiteSpace($WindowsSmokeTaskName)) {
+    try {
+      & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $UnregisterReminder `
+        -TaskName $WindowsSmokeTaskName
+    } catch {
+      # Preserve the original smoke failure; the task may already be absent.
+    }
+    $global:LASTEXITCODE = 0
+  }
   if ($null -ne $EntryProcessId -and
       (Test-ProcessAlive -ProcessId $EntryProcessId)) {
     Stop-Process -Id $EntryProcessId -Force -ErrorAction SilentlyContinue
