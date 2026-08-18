@@ -93,6 +93,10 @@ fi
 
 /usr/bin/unzip -q "$ZIP_PATH" -d "$TEMP_ROOT/archive"
 EXTRACTED_ROOT="$TEMP_ROOT/archive/$ARCHIVE_ROOTS"
+# unzip and launchd canonicalize temporary paths; normalize the expected root
+# before comparing plist paths so a TMPDIR trailing slash cannot create a
+# false mismatch such as `/T//anthropology...` versus `/T/anthropology...`.
+EXTRACTED_ROOT="$(cd "$EXTRACTED_ROOT" && /bin/pwd -P)"
 if /usr/bin/find "$EXTRACTED_ROOT" -type f ! -path '*/runtime/bin/node' -exec /usr/bin/grep -I -E -l 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' {} + | /usr/bin/grep -q .; then
   fail "the extracted package contains a high-confidence secret marker"
 fi
