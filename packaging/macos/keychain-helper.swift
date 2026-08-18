@@ -22,10 +22,11 @@ func fail(_ status: OSStatus) -> Never {
 
 if action == "get" {
     var result: CFTypeRef?
-    let status = SecItemCopyMatching(query.merging([
+    let lookupQuery = query.merging([
         kSecReturnData as String: true,
         kSecMatchLimit as String: kSecMatchLimitOne,
-    ]) { _, new in new }, &result)
+    ]) { _, new in new } as CFDictionary
+    let status = SecItemCopyMatching(lookupQuery, &result)
     guard status == errSecSuccess, let data = result as? Data,
           let value = String(data: data, encoding: .utf8) else { fail(status) }
     print(value, terminator: "")
