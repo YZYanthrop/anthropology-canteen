@@ -135,9 +135,12 @@ LAUNCHD_PLIST="$USER_HOME/Library/LaunchAgents/$LAUNCHD_LABEL.plist"
 )
 /bin/launchctl print "gui/$USER_UID/$LAUNCHD_LABEL" >/dev/null 2>&1 || fail "the packaged LaunchAgent was not loaded"
 [[ -f "$LAUNCHD_PLIST" ]] || fail "the packaged LaunchAgent plist was not created"
-/usr/bin/grep -Fq "$EXTRACTED_ROOT" "$LAUNCHD_PLIST" || fail "LaunchAgent plist points to another package root"
-/usr/bin/grep -Fq "$NODE" "$LAUNCHD_PLIST" || fail "LaunchAgent plist points to another runtime"
-/usr/bin/grep -Fq "reminder-worker.mjs" "$LAUNCHD_PLIST" || fail "LaunchAgent plist omits the reminder worker"
+PLIST_WORKING_DIRECTORY="$(/usr/bin/plutil -extract WorkingDirectory raw "$LAUNCHD_PLIST")"
+PLIST_NODE="$(/usr/bin/plutil -extract ProgramArguments.0 raw "$LAUNCHD_PLIST")"
+PLIST_WORKER="$(/usr/bin/plutil -extract ProgramArguments.1 raw "$LAUNCHD_PLIST")"
+[[ "$PLIST_WORKING_DIRECTORY" == "$EXTRACTED_ROOT" ]] || fail "LaunchAgent plist points to another package root"
+[[ "$PLIST_NODE" == "$NODE" ]] || fail "LaunchAgent plist points to another runtime"
+[[ "$PLIST_WORKER" == "$EXTRACTED_ROOT/reminder-worker.mjs" ]] || fail "LaunchAgent plist omits the reminder worker"
 if /usr/bin/grep -Fq "$KEYCHAIN_SECRET" "$LAUNCHD_PLIST"; then
   fail "LaunchAgent plist contains the test credential"
 fi
