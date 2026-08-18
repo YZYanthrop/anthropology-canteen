@@ -76,11 +76,16 @@ NODE_ROOT="$WORK_ROOT/node-v${NODE_VERSION}-${NODE_TARGET}"
 /bin/mkdir -p "$STAGE_ROOT/runtime/bin" "$STAGE_ROOT/tools"
 /bin/cp -R "$REPO_ROOT/dist" "$STAGE_ROOT/dist"
 /bin/cp "$REPO_ROOT/portable-server.mjs" "$STAGE_ROOT/portable-server.mjs"
+/bin/cp "$REPO_ROOT/reminder-worker.mjs" "$STAGE_ROOT/reminder-worker.mjs"
+/bin/cp "$REPO_ROOT/reminder-utils.mjs" "$STAGE_ROOT/reminder-utils.mjs"
+/bin/cp "$REPO_ROOT/reminder-mail.mjs" "$STAGE_ROOT/reminder-mail.mjs"
+/bin/cp "$REPO_ROOT/reminder-scheduler.mjs" "$STAGE_ROOT/reminder-scheduler.mjs"
 /bin/cp "$REPO_ROOT/LICENSE" "$STAGE_ROOT/LICENSE"
 /bin/cp "$SCRIPT_DIR/Anthropology Canteen.command" "$STAGE_ROOT/Anthropology Canteen.command"
 /bin/cp "$SCRIPT_DIR/start-local.command" "$STAGE_ROOT/start-local.command"
 /bin/cp "$SCRIPT_DIR/import-data-from-old-version.command" "$STAGE_ROOT/import-data-from-old-version.command"
 /bin/cp "$REPO_ROOT/packaging/shared/import-data.mjs" "$STAGE_ROOT/tools/import-data.mjs"
+/bin/cp -R -L "$REPO_ROOT/node_modules/nodemailer" "$STAGE_ROOT/tools/nodemailer"
 /bin/cp "$SCRIPT_DIR/launch-background.sh" "$STAGE_ROOT/tools/launch-background.sh"
 /usr/bin/sed "s/@PRODUCT_VERSION@/${PRODUCT_VERSION}/g" \
   "$SCRIPT_DIR/README-macOS.txt" >"$STAGE_ROOT/README-macOS.txt"
@@ -95,6 +100,15 @@ NODE_ROOT="$WORK_ROOT/node-v${NODE_VERSION}-${NODE_TARGET}"
   "$STAGE_ROOT/tools/launch-background.sh" \
   "$STAGE_ROOT/runtime/bin/node"
 /bin/chmod 644 "$STAGE_ROOT/tools/import-data.mjs"
+
+if ! command -v /usr/bin/swiftc >/dev/null 2>&1; then
+  echo "swiftc is required to build the macOS Keychain helper." >&2
+  exit 1
+fi
+/usr/bin/swiftc "$SCRIPT_DIR/keychain-helper.swift" \
+  -framework Security \
+  -o "$STAGE_ROOT/tools/anthropology-canteen-keychain"
+/bin/chmod 755 "$STAGE_ROOT/tools/anthropology-canteen-keychain"
 
 SYMLINK_PATH="$(/usr/bin/find "$STAGE_ROOT" -type l -print -quit)"
 if [[ -n "$SYMLINK_PATH" ]]; then

@@ -173,7 +173,7 @@ type InstitutionalProfileEvidence = {
   text: string;
 };
 
-const USER_AGENT = "AnthropologyCanteen/1.2.0";
+const USER_AGENT = "AnthropologyCanteen/1.3.0";
 const RESPONSE_CACHE_TTL = 15 * 60 * 1000;
 const responseCache = new Map<
   string,

@@ -23,6 +23,14 @@ API settings are stored only in this extracted folder's data directory. The
 original ZIP is blank. Do not share a copy that you have already run if it
 contains a data directory.
 
+Optional email reminders are configured in Settings. They use a per-user
+LaunchAgent and continue to work after the web page closes. Use an SMTP
+authorization code/app password, never an email master password. The first
+enable only establishes a baseline. The computer must be on, the user logged
+in, and online; missed runs are retried after login. macOS stores the
+credential in the login Keychain. Outlook can be the receiving mailbox; it is
+not a supported sender in this edition.
+
 To move data from another extracted copy, close both copies and double-click
 import-data-from-old-version.command. It validates the supported data/settings
 schema, refuses to import while a live server PID is present, and backs up any

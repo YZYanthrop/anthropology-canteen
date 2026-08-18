@@ -580,7 +580,7 @@ async function openAlex<T>(url: URL): Promise<T> {
     const response = await fetch(url, {
       headers: {
         accept: "application/json",
-        "user-agent": "AnthropologyCanteen/1.2.0",
+        "user-agent": "AnthropologyCanteen/1.3.0",
       },
       signal: AbortSignal.timeout(10_000),
     });
@@ -681,7 +681,7 @@ async function fetchSemanticScholarWorks(
       : "";
   const headers: Record<string, string> = {
     accept: "application/json",
-    "user-agent": "AnthropologyCanteen/1.2.0",
+    "user-agent": "AnthropologyCanteen/1.3.0",
   };
   if (semanticScholarApiKey) headers["x-api-key"] = semanticScholarApiKey;
   const response = await fetch(url, {
@@ -760,7 +760,7 @@ async function fetchCrossrefJournalWorks(
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.2.0",
+      "user-agent": "AnthropologyCanteen/1.3.0",
     },
     signal: AbortSignal.timeout(10_000),
   });
@@ -857,7 +857,7 @@ async function fetchCrossrefScholarWorks(
       const response = await fetch(url, {
         headers: {
           accept: "application/json",
-          "user-agent": "AnthropologyCanteen/1.2.0",
+          "user-agent": "AnthropologyCanteen/1.3.0",
         },
         signal: AbortSignal.timeout(10_000),
       });

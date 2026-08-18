@@ -12,8 +12,9 @@
 ## Product invariants
 
 - Anthropology Canteen is a local, portable academic-tracking web app. It does
-  not require an account, cloud database, paid server, email task, or browser
-  storage for its normal data path.
+  not require an account, cloud database, paid server, or browser storage for
+  its normal data path. Optional email reminders run only on the user's own
+  computer through the operating-system scheduler.
 - Keep one shared application and server implementation for every platform.
   Platform-specific code belongs only in launchers, runtime packaging, import
   helpers, and release scripts.

@@ -1,6 +1,6 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-08-09
+Last updated: 2026-08-18
 
 ## Stable baseline
 
@@ -9,6 +9,8 @@ Last updated: 2026-08-09
   are built from that one immutable tag.
 - Local data schema: version 7.
 - Local API-key settings schema: version 2.
+- v1.3.0 candidate settings schema: version 3, with optional local reminder
+  configuration; the main research data schema remains version 7.
 - Version 5 and 6 data are migrated defensively: previously auto-merged author
   IDs are quarantined while subscriptions and user states are preserved.
 - Current published distributions: Windows x64 plus unsigned macOS Apple
@@ -32,8 +34,7 @@ The `v1.1.1`, `macos-v1.1.1-beta.1`, and `v1.2.0` tags are immutable.
 - The only user-visible source change is removal of the Ruth Benedict quotation
   from the right rail. The application architecture and feature set are
   otherwise unchanged.
-- Local data remains version 7 and local API-key settings remain version 2. No
-  v1.2.0-specific data migration is required.
+- Local data remains version 7 and the v1.2.0 API-key settings remain version 2.
 - The unified portable workflow remains build-only. A normal version tag starts
   the build, and a manual dispatch can rerun an existing normal tag. Both paths may
   build, test, and retain candidate artifacts for all three targets, but the
@@ -76,8 +77,11 @@ The `v1.1.1`, `macos-v1.1.1-beta.1`, and `v1.2.0` tags are immutable.
   the actual follow date.
 - User data and optional API keys stay in the extracted program folder under
   `data/`; blank share archives contain no `data/` directory.
-- The product remains local-only. Accounts, hosted databases, email reminders,
-  and cloud synchronization are out of scope unless explicitly approved later.
+- The product remains local-only. Accounts, hosted databases, cloud
+  synchronization, and hosted notification services remain out of scope.
+  v1.3.0 adds an opt-in local SMTP reminder worker only; it uses current-user
+  Windows Task Scheduler or macOS LaunchAgent and keeps delivery state in the
+  extracted folder.
 
 ## Current architecture
 
@@ -120,7 +124,7 @@ points to the exact build commit, and both architecture packages were
 published with SHA-256 files. The product displayed by that beta remains 1.1.1,
 and Intel has no recorded human test.
 
-The active milestone is v1.2.x maintenance:
+The active milestone is v1.3.0 local reminder readiness:
 
 1. Keep Windows x64, macOS Apple Silicon, and macOS Intel on one source commit,
    one product version, and one build-only workflow.
@@ -128,8 +132,37 @@ The active milestone is v1.2.x maintenance:
    transactional import, and automatic shutdown on every platform.
 3. Collect an Intel Mac human first-launch test when available; native Intel CI
    is required for every published version even without that optional report.
-4. Keep signing and notarization optional and separately authorized; current
+4. Verify optional reminder baseline/deduplication, secure credential storage,
+   scheduler install/repair/disable, and blank-archive privacy on both
+   platforms.
+5. Keep signing and notarization optional and separately authorized; current
    macOS packages remain unsigned and unnotarized.
+
+The v1.3.0 candidate also treats the stable friendly localhost origin as an
+upgrade boundary: launchers use a per-launch query, portable HTML responses are
+not cacheable, and package smoke tests request the compiled CSS and JavaScript.
+Neighboring-version migration is retried while the new local-data file remains
+empty, including when an earlier first launch already created that blank file.
+
+## v1.3.0 source handoff status
+
+- The shared 1.3.0 source candidate is prepared for the separate Windows and
+  macOS packaging task. `package.json`, provider User-Agents, docs, launchers,
+  packaging definitions, and tests use one product version.
+- Lint, production build, and all 35 deterministic tests pass locally. The
+  Windows final-package smoke covers compiled CSS/JavaScript, blank-first-run
+  neighboring migration, persistence, transactional import, automatic close,
+  archive privacy, and package-root identity. A two-copy test also confirmed
+  that the second copy selects a new port instead of opening the first copy.
+- The user confirmed the corrected Windows test package works normally on the
+  target machine. That local test ZIP is evidence only and is not a formal
+  release artifact or a build input for macOS.
+- Remaining release gates are same-commit native Windows x64, macOS arm64, and
+  macOS x64 builds; native macOS Keychain/LaunchAgent smoke; the planned real
+  SMTP delivery checks; final archive/privacy review; and explicit publication
+  authorization.
+- Public stable version and tag remain v1.2.0. No v1.3.0 tag, GitHub Release,
+  signature, notarization, or publication has been created.
 
 ## Update discipline
 

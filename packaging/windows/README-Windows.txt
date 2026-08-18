@@ -16,7 +16,20 @@ optional API settings are stored only in this extracted folder's data
 directory. The original ZIP is blank. Do not share a copy that you have already
 run if it contains a data directory.
 
-To move data from another extracted copy, close both copies and double-click
-import-data-from-old-version.cmd. The importer validates data and optional API
-settings before changing anything, refuses to run while the app is active, and
-backs up existing destination files. A failed import leaves old data intact.
+Optional email reminders are configured in Settings. They use the current
+Windows user's Task Scheduler and do not require this web page or a console to
+stay open. Use an SMTP authorization code/app password, never an email master
+password. The first enable only establishes a baseline. The computer must be
+on, the user logged in, and online; missed runs are retried after login.
+Windows stores the credential as user-bound DPAPI ciphertext in data. Outlook
+can be the receiving mailbox; it is not a supported sender in this edition.
+
+To update safely, extract the new ZIP into a new folder beside the old version;
+do not overwrite the old program folder. Close both copies, double-click
+import-data-from-old-version.cmd in the new folder, and drag the old version's
+data folder into the window. The importer validates and backs up research data,
+API/reminder settings, reminder history, and any Windows DPAPI-encrypted email
+authorization code before changing anything. A failed import leaves old data
+intact. Then start the new copy. If email reminders were enabled, open Settings
+once and enable or migrate the reminder task so its saved path points to the
+new folder. Keep the old folder until the new copy has been checked.

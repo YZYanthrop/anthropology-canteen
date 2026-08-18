@@ -12,11 +12,14 @@ import { fileURLToPath } from "node:url";
 
 const DATA_NAME = "anthropology-canteen-data.json";
 const SETTINGS_NAME = "anthropology-canteen-settings.json";
+const REMINDER_STATE_NAME = "anthropology-canteen-reminder-state.json";
+const REMINDER_SECRET_NAME = "anthropology-canteen-reminder-secret.json";
 const PID_NAME = "anthropology-canteen-server.pid";
 const SETTINGS_FIELDS = new Set([
   "version",
   "openAlexApiKey",
   "semanticScholarApiKey",
+  "reminders",
 ]);
 
 function parseArguments(argv) {
@@ -83,8 +86,8 @@ function validateDataSchema(value, label) {
 }
 
 function validateSettingsSchema(value, label) {
-  if (value.version !== 2) {
-    throw new Error(`${label} must use settings version 2.`);
+  if (value.version !== 2 && value.version !== 3) {
+    throw new Error(`${label} must use settings version 2 or 3.`);
   }
   const unknown = Object.keys(value).filter((key) => !SETTINGS_FIELDS.has(key));
   if (unknown.length) {
@@ -94,6 +97,18 @@ function validateSettingsSchema(value, label) {
     if (key in value && typeof value[key] !== "string") {
       throw new Error(`${label} ${key} must be a string.`);
     }
+  }
+}
+
+function validateReminderStateSchema(value, label) {
+  if (value.version !== 1 || !isObject(value.items) || !isObject(value.baselines)) {
+    throw new Error(`${label} must use reminder state version 1.`);
+  }
+}
+
+function validateReminderSecretSchema(value, label) {
+  if (value.version !== 1 || typeof value.ciphertext !== "string" || !value.ciphertext.trim()) {
+    throw new Error(`${label} is not a valid encrypted reminder secret.`);
   }
 }
 
@@ -109,7 +124,9 @@ async function validatedJson(path, label, kind) {
     throw new Error(`${label} must contain a JSON object.`);
   }
   if (kind === "data") validateDataSchema(value, label);
-  else validateSettingsSchema(value, label);
+  else if (kind === "settings") validateSettingsSchema(value, label);
+  else if (kind === "reminder-state") validateReminderStateSchema(value, label);
+  else if (kind === "reminder-secret") validateReminderSecretSchema(value, label);
   return bytes;
 }
 
@@ -220,10 +237,26 @@ export async function importPortableData({ source, targetRoot }) {
     await validatedJson(settingsFile, SETTINGS_NAME, "settings");
     files.push({ name: SETTINGS_NAME, source: settingsFile });
   }
+  const reminderStateFile = join(sourceDirectory, REMINDER_STATE_NAME);
+  if (await exists(reminderStateFile)) {
+    await validatedJson(reminderStateFile, REMINDER_STATE_NAME, "reminder-state");
+    files.push({ name: REMINDER_STATE_NAME, source: reminderStateFile });
+  }
+  const reminderSecretFile = join(sourceDirectory, REMINDER_SECRET_NAME);
+  if (await exists(reminderSecretFile)) {
+    await validatedJson(reminderSecretFile, REMINDER_SECRET_NAME, "reminder-secret");
+    files.push({ name: REMINDER_SECRET_NAME, source: reminderSecretFile });
+  }
 
   await assertNoLiveServer(targetDirectory);
   const backups = await installValidatedFiles({ targetDirectory, files });
-  return { destinationData, importedSettings: files.length === 2, backups };
+  return {
+    destinationData,
+    importedSettings: files.some((file) => file.name === SETTINGS_NAME),
+    importedReminderState: files.some((file) => file.name === REMINDER_STATE_NAME),
+    importedReminderSecret: files.some((file) => file.name === REMINDER_SECRET_NAME),
+    backups,
+  };
 }
 
 async function main() {
@@ -232,9 +265,15 @@ async function main() {
     console.log(`Data imported to: ${result.destinationData}`);
     console.log(
       result.importedSettings
-        ? "Neighboring API settings were imported."
+        ? "Neighboring API and reminder settings were imported."
         : "No neighboring settings file was present; existing settings were left unchanged.",
     );
+    if (result.importedReminderState) {
+      console.log("The email-reminder delivery history was imported.");
+    }
+    if (result.importedReminderSecret) {
+      console.log("The encrypted Windows email authorization code was imported.");
+    }
     for (const backup of result.backups) console.log(`Backup created: ${backup}`);
   } catch (error) {
     console.error(`Import failed: ${error.message}`);

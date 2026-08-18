@@ -6,7 +6,7 @@ test("product version and provider User-Agents stay aligned", async () => {
   const metadata = JSON.parse(
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );
-  assert.equal(metadata.version, "1.2.0");
+  assert.equal(metadata.version, "1.3.0");
 
   for (const file of [
     "../app/lib/scholar-search.ts",
@@ -55,6 +55,9 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(build, /runtime\\LICENSE/);
   assert.match(build, /packaging\\shared\\import-data\.mjs/);
   assert.match(build, /tools\\import-data\.mjs/);
+  assert.match(build, /reminder-worker\.mjs/);
+  assert.match(build, /nodemailer/);
+  assert.match(build, /dpapi-helper\.ps1/);
   assert.match(readme, /@PRODUCT_VERSION@/);
 
   assert.match(smoke, /blank version 7 structure/);
@@ -81,6 +84,11 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(launcher, /%ANTHROPOLOGY_CANTEEN_SKIP_OPEN%/);
   assert.match(launcher, /skipOpen <> "1"/);
   assert.match(launcher, /--auto-close/);
+  assert.match(launcher, /\?launch=/);
+  assert.match(launcher, /packageRoot/);
+  assert.match(launcher, /IsAnthropologyReady/);
+  assert.match(smoke, /older browser cache/);
+  assert.match(smoke, /retry neighboring-version migration/);
 });
 
 test("normal tags prepare all platform and source artifacts without publishing", async () => {

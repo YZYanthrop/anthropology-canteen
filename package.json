@@ -1,6 +1,6 @@
 {
   "name": "anthropology-canteen",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "author": "YZYanthrop",
   "license": "MIT",
@@ -19,6 +19,7 @@
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
+    "nodemailer": "7.0.6",
     "pinyin-pro": "^3.28.2",
     "react": "19.2.6",
     "react-dom": "19.2.6"

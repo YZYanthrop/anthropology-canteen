@@ -54,7 +54,24 @@ test("portable import validates JSON, backs up targets, and copies only approved
   );
   await writeFile(
     join(source, "anthropology-canteen-settings.json"),
-    JSON.stringify({ version: 2, openAlexApiKey: "imported-key" }),
+    JSON.stringify({
+      version: 3,
+      openAlexApiKey: "imported-key",
+      reminders: {
+        installationId: "portable-import-test-id",
+        provider: "qq",
+        sender: "sender@example.com",
+        recipient: "recipient@example.com",
+      },
+    }),
+  );
+  await writeFile(
+    join(source, "anthropology-canteen-reminder-state.json"),
+    JSON.stringify({ version: 1, baselines: {}, items: {} }),
+  );
+  await writeFile(
+    join(source, "anthropology-canteen-reminder-secret.json"),
+    JSON.stringify({ version: 1, ciphertext: "dpapi-test-ciphertext" }),
   );
   await writeFile(join(source, "unrelated.json"), JSON.stringify({ secret: true }));
   await writeFile(
@@ -79,9 +96,18 @@ test("portable import validates JSON, backs up targets, and copies only approved
     const settings = JSON.parse(
       await readFile(join(targetData, "anthropology-canteen-settings.json"), "utf8"),
     );
+    const reminderState = JSON.parse(
+      await readFile(join(targetData, "anthropology-canteen-reminder-state.json"), "utf8"),
+    );
+    const reminderSecret = JSON.parse(
+      await readFile(join(targetData, "anthropology-canteen-reminder-secret.json"), "utf8"),
+    );
     assert.equal(imported.states.imported.saved, true);
     assert.equal(imported.version, 2);
     assert.equal(settings.openAlexApiKey, "imported-key");
+    assert.equal(settings.reminders.installationId, "portable-import-test-id");
+    assert.equal(reminderState.version, 1);
+    assert.equal(reminderSecret.ciphertext, "dpapi-test-ciphertext");
     const names = await readdir(targetData);
     assert.ok(names.some((name) => /^anthropology-canteen-data\.backup-/.test(name)));
     assert.ok(names.some((name) => /^anthropology-canteen-settings\.backup-/.test(name)));
@@ -284,6 +310,14 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
   assert.match(build, /shasum -a 256 "\$ZIP_NAME"/);
   assert.match(build, /RUNTIME-NOTICE\.txt/);
   assert.match(build, /packaging\/shared\/import-data\.mjs/);
+  assert.match(build, /reminder-worker\.mjs/);
+  assert.match(build, /nodemailer/);
+  assert.match(build, /cp -R -L.*nodemailer/);
+  assert.match(build, /keychain-helper\.swift/);
+  assert.doesNotMatch(
+    build,
+    /register-windows-reminder|unregister-windows-reminder/,
+  );
   assert.match(build, /@PRODUCT_VERSION@/);
   assert.doesNotMatch(build, /osacompile|Anthropology Canteen\.app/);
   assert.match(launcher, /--auto-close/);

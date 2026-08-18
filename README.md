@@ -4,6 +4,17 @@
 
 当前正式版本：[v1.2.0](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.2.0)。
 
+当前源码与便携包候选版本为 `v1.3.0`，尚未创建或发布新的 GitHub Release。
+
+## v1.3.0 本机邮件提醒（可选）
+
+- 不需要托管服务器，也不需要网页持续打开。Windows 使用当前用户的任务计划程序，macOS 使用用户级 LaunchAgent；到点启动一次性检查进程，完成后自动退出。
+- 支持 QQ、163、126、Yeah、Gmail 应用专用密码、iCloud App 专用密码和自定义 SMTP。Outlook/Hotmail/Live 在本版可作为收件地址；暂不作为发件地址（OAuth2 发件会在后续版本考虑）。
+- 只能填写授权码或应用专用密码，不能填写邮箱主密码。465 必须 TLS，587 必须 STARTTLS；禁止 25 端口和忽略证书错误。
+- 第一次启用只建立当前成果基线；新增关注项也只从关注时起算。邮件提醒账本与网页未读状态独立，不会把历史发表变成几百条未读。
+- 电脑关机、用户未登录或断网时不能准点发信；登录或唤醒后会补跑，且同一成果不会重复发送。没有新内容时不发邮件。
+- 凭据不会写入浏览器、普通设置响应、日志或分享包：Windows 使用 DPAPI，macOS 使用登录钥匙串。分享前不要把运行过的 `data/` 文件夹一起发送。
+
 ## v1.2.0 三平台发布
 
 - 本次版本用于把此前分别发布的 Windows 1.1.1 与 macOS 1.1.1 beta 整理为共同的
@@ -55,15 +66,16 @@
 - 学者总览卡片保持等高；档案中的发表若带有公开摘要，可以点击“展开摘要”，摘要也会随档案一起缓存。
 - 信息流六小时内优先使用本地缓存；OpenAlex 为空或失败时会继续尝试已确认的 Semantic Scholar ID。
 - 内置的人类学期刊（包括 Ethos、HAU、Ethnos、Current Anthropology 等）搜索会立即返回；其他期刊再查询 OpenAlex 与 Crossref。
-- 本版不包含邮件、定时任务或提醒设置。
+- 邮件提醒在“设置 → 邮件提醒”中启用；必须先发送测试邮件，成功后才能安装系统计划任务。
 
 ## 启动
 
 1. 完整解压整个 ZIP 文件。
 2. 双击 `Anthropology Canteen.vbs`。
 3. 程序会在后台运行，不会出现需要一直保留的黑色窗口。
-4. 网页准备好后会自动打开：
-   `http://anthropology-canteen.localhost:3000`
+4. 网页准备好后会自动打开。默认使用
+   `http://anthropology-canteen.localhost:3000`；如果另一个解压副本仍在运行，
+   当前版本会自动选择后续本地端口，避免误打开旧文件夹。
 
 备用地址：
 
@@ -78,31 +90,30 @@
 
 ## 更新版本
 
-推荐更新方式：
+推荐使用并排更新，不要把新版覆盖解压到旧程序文件夹：
 
 1. 关闭旧版的所有 Anthropology Canteen 网页并等待约 10 秒；更早版本则关闭黑色窗口或使用旧版关闭脚本。
-2. 将新版 ZIP 完整解压到旧版同一个文件夹里，并允许 Windows 覆盖同名程序文件。
-3. 旧文件夹中的 `data/anthropology-canteen-data.json` 会保留下来，关注列表和收藏状态不会丢失。
-
-如果你已经把新版解压到了一个全新的文件夹：
-
-1. 在新版文件夹中双击 `import-data-from-old-version.cmd`。
-2. 按窗口提示，把旧版的 `data` 文件夹，或旧版的 `data/anthropology-canteen-data.json` 文件拖进去并回车。
-3. 导入完成后再双击 `Anthropology Canteen.vbs`。
+2. 将新版 ZIP 解压成独立文件夹，并放在旧版文件夹旁边。
+3. 启动新版；只要新版数据仍为空，它会继续寻找旁边保存时间最新的旧版数据。
+4. 如果自动迁移没有发生，双击新版中的 `import-data-from-old-version.cmd`，把旧版的
+   `data` 文件夹拖入窗口并回车。
+5. 确认关注项、收藏和提醒设置无误后再删除旧版文件夹。
 
 ## 数据保存
 
 - 这个分享版第一次打开是空白的，不预置任何个人关注项。
 - 每位使用者添加的期刊、学者、关键词、收藏、已读状态、最近一次成功读取的文章列表、已经加载过的学者档案，以及点击生成过的中文摘要，会保存在解压文件夹里的 `data/anthropology-canteen-data.json`。
 - 可选的 OpenAlex 与 Semantic Scholar API Key 单独保存在 `data/anthropology-canteen-settings.json`。网页只显示是否已配置及末四位，不会把完整 Key 返回到页面。
+- 邮件提醒配置保存在同一 settings 文件；提醒基线与待发送账本保存在 `data/anthropology-canteen-reminder-state.json`。Windows 的 DPAPI 密文在 `data/anthropology-canteen-reminder-secret.json`，macOS 凭据只在登录钥匙串中。停用提醒会移除系统任务；“停用并删除授权码”还会清除凭据。
 - 这些数据不会写回原始 ZIP 文件，也不会同步给其他人。
 - 想把空白版发给别人时，请发送原始 ZIP；不要发送自己已经运行过、带有 `data` 文件夹的使用中副本，因为其中可能同时包含关注数据和 API Key。
 - 如果想把自己的全部配置带到另一台电脑，可以复制整个解压后的文件夹或整个 `data` 文件夹；只复制 `anthropology-canteen-data.json` 不会带走 API Key。
 - 如果想恢复空白状态，先关闭所有 Anthropology Canteen 网页并等待约 10 秒，再删除 `data/anthropology-canteen-data.json`。
+- 如果把整个使用中文件夹复制到新位置，设置中的提醒会显示仍绑定旧路径；在“邮件提醒”窗口点击“迁移到当前文件夹”会覆盖同一个系统任务，避免重复发信。
 - 新版第一次打开时，如果发现浏览器里有旧版保存的数据，会自动迁移到上面的 `data` 文件中，并清除 Anthropology Canteen 自己的旧浏览器记录。
 - 学术数据检索和中文翻译仍然需要联网。
 - 关注学者或期刊之前发表的历史成果会保留在档案中供查阅，但不会计入“未读”；未读从实际关注日期开始计算。
-- v1.2.0 不改变 v1.1.1 的本地数据格式，仍使用 version 7。若检测到 version 6 曾自动合并多个作者 ID，会隔离这些 ID并重新生成学者档案与信息流缓存；关注项、关注日期、收藏、已读、忽略和中文翻译都会保留。
+- v1.3.0 的研究数据仍为 version 7；settings 从 version 2 升级到 version 3 时会保留原有 API Key。关注项、关注日期、收藏、已读、忽略和中文翻译都会保留。
 
 ## 更新版本时保留自己的数据
 
@@ -113,7 +124,8 @@
 3. 双击新版里的 `Anthropology Canteen.vbs`。
 4. 如果新版自己的 `data` 文件还不存在，它会自动寻找旁边旧版文件夹里的关注数据和接口设置，并把保存时间最新的那份复制到新版。
 
-如果自动迁移没有发生，也可以手动复制旧版里的 `data` 文件夹到新版文件夹中。
+如果自动迁移没有发生，优先使用事务式导入工具；不要在任一版本仍在运行时手动覆盖
+`data` 文件。
 
 ## 注意
 

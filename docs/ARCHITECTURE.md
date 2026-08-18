@@ -52,16 +52,39 @@ must remain inside the user-selected portable folder.
 - `data/anthropology-canteen-data.json`: subscriptions, read/saved/ignored
   state, article and scholar caches, and translations.
 - `data/anthropology-canteen-settings.json`: optional provider API keys.
+- `data/anthropology-canteen-reminder-state.json`: reminder baselines,
+  pending outbox and delivery ledger (version 1).
+- `data/anthropology-canteen-reminder-secret.json`: Windows DPAPI ciphertext;
+  macOS keeps the equivalent secret in the user Keychain.
 - `data/anthropology-canteen-server.pid`: ephemeral runtime PID.
 
 These files are never build inputs and never belong in Git or a share archive.
 The same JSON formats must work on Windows and macOS so a user can migrate by
 copying or importing the `data/` directory.
 
-An empty first run creates a blank version 7 data structure. Manual import must
+Optional reminders are deliberately local. A one-shot `reminder-worker.mjs`
+uses the same feed aggregation as the web app, sends through an authenticated
+SMTP connection, and exits. Windows registers a current-user Task Scheduler
+task; macOS registers a user LaunchAgent. The web server does not need to stay
+open. Reminder delivery state is separate from article read state, and writes
+use the reminder lock plus atomic replacement so a background run does not
+leave a partial JSON file.
+
+An empty first run creates a blank version 7 data structure. While that file
+remains empty, automatic neighboring-version migration is retried so an old
+portable folder placed beside the new one after the first launch can still be
+found. Manual import must
 validate the JSON, back up an existing destination, and bring the neighboring
 settings file only when present. Automatic neighboring-version migration keeps
 the newest data by `savedAt` and chooses settings independently by file time.
+
+Because every version opens on the same friendly localhost origin, launchers
+add a per-launch query value and the portable server marks HTML as `no-store`.
+Hashed `/assets/` files may be cached immutably. This prevents an older HTML
+shell from requesting asset names that no longer exist after an upgrade.
+`/api/runtime-status` also reports the active package root. Launchers reuse a
+running server only when it belongs to their own extracted folder; another
+portable copy on the default port causes the new copy to choose a later port.
 
 `packaging/shared/import-data.mjs` implements the manual-import transaction for
 both platforms. Windows and macOS provide different interactive launchers, but
@@ -91,7 +114,7 @@ public quotas.
 
 - No Electron or Tauri rewrite for the initial macOS port.
 - No GitHub Pages conversion, browser-local primary storage, account system,
-  cloud database, or email scheduler.
+  cloud database, hosted notification service, or email-reading capability.
 - No automatic code signing or notarization until the user supplies an Apple
   Developer identity and explicitly authorizes secret configuration and
   publication.

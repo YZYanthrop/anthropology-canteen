@@ -160,6 +160,10 @@ try {
   if ($EntryStatus.autoClose -ne $true) {
     throw "The VBS launcher did not enable automatic shutdown."
   }
+  if ([System.IO.Path]::GetFullPath([string]$EntryStatus.packageRoot) -ne
+      [System.IO.Path]::GetFullPath($ExtractedRoot)) {
+    throw "The VBS launcher connected to a different extracted copy."
+  }
   $PidFile = Join-Path $ExtractedRoot "data\anthropology-canteen-server.pid"
   for ($Attempt = 0; $Attempt -lt 20 -and
       -not (Test-Path -LiteralPath $PidFile); $Attempt += 1) {
@@ -192,6 +196,32 @@ try {
   if ($HomeResponse.StatusCode -ne 200) {
     throw "The home page did not return HTTP 200."
   }
+  if ($HomeResponse.Headers.'Cache-Control' -notmatch 'no-store') {
+    throw "The portable HTML shell can be reused from an older browser cache."
+  }
+  $AssetPaths = @(
+    [regex]::Matches($HomeResponse.Content, '(?:href|src)="(?<path>/assets/[^"]+)"') |
+      ForEach-Object { $_.Groups['path'].Value } |
+      Sort-Object -Unique
+  )
+  if ($AssetPaths.Count -lt 2) {
+    throw "The home page did not reference its compiled CSS and JavaScript assets."
+  }
+  $SawCss = $false
+  $SawJavaScript = $false
+  foreach ($AssetPath in $AssetPaths) {
+    $AssetResponse = Invoke-WebRequest -UseBasicParsing `
+      -Uri "$BaseUrl$AssetPath" -TimeoutSec 5
+    if ($AssetResponse.StatusCode -ne 200) {
+      throw "A compiled page asset did not return HTTP 200: $AssetPath"
+    }
+    $AssetType = [string]$AssetResponse.Headers.'Content-Type'
+    if ($AssetType -match '^text/css') { $SawCss = $true }
+    if ($AssetType -match 'javascript') { $SawJavaScript = $true }
+  }
+  if (-not $SawCss -or -not $SawJavaScript) {
+    throw "The final package did not serve both CSS and JavaScript assets."
+  }
   $Blank = Invoke-RestMethod -UseBasicParsing -Uri "$BaseUrl/api/local-data"
   if ($Blank.version -ne 7 -or
       $Blank.subscriptions.journal.Count -ne 0 -or
@@ -199,6 +229,35 @@ try {
       $Blank.subscriptions.keyword.Count -ne 0) {
     throw "The first local-data response is not a blank version 7 structure."
   }
+  $SiblingRoot = Join-Path $ExtractDirectory "Anthropology-Canteen-Windows-x64-v1.2.0"
+  $SiblingData = Join-Path $SiblingRoot "data"
+  New-Item -ItemType Directory -Path $SiblingData -Force | Out-Null
+  [ordered]@{
+    version = 7
+    savedAt = "2026-08-17T00:00:00.000Z"
+    subscriptions = [ordered]@{
+      journal = @()
+      scholar = @([ordered]@{
+        label = "Migration Test Scholar"
+        subscriptionId = "migration-test-scholar"
+        followedAt = "2026-08-01T00:00:00.000Z"
+      })
+      keyword = @()
+    }
+    states = [ordered]@{}
+    feed = $null
+    translations = [ordered]@{}
+    scholarProfiles = [ordered]@{}
+  } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $SiblingData "anthropology-canteen-data.json"
+  ) -Encoding UTF8
+  $Migrated = Invoke-RestMethod -UseBasicParsing -Uri "$BaseUrl/api/local-data"
+  if ($Migrated.subscriptions.scholar.Count -ne 1 -or
+      $Migrated.subscriptions.scholar[0].label -ne "Migration Test Scholar") {
+    throw "An already-created blank data file did not retry neighboring-version migration."
+  }
+  Remove-Item -LiteralPath $SiblingRoot -Recurse -Force
+  $Blank = $Migrated
   $Blank.states | Add-Member -NotePropertyName "smoke-record" `
     -NotePropertyValue ([pscustomobject]@{ saved = $true }) -Force
   $Saved = Invoke-JsonPut -Uri "$BaseUrl/api/local-data" -Body $Blank
@@ -222,15 +281,34 @@ try {
     states = [ordered]@{ "imported-record" = [ordered]@{ read = $true } }
   }
   $ImportSettings = [ordered]@{
-    version = 2
+    version = 3
     openAlexApiKey = "smoke-openalex-key"
     semanticScholarApiKey = ""
+    reminders = [ordered]@{
+      installationId = "windows-smoke-reminder-id"
+      provider = "qq"
+      sender = "sender@example.com"
+      recipient = "recipient@example.com"
+    }
   }
   $ImportData | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
     Join-Path $ImportSource "anthropology-canteen-data.json"
   ) -Encoding UTF8
   $ImportSettings | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
     Join-Path $ImportSource "anthropology-canteen-settings.json"
+  ) -Encoding UTF8
+  [ordered]@{
+    version = 1
+    baselines = [ordered]@{}
+    items = [ordered]@{}
+  } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $ImportSource "anthropology-canteen-reminder-state.json"
+  ) -Encoding UTF8
+  [ordered]@{
+    version = 1
+    ciphertext = "smoke-dpapi-ciphertext"
+  } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
+    Join-Path $ImportSource "anthropology-canteen-reminder-secret.json"
   ) -Encoding UTF8
   '{"version":2,"openAlexApiKey":"original-key"}' | Set-Content `
     -LiteralPath (Join-Path $TargetData "anthropology-canteen-settings.json") `
@@ -244,8 +322,17 @@ try {
   $ImportedSettings = Get-Content -LiteralPath (
     Join-Path $TargetData "anthropology-canteen-settings.json"
   ) -Raw | ConvertFrom-Json
+  $ImportedReminderState = Get-Content -LiteralPath (
+    Join-Path $TargetData "anthropology-canteen-reminder-state.json"
+  ) -Raw | ConvertFrom-Json
+  $ImportedReminderSecret = Get-Content -LiteralPath (
+    Join-Path $TargetData "anthropology-canteen-reminder-secret.json"
+  ) -Raw | ConvertFrom-Json
   if (-not $ImportedData.states.'imported-record'.read -or
-      $ImportedSettings.openAlexApiKey -ne "smoke-openalex-key") {
+      $ImportedSettings.openAlexApiKey -ne "smoke-openalex-key" -or
+      $ImportedSettings.reminders.installationId -ne "windows-smoke-reminder-id" -or
+      $ImportedReminderState.version -ne 1 -or
+      $ImportedReminderSecret.ciphertext -ne "smoke-dpapi-ciphertext") {
     throw "The packaged data importer did not install validated files."
   }
   if ($null -eq (Get-ChildItem -LiteralPath $TargetData -File | Where-Object {

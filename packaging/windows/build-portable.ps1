@@ -174,7 +174,9 @@ try {
     -Destination $StageRoot -Recurse
   foreach ($Name in @(
     "portable-server.mjs", "Anthropology Canteen.vbs", "start-local.cmd",
-    "import-data-from-old-version.cmd", "LICENSE"
+    "import-data-from-old-version.cmd", "reminder-worker.mjs",
+    "reminder-utils.mjs", "reminder-mail.mjs", "reminder-scheduler.mjs",
+    "LICENSE"
   )) {
     Copy-Item -LiteralPath (Join-Path $RepositoryRoot $Name) `
       -Destination (Join-Path $StageRoot $Name)
@@ -184,6 +186,16 @@ try {
   Copy-Item -LiteralPath (
     Join-Path $RepositoryRoot "packaging\shared\import-data.mjs"
   ) -Destination (Join-Path $StageRoot "tools\import-data.mjs")
+  foreach ($ToolName in @(
+    "register-windows-reminder.ps1",
+    "unregister-windows-reminder.ps1",
+    "dpapi-helper.ps1"
+  )) {
+    Copy-Item -LiteralPath (Join-Path $RepositoryRoot "tools\$ToolName") `
+      -Destination (Join-Path $StageRoot "tools\$ToolName")
+  }
+  Copy-Item -LiteralPath (Resolve-Path (Join-Path $RepositoryRoot "node_modules\nodemailer")) `
+    -Destination (Join-Path $StageRoot "tools\nodemailer") -Recurse
   Copy-Item -LiteralPath (Join-Path $NodeRoot "node.exe") `
     -Destination (Join-Path $StageRoot "runtime\node.exe")
   Copy-Item -LiteralPath (Join-Path $NodeRoot "LICENSE") `

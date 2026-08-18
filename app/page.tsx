@@ -8,6 +8,7 @@ type Journal = { label: string; issn: string; followedAt?: string };
 type KeywordGroup = {
   root: string;
   variants: string[];
+  followedAt?: string;
 };
 type Scholar = {
   subscriptionId: string;
@@ -142,10 +143,50 @@ type LocalData = {
 };
 
 type LocalSettingsStatus = {
+  version?: number;
   openAlexConfigured: boolean;
   openAlexKeyHint?: string;
   semanticScholarConfigured?: boolean;
   semanticScholarKeyHint?: string;
+  remindersConfigured?: boolean;
+  remindersEnabled?: boolean;
+};
+
+type ReminderStatus = {
+  version?: number;
+  platform?: string;
+  config?: {
+    enabled?: boolean;
+    installationId?: string;
+    provider?: string;
+    sender?: string;
+    recipient?: string;
+    host?: string;
+    port?: number;
+    security?: "tls" | "starttls";
+    username?: string;
+    format?: "concise" | "detailed";
+    schedule?: {
+      cadence?: "daily" | "weekly" | "monthly";
+      time?: string;
+      weekday?: number;
+      monthDay?: number;
+    };
+  };
+  credentialConfigured?: boolean;
+  tested?: boolean;
+  scheduler?: { installed?: boolean; path?: string; stalePath?: string; taskName?: string };
+  state?: {
+    baselineComplete?: boolean;
+    lastAttemptAt?: string;
+    lastCheckAt?: string;
+    lastSuccessfulCheckAt?: string;
+    lastSuccessfulSendAt?: string;
+    nextDueAt?: string;
+    lastError?: string;
+    lastResult?: string;
+  };
+  sessionToken?: string;
 };
 
 const FILTERS: { id: Filter; label: string; icon: string }[] = [
@@ -154,6 +195,40 @@ const FILTERS: { id: Filter; label: string; icon: string }[] = [
   { id: "keyword", label: "关键词命中", icon: "#" },
   { id: "saved", label: "已收藏", icon: "♡" },
 ];
+
+const REMINDER_PROVIDER_GUIDANCE: Record<
+  string,
+  { title: string; detail: string }
+> = {
+  qq: {
+    title: "QQ 邮箱需要 SMTP 授权码",
+    detail: "先在 QQ 邮箱网页设置中开启 SMTP 服务并生成授权码。这里填写授权码，不填写 QQ 密码。",
+  },
+  "163": {
+    title: "163 邮箱需要客户端授权码",
+    detail: "先在 163 邮箱设置中开启 SMTP 服务并生成客户端授权码。这里填写授权码，不填写邮箱密码。",
+  },
+  "126": {
+    title: "126 邮箱需要客户端授权码",
+    detail: "先在 126 邮箱设置中开启 SMTP 服务并生成客户端授权码。这里填写授权码，不填写邮箱密码。",
+  },
+  yeah: {
+    title: "Yeah 邮箱需要客户端授权码",
+    detail: "先在 Yeah 邮箱设置中开启 SMTP 服务并生成客户端授权码。这里填写授权码，不填写邮箱密码。",
+  },
+  gmail: {
+    title: "Gmail 需要应用专用密码",
+    detail: "Google 账号开启两步验证后，创建应用专用密码。这里填写该密码，不填写 Google 主密码。",
+  },
+  icloud: {
+    title: "iCloud 需要 App 专用密码",
+    detail: "在 Apple 账户的登录与安全设置中创建 App 专用密码，然后填在这里。",
+  },
+  custom: {
+    title: "其他邮箱需要 SMTP 信息",
+    detail: "请从邮箱服务商帮助页面确认 SMTP 主机、465/TLS 或 587/STARTTLS，以及授权码或应用专用密码。",
+  },
+};
 
 const DEFAULT_SUBSCRIPTIONS: Subscriptions = {
   journal: [],
@@ -371,7 +446,7 @@ function keywordVariants(root: string) {
 function createKeywordGroup(input: string): KeywordGroup | null {
   const root = canonicalKeywordRoot(input);
   if (!root) return null;
-  return { root, variants: keywordVariants(root) };
+  return { root, variants: keywordVariants(root), followedAt: new Date().toISOString() };
 }
 
 function safeKeywordGroup(value: unknown): KeywordGroup | null {
@@ -391,6 +466,7 @@ function safeKeywordGroup(value: unknown): KeywordGroup | null {
   return {
     root,
     variants: [...new Set([root, ...storedVariants, ...keywordVariants(root)])],
+    followedAt: safeTimestamp(candidate.followedAt),
   };
 }
 
@@ -938,6 +1014,25 @@ export default function Home() {
   const [localSettings, setLocalSettings] = useState<LocalSettingsStatus>({
     openAlexConfigured: false,
   });
+  const [reminderStatus, setReminderStatus] = useState<ReminderStatus | null>(null);
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [reminderSaving, setReminderSaving] = useState(false);
+  const [reminderSecretInput, setReminderSecretInput] = useState("");
+  const [reminderConfig, setReminderConfig] = useState({
+    provider: "qq",
+    sender: "",
+    recipient: "",
+    host: "smtp.qq.com",
+    port: 465,
+    security: "tls" as "tls" | "starttls",
+    username: "",
+    format: "concise" as "concise" | "detailed",
+    cadence: "daily" as "daily" | "weekly" | "monthly",
+    time: "08:00",
+    weekday: 1,
+    monthDay: 1,
+  });
+  const [reminderSessionToken, setReminderSessionToken] = useState("");
   const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
   const [openAlexApiKeyInput, setOpenAlexApiKeyInput] = useState("");
   const [semanticScholarApiKeyInput, setSemanticScholarApiKeyInput] =
@@ -1071,6 +1166,162 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  function applyReminderStatus(status: ReminderStatus) {
+    setReminderStatus(status);
+    if (status.sessionToken) setReminderSessionToken(status.sessionToken);
+    const config = status.config;
+    if (!config) return;
+    setReminderConfig((current) => ({
+      ...current,
+      provider:
+        config.provider === "custom" && !config.sender && !config.host
+          ? "qq"
+          : config.provider || current.provider,
+      sender: config.sender || current.sender,
+      recipient: config.recipient || current.recipient,
+      host: config.host || current.host,
+      port: config.port || current.port,
+      security: config.security || current.security,
+      username: config.username || current.username,
+      format: config.format || current.format,
+      cadence: config.schedule?.cadence || current.cadence,
+      time: config.schedule?.time || current.time,
+      weekday: typeof config.schedule?.weekday === "number" ? config.schedule.weekday : current.weekday,
+      monthDay: typeof config.schedule?.monthDay === "number" ? config.schedule.monthDay : current.monthDay,
+    }));
+  }
+
+  async function loadReminderStatus() {
+    try {
+      const runtime = await fetch("/api/runtime-status", { cache: "no-store" });
+      if (!runtime.ok) return;
+      const runtimeValue = (await runtime.json()) as { sessionToken?: string };
+      if (!runtimeValue.sessionToken) return;
+      setReminderSessionToken(runtimeValue.sessionToken);
+      const response = await fetch("/api/reminders/status", { cache: "no-store" });
+      if (!response.ok) return;
+      applyReminderStatus((await response.json()) as ReminderStatus);
+    } catch {
+      // Hosted previews and old portable packages do not expose reminders.
+    }
+  }
+
+  async function reminderRequest(path: string, method: string, body?: unknown) {
+    const response = await fetch(path, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        "x-anthropology-canteen-session": reminderSessionToken,
+      },
+      cache: "no-store",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const value = (await response.json().catch(() => ({}))) as ReminderStatus & { message?: string };
+    if (!response.ok) throw new Error(value.message || "邮件提醒操作失败");
+    if (value.config || value.state) applyReminderStatus(value);
+    return value;
+  }
+
+  async function saveReminderConfig() {
+    setReminderSaving(true);
+    try {
+      await reminderRequest("/api/reminders/config", "PUT", {
+        provider: reminderConfig.provider,
+        sender: reminderConfig.sender,
+        recipient: reminderConfig.recipient,
+        host: reminderConfig.host,
+        port: reminderConfig.port,
+        security: reminderConfig.security,
+        username: reminderConfig.username || reminderConfig.sender,
+        format: reminderConfig.format,
+        schedule: {
+          cadence: reminderConfig.cadence,
+          time: reminderConfig.time,
+          weekday: reminderConfig.weekday,
+          monthDay: reminderConfig.monthDay,
+        },
+      });
+      showNotice("邮件提醒配置已保存到当前文件夹");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "配置保存失败");
+    } finally {
+      setReminderSaving(false);
+    }
+  }
+
+  async function saveReminderCredential() {
+    if (!reminderSecretInput.trim()) {
+      showNotice("请输入邮箱授权码或应用专用密码");
+      return;
+    }
+    setReminderSaving(true);
+    try {
+      await reminderRequest("/api/reminders/credential", "POST", { secret: reminderSecretInput.trim() });
+      setReminderSecretInput("");
+      showNotice("授权码已保存到系统安全存储");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "授权码保存失败");
+    } finally {
+      setReminderSaving(false);
+    }
+  }
+
+  async function testReminder() {
+    setReminderSaving(true);
+    try {
+      await reminderRequest("/api/reminders/test", "POST");
+      showNotice("测试邮件已发送，请检查收件箱和垃圾邮件文件夹");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "测试邮件发送失败");
+    } finally {
+      setReminderSaving(false);
+    }
+  }
+
+  async function enableReminder() {
+    setReminderSaving(true);
+    try {
+      await reminderRequest("/api/reminders/enable", "POST");
+      showNotice("邮件提醒已启用；首次检查只建立当前成果基线");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "邮件提醒启用失败");
+    } finally {
+      setReminderSaving(false);
+    }
+  }
+
+  async function runReminderNow() {
+    setReminderSaving(true);
+    try {
+      await reminderRequest("/api/reminders/run-now", "POST");
+      showNotice("已完成一次提醒检查");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "提醒检查失败");
+    } finally {
+      setReminderSaving(false);
+    }
+  }
+
+  async function disableReminder(removeCredential = false) {
+    setReminderSaving(true);
+    try {
+      await reminderRequest("/api/reminders/disable", "POST");
+      if (removeCredential) await reminderRequest("/api/reminders/credential", "DELETE");
+      showNotice(removeCredential ? "提醒已停用，授权码已删除" : "邮件提醒已停用");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "邮件提醒停用失败");
+    } finally {
+      setReminderSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadReminderStatus(), 0);
+    return () => window.clearTimeout(timer);
+    // Reminder status is loaded once for the portable runtime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -2106,6 +2357,17 @@ export default function Home() {
         (item) => scholarRecordsMatch(profile.candidate, item),
       )
     : currentScholar;
+  const reminderEmailReady = Boolean(
+    reminderStatus?.config?.sender && reminderStatus?.config?.recipient,
+  );
+  const reminderCredentialReady = Boolean(
+    reminderStatus?.credentialConfigured,
+  );
+  const reminderTestReady = Boolean(reminderStatus?.tested);
+  const reminderEnabled = Boolean(reminderStatus?.config?.enabled);
+  const reminderProviderGuidance =
+    REMINDER_PROVIDER_GUIDANCE[reminderConfig.provider] ||
+    REMINDER_PROVIDER_GUIDANCE.custom;
 
   async function openScholar(scholar: Scholar) {
     const cached = findCachedProfile(scholar);
@@ -2161,6 +2423,15 @@ export default function Home() {
             <span className={loading ? "spin" : ""} aria-hidden="true">↻</span>
             {loading ? "检查中" : "检查更新"}
           </button>
+          {reminderStatus && (
+            <button
+              className="refresh-button"
+              onClick={() => setReminderOpen(true)}
+              title="设置每日、每周或每月邮件提醒"
+            >
+              {reminderStatus.config?.enabled ? "邮件提醒已开" : "邮件提醒"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -3330,6 +3601,188 @@ export default function Home() {
             <footer>
               配置会写入解压文件夹中的 data 文件；不要把自己的使用中副本发给别人。
             </footer>
+          </section>
+        </div>
+      )}
+
+      {reminderOpen && reminderStatus && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setReminderOpen(false)}>
+          <section
+            className="add-modal reminder-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="邮件提醒设置"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <p>本机邮件提醒</p>
+                <h2>用 3 步开启自动提醒</h2>
+                <span className="reminder-header-copy">准备一个用于发信的小号邮箱，Anthropology Canteen 会定期把新发表汇总发到你的常用邮箱。</span>
+              </div>
+              <button aria-label="关闭" onClick={() => setReminderOpen(false)}>×</button>
+            </header>
+            <div className={`reminder-overview ${reminderEnabled ? "is-enabled" : ""}`}>
+              <span className="reminder-overview-icon" aria-hidden="true">{reminderEnabled ? "✓" : "✉"}</span>
+              <div>
+                <strong>{reminderEnabled ? "邮件提醒正在运行" : "完成下面 3 步即可开启"}</strong>
+                <p>{reminderEnabled ? "网页关闭后，系统仍会按计划检查；没有新内容时不会发邮件。" : "全程在本机完成，不需要服务器，也不会把邮箱密码上传到任何地方。"}</p>
+              </div>
+            </div>
+
+            <ol className="reminder-progress" aria-label="邮件提醒配置进度">
+              <li className={reminderEmailReady ? "is-complete" : "is-active"}>
+                <b>{reminderEmailReady ? "✓" : "1"}</b><span>邮箱与时间</span>
+              </li>
+              <li className={reminderTestReady ? "is-complete" : reminderEmailReady ? "is-active" : ""}>
+                <b>{reminderTestReady ? "✓" : "2"}</b><span>授权码与测试</span>
+              </li>
+              <li className={reminderEnabled ? "is-complete" : reminderTestReady ? "is-active" : ""}>
+                <b>{reminderEnabled ? "✓" : "3"}</b><span>开启提醒</span>
+              </li>
+            </ol>
+
+            <div className="reminder-layout">
+              <div className="reminder-steps">
+                <section className={`reminder-step-card ${reminderEmailReady ? "is-complete" : "is-current"}`}>
+                  <div className="reminder-step-heading">
+                    <span>1</span>
+                    <div><h3>填写发件邮箱、收件邮箱和时间</h3><p>发件邮箱建议使用不重要的小号；收件邮箱填写你日常查看的邮箱。</p></div>
+                    {reminderEmailReady && <em>已保存</em>}
+                  </div>
+                  <div className="reminder-form-grid reminder-form-grid--three">
+                    <label>
+                      <span>小号邮箱类型</span>
+                      <select
+                        value={reminderConfig.provider}
+                        onChange={(event) => {
+                          const provider = event.target.value;
+                          const preset = {
+                            qq: ["smtp.qq.com", 465, "tls"],
+                            "163": ["smtp.163.com", 465, "tls"],
+                            "126": ["smtp.126.com", 465, "tls"],
+                            yeah: ["smtp.yeah.net", 465, "tls"],
+                            gmail: ["smtp.gmail.com", 465, "tls"],
+                            icloud: ["smtp.mail.me.com", 587, "starttls"],
+                          }[provider] as [string, number, "tls" | "starttls"] | undefined;
+                          setReminderConfig((current) => ({
+                            ...current,
+                            provider,
+                            host: preset?.[0] || current.host,
+                            port: preset?.[1] || current.port,
+                            security: preset?.[2] || current.security,
+                          }));
+                        }}
+                      >
+                        <option value="qq">QQ 邮箱</option>
+                        <option value="163">163 邮箱</option>
+                        <option value="126">126 邮箱</option>
+                        <option value="yeah">Yeah 邮箱</option>
+                        <option value="gmail">Gmail</option>
+                        <option value="icloud">iCloud</option>
+                        <option value="custom">其他 SMTP</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>发件邮箱（小号）</span>
+                      <input type="email" value={reminderConfig.sender} onChange={(event) => setReminderConfig((current) => ({ ...current, sender: event.target.value, username: event.target.value }))} placeholder="例如 small@qq.com" />
+                    </label>
+                    <label>
+                      <span>收件邮箱（常用邮箱）</span>
+                      <input type="email" value={reminderConfig.recipient} onChange={(event) => setReminderConfig((current) => ({ ...current, recipient: event.target.value }))} placeholder="例如你的 Outlook 邮箱" />
+                    </label>
+                  </div>
+                  {reminderConfig.provider === "custom" && (
+                    <div className="reminder-form-grid reminder-form-grid--three reminder-custom-fields">
+                      <label><span>SMTP 主机</span><input value={reminderConfig.host} onChange={(event) => setReminderConfig((current) => ({ ...current, host: event.target.value }))} placeholder="smtp.example.com" /></label>
+                      <label><span>连接方式</span><select value={reminderConfig.port} onChange={(event) => setReminderConfig((current) => ({ ...current, port: Number(event.target.value), security: Number(event.target.value) === 587 ? "starttls" : "tls" }))}><option value={465}>465 · TLS</option><option value={587}>587 · STARTTLS</option></select></label>
+                      <label><span>认证邮箱</span><input value={reminderConfig.username} onChange={(event) => setReminderConfig((current) => ({ ...current, username: event.target.value }))} placeholder="必须与发件邮箱一致" /></label>
+                    </div>
+                  )}
+                  <div className="reminder-form-grid reminder-form-grid--schedule">
+                    <label><span>提醒频率</span><select value={reminderConfig.cadence} onChange={(event) => setReminderConfig((current) => ({ ...current, cadence: event.target.value as "daily" | "weekly" | "monthly" }))}><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option></select></label>
+                    <label><span>发送时间（本机时间）</span><input type="time" value={reminderConfig.time} onChange={(event) => setReminderConfig((current) => ({ ...current, time: event.target.value }))} /></label>
+                    {reminderConfig.cadence === "weekly" && <label><span>星期</span><select value={reminderConfig.weekday} onChange={(event) => setReminderConfig((current) => ({ ...current, weekday: Number(event.target.value) }))}><option value={0}>星期日</option><option value={1}>星期一</option><option value={2}>星期二</option><option value={3}>星期三</option><option value={4}>星期四</option><option value={5}>星期五</option><option value={6}>星期六</option></select></label>}
+                    {reminderConfig.cadence === "monthly" && <label><span>每月日期（1–28）</span><input type="number" min={1} max={28} value={reminderConfig.monthDay} onChange={(event) => setReminderConfig((current) => ({ ...current, monthDay: Math.min(28, Math.max(1, Number(event.target.value) || 1)) }))} /></label>}
+                    <label><span>邮件内容</span><select value={reminderConfig.format} onChange={(event) => setReminderConfig((current) => ({ ...current, format: event.target.value as "concise" | "detailed" }))}><option value="concise">简洁版</option><option value="detailed">包含摘要片段</option></select></label>
+                  </div>
+                  <div className="reminder-step-action">
+                    <small>修改并保存这些设置后，需要重新发送一次测试邮件。</small>
+                    <button type="button" className="primary-button" disabled={reminderSaving} onClick={() => void saveReminderConfig()}>保存第 1 步</button>
+                  </div>
+                </section>
+
+                <section className={`reminder-step-card ${reminderTestReady ? "is-complete" : reminderEmailReady ? "is-current" : "is-locked"}`}>
+                  <div className="reminder-step-heading">
+                    <span>2</span>
+                    <div><h3>保存授权码，再发送测试邮件</h3><p>授权码由邮箱服务商单独生成，不是你登录邮箱时使用的密码。</p></div>
+                    {reminderTestReady && <em>测试成功</em>}
+                  </div>
+                  <div className="reminder-provider-tip">
+                    <strong>{reminderProviderGuidance.title}</strong>
+                    <p>{reminderProviderGuidance.detail}</p>
+                  </div>
+                  <label className="reminder-secret-field">
+                    <span>授权码／应用专用密码</span>
+                    <input type="password" autoComplete="new-password" value={reminderSecretInput} onChange={(event) => setReminderSecretInput(event.target.value)} placeholder={reminderCredentialReady ? "已安全保存；留空表示不更换" : "把邮箱生成的授权码粘贴到这里"} disabled={!reminderEmailReady} />
+                  </label>
+                  <div className="reminder-step-action reminder-step-action--split">
+                    <span className={`reminder-inline-status ${reminderCredentialReady ? "is-ready" : ""}`}>{reminderCredentialReady ? "✓ 授权码已安全保存" : "请先完成并保存第 1 步"}</span>
+                    <div>
+                      <button type="button" disabled={reminderSaving || !reminderEmailReady || !reminderSecretInput.trim()} onClick={() => void saveReminderCredential()}>{reminderCredentialReady ? "更换授权码" : "保存授权码"}</button>
+                      <button type="button" className="primary-button" disabled={reminderSaving || !reminderCredentialReady} onClick={() => void testReminder()}>发送测试邮件</button>
+                    </div>
+                  </div>
+                </section>
+
+                <section className={`reminder-step-card reminder-final-step ${reminderEnabled ? "is-complete" : reminderTestReady ? "is-current" : "is-locked"}`}>
+                  <div className="reminder-step-heading">
+                    <span>3</span>
+                    <div><h3>确认收到测试邮件，然后开启提醒</h3><p>首次开启只记录当前成果作为起点，不会把关注对象的历史发表一次性推送给你。</p></div>
+                    {reminderEnabled && <em>运行中</em>}
+                  </div>
+                  {reminderEnabled ? (
+                    <div className="reminder-enabled-actions">
+                      <div><strong>后台提醒已开启</strong><span>{reminderStatus.state?.nextDueAt ? `下次计划：${new Date(reminderStatus.state.nextDueAt).toLocaleString("zh-CN")}` : "计划任务已安装"}</span></div>
+                      {reminderStatus.scheduler?.stalePath && <button type="button" className="primary-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady} onClick={() => void enableReminder()}>迁移到当前文件夹</button>}
+                      <button type="button" disabled={reminderSaving} onClick={() => void runReminderNow()}>立即检查一次</button>
+                      <button type="button" disabled={reminderSaving} onClick={() => void disableReminder(false)}>停用提醒</button>
+                    </div>
+                  ) : (
+                    <div className="reminder-step-action">
+                      <small>{reminderTestReady ? "测试成功，现在可以安全开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
+                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady} onClick={() => void enableReminder()}>开启自动邮件提醒</button>
+                    </div>
+                  )}
+                </section>
+              </div>
+
+              <aside className="reminder-help-panel">
+                <section>
+                  <p>开始前准备</p>
+                  <ul><li><b>一个发件小号</b><span>QQ、163、126、Yeah、Gmail 或 iCloud 均可。</span></li><li><b>一个常用收件邮箱</b><span>可以填写 Outlook、QQ、163 等任意地址。</span></li><li><b>小号邮箱的授权码</b><span>在邮箱设置里开启 SMTP 后生成。</span></li></ul>
+                </section>
+                <section className="reminder-help-security">
+                  <p>你的授权码保存在哪里？</p>
+                  <strong>{reminderStatus.platform === "darwin" ? "macOS 登录钥匙串" : "Windows 当前用户加密存储"}</strong>
+                  <span>不会写入浏览器、普通设置文件、日志或分享 ZIP。</span>
+                </section>
+                <section>
+                  <p>需要知道</p>
+                  <ul className="reminder-compact-list"><li>网页可以关闭，不需要一直开着。</li><li>电脑需要开机、已登录且联网。</li><li>关机错过后会在下次登录或唤醒时补跑。</li><li>没有更新时不会发送邮件。</li><li>Outlook 本版可收信，暂不用于发信。</li></ul>
+                </section>
+              </aside>
+            </div>
+
+            {(reminderStatus.state?.lastError || reminderStatus.scheduler?.stalePath || reminderStatus.state?.lastCheckAt) && (
+              <div className="reminder-runtime-status">
+                {reminderStatus.state?.lastError && <p className="search-warning">上次运行：{reminderStatus.state.lastError}</p>}
+                {reminderStatus.scheduler?.stalePath && <p className="search-warning">提醒仍绑定旧版文件夹：{reminderStatus.scheduler.stalePath}</p>}
+                {reminderStatus.state?.lastCheckAt && <span>上次检查：{new Date(reminderStatus.state.lastCheckAt).toLocaleString("zh-CN")}</span>}
+                {reminderStatus.state?.lastSuccessfulSendAt && <span>上次发信：{new Date(reminderStatus.state.lastSuccessfulSendAt).toLocaleString("zh-CN")}</span>}
+              </div>
+            )}
+            {reminderCredentialReady && <footer className="reminder-danger-zone"><span>不再使用这个发件邮箱？</span><button type="button" className="remove-api-key" disabled={reminderSaving} onClick={() => void disableReminder(true)}>停用并删除授权码</button></footer>}
           </section>
         </div>
       )}
