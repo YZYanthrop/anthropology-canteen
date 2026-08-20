@@ -22,6 +22,17 @@
 - 升级 Next.js、Nodemailer 及配套 lint 依赖，修复 v1.3.0 生产依赖中的已知高风险安全公告。
 - 新增本地接口防护、字段合并、超量数据保留、稳定提醒基线、晚收录成果、失败来源降级和提醒状态迁移回归测试。
 
+### 正式发布
+
+- `v1.3.1` 标签提交为 `7695e3a2e2620aa28c78958f9547d9e06f63e6f4`；三平台原生构建与 smoke
+  在 [Actions #32341349020](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32341349020)
+  全部通过。
+- Windows x64（43,280,250 bytes）：`81A2801461AB5767DD50D139C34D3B3461C62DF24DCE5C0564C7ED0EADF6D779`。
+- macOS Apple Silicon arm64（46,499,368 bytes）：`7BCEF366E5E0F0534FE4C7F53D9B467004E16CBC3B9D067C02200213CC37BC1C`。
+- macOS Intel x64（47,703,588 bytes）：`A93EA6AE59CA3B25138A514A0F758FF9C05032AE393D195AFDE41D8F37AA4444`。
+- 三个平台 ZIP 与同名 `.sha256` 文件发布在
+  [v1.3.1 GitHub Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.1)；macOS 包未签名、未公证。
+
 ## [1.3.0] - 2026-08-18
 
 ### 可选的零成本本机邮件提醒
