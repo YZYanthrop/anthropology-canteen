@@ -2,9 +2,9 @@
 
 这是一个本地运行的版本，自带运行环境。使用者不需要安装 Node.js，也不需要账号。
 
-当前正式版本：[v1.3.0](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.0)。
+当前正式版本：[v1.3.1](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.1)。
 
-当前源码正在准备兼容性修订版 v1.3.1：重点修复本地接口安全、并发保存、数据源全部失败时的缓存保护、稳定提醒基线与错误作者合并；尚未建立标签或公开安装包。
+v1.3.1 是兼容性稳定更新：重点修复本地接口安全、并发保存、数据源全部失败时的缓存保护、稳定提醒基线与错误作者合并。
 
 ## v1.3.0 本机邮件提醒（可选）
 

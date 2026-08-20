@@ -4,11 +4,11 @@
 
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
-| Windows x64 | v1.3.0 released; native package, reminder smoke, and user test passed | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | v1.3.0 released; unsigned native package and reminder smoke passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
-| macOS Intel | v1.3.0 released; unsigned native package and reminder smoke passed | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| Windows x64 | v1.3.1 released; native package and reminder smoke passed | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
+| macOS Apple Silicon | v1.3.1 released; unsigned native package and reminder smoke passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | v1.3.1 released; unsigned native package and reminder smoke passed | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 
-The macOS v1.3.0 packages require macOS 13.5 or newer, matching the minimum
+The macOS v1.3.1 packages require macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
 are not supported by these portable archives.
 
@@ -27,13 +27,13 @@ arguments, or archives. Windows stores encrypted DPAPI ciphertext in `data/`;
 macOS stores the secret in Keychain. Outlook/Hotmail/Live are supported as
 recipients; v1.3.0 does not implement Outlook sender OAuth.
 
-## v1.3.1 candidate compatibility
+## v1.3.1 compatibility
 
-The v1.3.1 source keeps the same Windows x64 and macOS arm64/x64 launchers,
+The v1.3.1 release keeps the same Windows x64 and macOS arm64/x64 launchers,
 bundled runtime, folder-local storage, secure credential stores, and current-user
 schedulers. Main data is upgraded to version 8 and reminder state to version 2;
 the shared importer accepts the previous version 7 data and version 1 reminder
-state. Native candidate smoke must obtain the per-process session token before
+state. Native package smoke obtains the per-process session token before
 reading or writing protected local APIs and must still verify blank archives,
 neighbor migration, persistence, reminders and automatic shutdown.
 
