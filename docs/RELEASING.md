@@ -15,6 +15,7 @@
 - `1.1.2`：兼容性缺陷修复。
 - `1.2.0`：增加向后兼容的新能力。
 - `1.3.0`：增加向后兼容的本机邮件提醒、凭据安全存储和跨平台计划任务。
+- `1.3.1`：本地接口安全、持久化并发、身份核验、数据源降级与提醒去重修复。
 - `2.0.0`：数据格式或使用流程存在不兼容变化。
 
 尚未稳定的版本使用预发布编号，例如 `1.2.0-beta.1`。为已经固定的
@@ -48,6 +49,12 @@ x64、macOS arm64 和 macOS x64 原生 runner 完成提醒 worker 的离线测�
    `docs/PROJECT_STATE.md`。
 
 不要把 Windows 成品 ZIP 当成 Mac 构建输入。两个平台都必须由共同源码构建。
+
+v1.3.1 的主数据为 version 8、提醒状态为 version 2、settings 仍为 version 3。
+发布 smoke 必须先从 `/api/runtime-status` 取得本次进程会话令牌，再访问受保护的
+local-data、local-settings 和 reminders 接口；还必须验证 version 7/提醒 version 1
+导入、字段级 PATCH 不覆盖其他字段、全部来源失败时保留缓存，以及超出旧数量阈值的
+状态和提醒账本不会被静默截断。
 
 ## Codex 任务分工
 

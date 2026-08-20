@@ -1,15 +1,16 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-08-18
+Last updated: 2026-08-20
 
 ## Stable baseline
 
 - Current public product version: `v1.3.0`.
 - Stable Git tag: `v1.3.0`; Windows x64, macOS arm64, and macOS x64 artifacts
   are built from that one immutable tag.
-- Local data schema: version 7.
+- v1.3.1 is the active stabilization candidate; it is not yet tagged or published.
+- Local data schema in the v1.3.1 source: version 8; v1.3.0 public packages remain version 7.
 - Local API-key and reminder settings schema: version 3; the main research data
-  schema remains version 7.
+  schema becomes version 8 in v1.3.1 while settings remain version 3.
 - Version 5 and 6 data are migrated defensively: previously auto-merged author
   IDs are quarantined while subscriptions and user states are preserved.
 - Current published distributions: Windows x64 plus unsigned macOS Apple
@@ -79,6 +80,16 @@ The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, and `v1.3.0` tags are immutable.
 - The three public platform ZIPs are built from the immutable `v1.3.0` tag;
   macOS artifacts remain unsigned and unnotarized.
 
+## v1.3.1 stabilization candidate
+
+- Harden loopback APIs against DNS rebinding and cross-origin requests; all folder-local data and settings calls require the process session token.
+- Replace whole-document browser saves with field-level patches and isolate data, settings, and reminder locks. JSON writes retain a last-known-good backup.
+- Upgrade main data to version 8 and reminder state to version 2 without changing settings version 3. Version 2–7 research data and version 1 reminder state remain importable.
+- Track reminder baselines by stable subscription ID or ISSN, retain late-indexed works, and do not advance failed subscription scopes.
+- Treat total feed failure as an error so the UI and worker preserve prior cache and cursors.
+- Permit automatic author consolidation only from ORCID, a shared provider ID, or a shared DOI. Institutional pages are saved as manual evidence links and are not fetched automatically.
+- Update direct production dependencies and expand deterministic regression coverage. No account, cloud service, new provider, or hosted scheduler is added.
+
 ## Current product contract
 
 - The app follows scholars first, journals second, and keyword families third.
@@ -138,19 +149,12 @@ points to the exact build commit, and both architecture packages were
 published with SHA-256 files. The product displayed by that beta remains 1.1.1,
 and Intel has no recorded human test.
 
-The v1.3.0 local-reminder milestone is complete:
+The v1.3.0 local-reminder milestone is complete. The active v1.3.1 milestone is:
 
-1. Keep Windows x64, macOS Apple Silicon, and macOS Intel on one source commit,
-   one product version, and one build-only workflow.
-2. Preserve folder-local data, blank-archive privacy, migration compatibility,
-   transactional import, and automatic shutdown on every platform.
-3. Collect an Intel Mac human first-launch test when available; native Intel CI
-   is required for every published version even without that optional report.
-4. Verify optional reminder baseline/deduplication, secure credential storage,
-   scheduler install/repair/disable, and blank-archive privacy on both
-   platforms.
-5. Keep signing and notarization optional and separately authorized; current
-   macOS packages remain unsigned and unnotarized.
+1. Complete security, persistence, provider-degradation, identity and reminder-ledger regressions.
+2. Build all three v1.3.1 candidates from one final commit and run native package smoke tests.
+3. Keep existing v1.3.0 tags and public artifacts immutable; publishing v1.3.1 requires separate authorization.
+4. Keep signing and notarization optional and separately authorized; current macOS packages remain unsigned and unnotarized.
 
 The v1.3.0 release also treats the stable friendly localhost origin as an
 upgrade boundary: launchers use a per-launch query, portable HTML responses are

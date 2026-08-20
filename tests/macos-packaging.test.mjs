@@ -67,7 +67,7 @@ test("portable import validates JSON, backs up targets, and copies only approved
   );
   await writeFile(
     join(source, "anthropology-canteen-reminder-state.json"),
-    JSON.stringify({ version: 1, baselines: {}, items: {} }),
+    JSON.stringify({ version: 2, baselines: {}, items: {} }),
   );
   await writeFile(
     join(source, "anthropology-canteen-reminder-secret.json"),
@@ -106,7 +106,7 @@ test("portable import validates JSON, backs up targets, and copies only approved
     assert.equal(imported.version, 2);
     assert.equal(settings.openAlexApiKey, "imported-key");
     assert.equal(settings.reminders.installationId, "portable-import-test-id");
-    assert.equal(reminderState.version, 1);
+    assert.equal(reminderState.version, 2);
     assert.equal(reminderSecret.ciphertext, "dpapi-test-ciphertext");
     const names = await readdir(targetData);
     assert.ok(names.some((name) => /^anthropology-canteen-data\.backup-/.test(name)));
@@ -340,7 +340,7 @@ test("macOS packaging definitions are statically verifiable on Windows", async (
     workflow,
     /git push|gh release|create-release|softprops\/action-gh-release|contents: write/,
   );
-  assert.match(smoke, /blank\.version !== 7/);
+  assert.match(smoke, /blank\.version !== 8/);
   assert.match(smoke, /process\.arch/);
   assert.match(smoke, /api\/browser-session/);
   assert.match(smoke, /did not persist across restart/);

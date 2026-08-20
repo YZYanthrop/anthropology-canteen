@@ -7,7 +7,12 @@ import {
 export const dynamic = "force-dynamic";
 
 type MatchKind = "journal" | "scholar" | "keyword";
-type Match = { kind: MatchKind; label: string; terms?: string[] };
+type Match = {
+  kind: MatchKind;
+  label: string;
+  subscriptionId?: string;
+  terms?: string[];
+};
 type Journal = { label: string; issn: string; followedAt?: string };
 type KeywordGroup = { root: string; variants: string[] };
 type Scholar = {
@@ -149,7 +154,11 @@ const remoteCache = new Map<
 function curatedWorks(scholar: Scholar) {
   return (CURATED_PROFILE_WORKS[scholar.label] || []).map((item) => ({
     ...item,
-    matches: [{ kind: "scholar" as const, label: scholar.label }],
+    matches: [{
+      kind: "scholar" as const,
+      label: scholar.label,
+      subscriptionId: scholar.subscriptionId,
+    }],
   }));
 }
 
@@ -580,7 +589,7 @@ async function openAlex<T>(url: URL): Promise<T> {
     const response = await fetch(url, {
       headers: {
         accept: "application/json",
-        "user-agent": "AnthropologyCanteen/1.3.0",
+        "user-agent": "AnthropologyCanteen/1.3.1",
       },
       signal: AbortSignal.timeout(10_000),
     });
@@ -681,7 +690,7 @@ async function fetchSemanticScholarWorks(
       : "";
   const headers: Record<string, string> = {
     accept: "application/json",
-    "user-agent": "AnthropologyCanteen/1.3.0",
+    "user-agent": "AnthropologyCanteen/1.3.1",
   };
   if (semanticScholarApiKey) headers["x-api-key"] = semanticScholarApiKey;
   const response = await fetch(url, {
@@ -692,7 +701,11 @@ async function fetchSemanticScholarWorks(
   const data = (await response.json()) as {
     data?: SemanticScholarPaper[];
   };
-  const match: Match = { kind: "scholar", label: scholar.label };
+  const match: Match = {
+    kind: "scholar",
+    label: scholar.label,
+    subscriptionId: scholar.subscriptionId,
+  };
   return (data.data || [])
     .map((paper) => semanticScholarArticle(paper, match))
     .filter((item): item is Article => Boolean(item));
@@ -760,7 +773,7 @@ async function fetchCrossrefJournalWorks(
   const response = await fetch(url, {
     headers: {
       accept: "application/json",
-      "user-agent": "AnthropologyCanteen/1.3.0",
+      "user-agent": "AnthropologyCanteen/1.3.1",
     },
     signal: AbortSignal.timeout(10_000),
   });
@@ -857,7 +870,7 @@ async function fetchCrossrefScholarWorks(
       const response = await fetch(url, {
         headers: {
           accept: "application/json",
-          "user-agent": "AnthropologyCanteen/1.3.0",
+          "user-agent": "AnthropologyCanteen/1.3.1",
         },
         signal: AbortSignal.timeout(10_000),
       });
@@ -878,7 +891,11 @@ async function fetchCrossrefScholarWorks(
   ) {
     throw new Error("Crossref unavailable");
   }
-  const match: Match = { kind: "scholar", label: scholar.label };
+  const match: Match = {
+    kind: "scholar",
+    label: scholar.label,
+    subscriptionId: scholar.subscriptionId,
+  };
   return works
     .filter((work) => crossrefWorkMatchesScholar(work, scholar))
     .map((work) => crossrefArticle(work, match))
@@ -886,7 +903,11 @@ async function fetchCrossrefScholarWorks(
 }
 
 async function fetchJournalWorks(journal: Journal, fromDate: string) {
-  const match: Match = { kind: "journal", label: journal.label };
+  const match: Match = {
+    kind: "journal",
+    label: journal.label,
+    subscriptionId: journal.issn.toLowerCase(),
+  };
   const settled = await Promise.allSettled([
     fetchWorks(
       worksUrl(
@@ -913,7 +934,11 @@ async function fetchJournalWorks(journal: Journal, fromDate: string) {
 }
 
 async function fetchScholarWorks(scholar: Scholar, limit: number) {
-  const match: Match = { kind: "scholar", label: scholar.label };
+  const match: Match = {
+    kind: "scholar",
+    label: scholar.label,
+    subscriptionId: scholar.subscriptionId,
+  };
   const openAlexIds = [...new Set(scholar.openAlexIds)].slice(0, 30);
   const indexedResults: Article[] = [];
   if (openAlexIds.length) {
@@ -1402,9 +1427,24 @@ function mergeArticles(
   const merged = new Map<string, Article>();
   for (const group of groups) {
     for (const article of group) {
-      const current = merged.get(article.id);
+      const doi = clean(article.doi, 300)
+        .replace(/^https?:\/\/doi\.org\//i, "")
+        .toLowerCase();
+      const normalizedTitle = normalizeText(article.title)
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim();
+      const firstAuthor = normalizeText(article.authors[0]?.name)
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+      const year = clean(article.publishedAt, 20).slice(0, 4);
+      const identityKey = doi
+        ? `doi:${doi}`
+        : `${normalizedTitle}|${year}|${firstAuthor}`;
+      const current = merged.get(identityKey);
       if (!current) {
-        merged.set(article.id, article);
+        merged.set(identityKey, article);
         continue;
       }
       const matches = [...current.matches];
@@ -1412,13 +1452,15 @@ function mergeArticles(
         if (
           !matches.some(
             (candidate) =>
-              candidate.kind === match.kind && candidate.label === match.label,
+              candidate.kind === match.kind &&
+              (candidate.subscriptionId || candidate.label) ===
+                (match.subscriptionId || match.label),
           )
         ) {
           matches.push(match);
         }
       }
-      merged.set(article.id, {
+      merged.set(identityKey, {
         ...current,
         abstract: current.abstract || article.abstract,
         authors: [...current.authors, ...article.authors].filter(
@@ -1467,6 +1509,7 @@ function mergeArticles(
           matches.push({
             kind: "keyword",
             label,
+            subscriptionId: keyword.root,
             terms: keyword.variants,
           });
         }
@@ -1484,7 +1527,12 @@ async function buildFeed(
   subscriptions: Subscriptions,
   historyScholar?: string,
 ) {
-  const tasks: Array<() => Promise<Article[]>> = [];
+  const tasks: Array<{
+    kind: "journal" | "scholar";
+    subscriptionId: string;
+    label: string;
+    run: () => Promise<Article[]>;
+  }> = [];
   const resolvedScholars = subscriptions.scholar;
 
   if (historyScholar) {
@@ -1494,7 +1542,12 @@ async function buildFeed(
         item.label.toLowerCase() === historyScholar.toLowerCase(),
     );
     if (scholar) {
-      tasks.push(() => fetchScholarWorks(scholar, 100));
+      tasks.push({
+        kind: "scholar",
+        subscriptionId: scholar.subscriptionId,
+        label: scholar.label,
+        run: () => fetchScholarWorks(scholar, 100),
+      });
     }
   } else {
     const since = new Date();
@@ -1502,14 +1555,24 @@ async function buildFeed(
     const fromDate = since.toISOString().slice(0, 10);
 
     for (const journal of subscriptions.journal) {
-      tasks.push(() => fetchJournalWorks(journal, fromDate));
+      tasks.push({
+        kind: "journal",
+        subscriptionId: journal.issn.toLowerCase(),
+        label: journal.label,
+        run: () => fetchJournalWorks(journal, fromDate),
+      });
     }
     for (const scholar of resolvedScholars) {
-      tasks.push(() => fetchScholarWorks(scholar, 30));
+      tasks.push({
+        kind: "scholar",
+        subscriptionId: scholar.subscriptionId,
+        label: scholar.label,
+        run: () => fetchScholarWorks(scholar, 30),
+      });
     }
   }
 
-  const settled = await runTasks(tasks, 4);
+  const settled = await runTasks(tasks.map((task) => task.run), 4);
   const groups = settled
     .filter(
       (result): result is PromiseFulfilledResult<Article[]> =>
@@ -1534,6 +1597,13 @@ async function buildFeed(
       historyScholar ? 180 : 120,
     ),
     failures: settled.filter((result) => result.status === "rejected").length,
+    totalTasks: tasks.length,
+    coverage: tasks.map((task, index) => ({
+      kind: task.kind,
+      subscriptionId: task.subscriptionId,
+      label: task.label,
+      status: settled[index]?.status === "fulfilled" ? "success" : "failed",
+    })),
     scholars: resolvedScholars,
   };
 }
@@ -1541,6 +1611,13 @@ async function buildFeed(
 function response(
   items: Article[],
   failures: number,
+  totalTasks: number,
+  coverage: Array<{
+    kind: "journal" | "scholar";
+    subscriptionId: string;
+    label: string;
+    status: "success" | "failed";
+  }>,
   scholars: Scholar[],
   historyScholar?: string,
 ) {
@@ -1548,22 +1625,26 @@ function response(
     {
       items,
       updatedAt: new Date().toISOString(),
-      source: "live",
+      source: totalTasks > 0 && failures === totalTasks ? "fallback" : "live",
       historyScholar,
       scholars,
+      coverage,
       warnings:
         failures > 0
           ? [`${failures} 个数据查询暂时失败，其他来源仍正常显示。`]
           : [],
     },
-    { headers: { "cache-control": "no-store" } },
+    {
+      status: totalTasks > 0 && failures === totalTasks ? 503 : 200,
+      headers: { "cache-control": "no-store" },
+    },
   );
 }
 
 export async function GET() {
-  const { items, failures, scholars } =
+  const { items, failures, totalTasks, coverage, scholars } =
     await buildFeed(DEFAULT_SUBSCRIPTIONS);
-  return response(items, failures, scholars);
+  return response(items, failures, totalTasks, coverage, scholars);
 }
 
 export async function POST(request: NextRequest) {
@@ -1576,9 +1657,16 @@ export async function POST(request: NextRequest) {
   const subscriptions = validateSubscriptions(payload.subscriptions);
   const requestedScholar = clean(payload.historyScholar);
   const historyScholar = requestedScholar || undefined;
-  const { items, failures, scholars } = await buildFeed(
+  const { items, failures, totalTasks, coverage, scholars } = await buildFeed(
     subscriptions,
     historyScholar,
   );
-  return response(items, failures, scholars, historyScholar);
+  return response(
+    items,
+    failures,
+    totalTasks,
+    coverage,
+    scholars,
+    historyScholar,
+  );
 }

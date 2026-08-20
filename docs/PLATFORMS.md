@@ -27,6 +27,16 @@ arguments, or archives. Windows stores encrypted DPAPI ciphertext in `data/`;
 macOS stores the secret in Keychain. Outlook/Hotmail/Live are supported as
 recipients; v1.3.0 does not implement Outlook sender OAuth.
 
+## v1.3.1 candidate compatibility
+
+The v1.3.1 source keeps the same Windows x64 and macOS arm64/x64 launchers,
+bundled runtime, folder-local storage, secure credential stores, and current-user
+schedulers. Main data is upgraded to version 8 and reminder state to version 2;
+the shared importer accepts the previous version 7 data and version 1 reminder
+state. Native candidate smoke must obtain the per-process session token before
+reading or writing protected local APIs and must still verify blank archives,
+neighbor migration, persistence, reminders and automatic shutdown.
+
 ## v1.2.0 unified release
 
 Version 1.2.0 publishes Windows x64, macOS Apple Silicon arm64, and macOS Intel

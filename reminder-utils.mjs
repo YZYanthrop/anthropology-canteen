@@ -1,11 +1,11 @@
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, open, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const MODULE_ROOT = dirname(fileURLToPath(import.meta.url));
-export const REMINDER_STATE_VERSION = 1;
+export const REMINDER_STATE_VERSION = 2;
 export const REMINDER_SECRET_VERSION = 1;
 export const REMINDER_SERVICE = "org.anthropology-canteen.smtp";
 
@@ -122,10 +122,10 @@ function cleanReminderState(value) {
   state.lastError = cleanString(value.lastError, 600);
   state.lastResult = cleanString(value.lastResult, 120);
   if (value.baselines && typeof value.baselines === "object") {
-    for (const [key, baseline] of Object.entries(value.baselines).slice(0, 1000)) {
+    for (const [key, baseline] of Object.entries(value.baselines)) {
       if (!baseline || typeof baseline !== "object") continue;
       const itemKeys = Array.isArray(baseline.itemKeys)
-        ? baseline.itemKeys.slice(0, 500).map((item) => cleanString(item, 500)).filter(Boolean)
+        ? baseline.itemKeys.map((item) => cleanString(item, 500)).filter(Boolean)
         : [];
       state.baselines[cleanString(key, 500)] = {
         followedAt: cleanString(baseline.followedAt, 80),
@@ -135,7 +135,7 @@ function cleanReminderState(value) {
     }
   }
   if (value.items && typeof value.items === "object") {
-    for (const [key, item] of Object.entries(value.items).slice(0, 5000)) {
+    for (const [key, item] of Object.entries(value.items)) {
       if (!item || typeof item !== "object") continue;
       const itemKey = cleanString(key, 500);
       if (!itemKey) continue;
@@ -182,6 +182,7 @@ export function sanitizeArticle(value) {
       ? value.matches.slice(0, 20).map((match) => ({
           kind: ["journal", "scholar", "keyword"].includes(match?.kind) ? match.kind : "scholar",
           label: cleanString(match?.label, 300),
+          subscriptionId: cleanString(match?.subscriptionId, 300),
           terms: Array.isArray(match?.terms)
             ? match.terms.slice(0, 20).map((item) => cleanString(item, 120)).filter(Boolean)
             : [],
@@ -193,15 +194,25 @@ export function sanitizeArticle(value) {
 export async function readReminderState(root = MODULE_ROOT) {
   const file = reminderStateFile(root);
   try {
-    return cleanReminderState(parseJson(await readFile(file, "utf8"), {}));
+    return cleanReminderState(JSON.parse(await readFile(file, "utf8")));
   } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
-    return emptyReminderState();
+    try {
+      return cleanReminderState(JSON.parse(await readFile(`${file}.backup`, "utf8")));
+    } catch {
+      if (error?.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
+      return emptyReminderState();
+    }
   }
 }
 
 export async function writeJsonAtomic(file, value) {
   await mkdir(dirname(file), { recursive: true });
+  try {
+    JSON.parse(await readFile(file, "utf8"));
+    await copyFile(file, `${file}.backup`);
+  } catch {
+    // Missing or corrupt primary files must not replace a known-good backup.
+  }
   const temp = `${file}.tmp-${process.pid}-${randomUUID()}`;
   const handle = await open(temp, "w");
   try {
@@ -219,14 +230,14 @@ export async function writeReminderState(root, value) {
   return state;
 }
 
-export async function withReminderLock(root, callback, timeoutMs = 15000) {
-  const lock = reminderLockPath(root);
+export async function withDirectoryLock(lock, callback, timeoutMs = 15000) {
   await mkdir(dirname(lock), { recursive: true });
   const started = Date.now();
+  const owner = `${process.pid}:${randomUUID()}`;
   while (true) {
     try {
       await mkdir(lock);
-      await writeFile(join(lock, "pid"), String(process.pid), "utf8");
+      await writeFile(join(lock, "owner"), owner, "utf8");
       break;
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
@@ -245,11 +256,28 @@ export async function withReminderLock(root, callback, timeoutMs = 15000) {
       await new Promise((resolveTimer) => setTimeout(resolveTimer, 150));
     }
   }
+  const heartbeat = setInterval(() => {
+    const now = new Date();
+    void utimes(lock, now, now).catch(() => undefined);
+  }, 30_000);
+  heartbeat.unref();
   try {
     return await callback();
   } finally {
-    await rm(lock, { recursive: true, force: true });
+    clearInterval(heartbeat);
+    try {
+      const currentOwner = await readFile(join(lock, "owner"), "utf8");
+      if (currentOwner === owner) {
+        await rm(lock, { recursive: true, force: true });
+      }
+    } catch {
+      // A stale-lock recovery may already have removed or replaced this lock.
+    }
   }
+}
+
+export async function withReminderLock(root, callback, timeoutMs = 15000) {
+  return withDirectoryLock(reminderLockPath(root), callback, timeoutMs);
 }
 
 function runProcess(command, args, input = "") {

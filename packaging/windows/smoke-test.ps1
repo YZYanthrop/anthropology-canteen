@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$PackageRoot,
-  [Parameter(Mandatory = $true)][string]$ZipPath
+  [Parameter(Mandatory = $true)][string]$ZipPath,
+  [switch]$SkipSchedulerRegistration
 )
 
 Set-StrictMode -Version Latest
@@ -24,6 +25,7 @@ $ServerProcess = $null
 $EntryProcessId = $null
 $WindowsPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $WindowsSmokeTaskName = ""
+$SessionToken = ""
 
 function Test-ProcessAlive {
   param([Parameter(Mandatory = $true)][int]$ProcessId)
@@ -45,7 +47,10 @@ function Wait-Ready {
     try {
       $Status = Invoke-RestMethod -UseBasicParsing `
         -Uri "$BaseUrl/api/runtime-status" -TimeoutSec 2
-      if ($Status.app -eq "anthropology-canteen") { return }
+      if ($Status.app -eq "anthropology-canteen" -and $Status.sessionToken) {
+        $script:SessionToken = [string]$Status.sessionToken
+        return
+      }
     } catch {
       Start-Sleep -Seconds 1
     }
@@ -83,6 +88,7 @@ function Invoke-JsonPut {
     [Parameter(Mandatory = $true)][object]$Body
   )
   return Invoke-RestMethod -UseBasicParsing -Uri $Uri -Method Put `
+    -Headers @{ "X-Anthropology-Canteen-Session" = $script:SessionToken } `
     -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 100)
 }
 
@@ -189,38 +195,40 @@ try {
     throw "The packaged DPAPI helper did not round-trip the test credential."
   }
 
-  $WindowsSmokeTaskName = "Anthropology Canteen Smoke $([guid]::NewGuid().ToString('N'))"
-  & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $RegisterReminder `
-    -TaskName $WindowsSmokeTaskName `
-    -NodePath $Node `
-    -WorkerPath $ReminderWorker `
-    -RootPath $ExtractedRoot `
-    -Time "23:59"
-  $RegisterExitCode = $LASTEXITCODE
-  $global:LASTEXITCODE = 0
-  if ($RegisterExitCode -ne 0) {
-    throw "The packaged Windows reminder task registration failed with exit code $RegisterExitCode."
+  if (-not $SkipSchedulerRegistration) {
+    $WindowsSmokeTaskName = "Anthropology Canteen Smoke $([guid]::NewGuid().ToString('N'))"
+    & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $RegisterReminder `
+      -TaskName $WindowsSmokeTaskName `
+      -NodePath $Node `
+      -WorkerPath $ReminderWorker `
+      -RootPath $ExtractedRoot `
+      -Time "23:59"
+    $RegisterExitCode = $LASTEXITCODE
+    $global:LASTEXITCODE = 0
+    if ($RegisterExitCode -ne 0) {
+      throw "The packaged Windows reminder task registration failed with exit code $RegisterExitCode."
+    }
+    $RegisteredTask = Get-ScheduledTask -TaskName $WindowsSmokeTaskName -ErrorAction Stop
+    $RegisteredAction = @($RegisteredTask.Actions)[0]
+    if ([System.IO.Path]::GetFullPath([string]$RegisteredAction.Execute) -ne
+        [System.IO.Path]::GetFullPath($Node) -or
+        [string]$RegisteredAction.WorkingDirectory -ne [System.IO.Path]::GetFullPath($ExtractedRoot) -or
+        [string]$RegisteredAction.Arguments -notmatch [regex]::Escape($ReminderWorker)) {
+      throw "The packaged Windows reminder task points to the wrong runtime or package root."
+    }
+    if (@($RegisteredTask.Triggers).Count -lt 2 -or
+        [string]$RegisteredTask.Principal.RunLevel -ne "Limited") {
+      throw "The packaged Windows reminder task does not have the expected triggers or privilege level."
+    }
+    & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $UnregisterReminder `
+      -TaskName $WindowsSmokeTaskName
+    $UnregisterExitCode = $LASTEXITCODE
+    $global:LASTEXITCODE = 0
+    if ($UnregisterExitCode -ne 0 -or (Get-ScheduledTask -TaskName $WindowsSmokeTaskName -ErrorAction SilentlyContinue)) {
+      throw "The packaged Windows reminder task did not unregister cleanly."
+    }
+    $WindowsSmokeTaskName = ""
   }
-  $RegisteredTask = Get-ScheduledTask -TaskName $WindowsSmokeTaskName -ErrorAction Stop
-  $RegisteredAction = @($RegisteredTask.Actions)[0]
-  if ([System.IO.Path]::GetFullPath([string]$RegisteredAction.Execute) -ne
-      [System.IO.Path]::GetFullPath($Node) -or
-      [string]$RegisteredAction.WorkingDirectory -ne [System.IO.Path]::GetFullPath($ExtractedRoot) -or
-      [string]$RegisteredAction.Arguments -notmatch [regex]::Escape($ReminderWorker)) {
-    throw "The packaged Windows reminder task points to the wrong runtime or package root."
-  }
-  if (@($RegisteredTask.Triggers).Count -lt 2 -or
-      [string]$RegisteredTask.Principal.RunLevel -ne "Limited") {
-    throw "The packaged Windows reminder task does not have the expected triggers or privilege level."
-  }
-  & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $UnregisterReminder `
-    -TaskName $WindowsSmokeTaskName
-  $UnregisterExitCode = $LASTEXITCODE
-  $global:LASTEXITCODE = 0
-  if ($UnregisterExitCode -ne 0 -or (Get-ScheduledTask -TaskName $WindowsSmokeTaskName -ErrorAction SilentlyContinue)) {
-    throw "The packaged Windows reminder task did not unregister cleanly."
-  }
-  $WindowsSmokeTaskName = ""
 
   $EntryPort = Get-Random -Minimum 31000 -Maximum 39999
   $PreviousPort = $env:PORT
@@ -303,12 +311,13 @@ try {
   if (-not $SawCss -or -not $SawJavaScript) {
     throw "The final package did not serve both CSS and JavaScript assets."
   }
-  $Blank = Invoke-RestMethod -UseBasicParsing -Uri "$BaseUrl/api/local-data"
-  if ($Blank.version -ne 7 -or
+  $Blank = Invoke-RestMethod -UseBasicParsing -Uri "$BaseUrl/api/local-data" `
+    -Headers @{ "X-Anthropology-Canteen-Session" = $script:SessionToken }
+  if ($Blank.version -ne 8 -or
       $Blank.subscriptions.journal.Count -ne 0 -or
       $Blank.subscriptions.scholar.Count -ne 0 -or
       $Blank.subscriptions.keyword.Count -ne 0) {
-    throw "The first local-data response is not a blank version 7 structure."
+    throw "The first local-data response is not a blank version 8 structure."
   }
   $SiblingRoot = Join-Path $ExtractDirectory "Anthropology-Canteen-Windows-x64-v1.2.0"
   $SiblingData = Join-Path $SiblingRoot "data"
@@ -332,7 +341,8 @@ try {
   } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
     Join-Path $SiblingData "anthropology-canteen-data.json"
   ) -Encoding UTF8
-  $Migrated = Invoke-RestMethod -UseBasicParsing -Uri "$BaseUrl/api/local-data"
+  $Migrated = Invoke-RestMethod -UseBasicParsing -Uri "$BaseUrl/api/local-data" `
+    -Headers @{ "X-Anthropology-Canteen-Session" = $script:SessionToken }
   if ($Migrated.subscriptions.scholar.Count -ne 1 -or
       $Migrated.subscriptions.scholar[0].label -ne "Migration Test Scholar") {
     throw "An already-created blank data file did not retry neighboring-version migration."
@@ -347,7 +357,8 @@ try {
 
   Start-TestServer -Node $Node -Server $Server -Port $Port
   Wait-Ready -BaseUrl $BaseUrl
-  $Persisted = Invoke-RestMethod -UseBasicParsing -Uri "$BaseUrl/api/local-data"
+  $Persisted = Invoke-RestMethod -UseBasicParsing -Uri "$BaseUrl/api/local-data" `
+    -Headers @{ "X-Anthropology-Canteen-Session" = $script:SessionToken }
   if (-not $Persisted.states.'smoke-record'.saved) {
     throw "Local data did not persist after restart."
   }
