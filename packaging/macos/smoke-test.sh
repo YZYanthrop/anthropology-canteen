@@ -166,7 +166,7 @@ KEYCHAIN_ACCOUNT="$INSTALLATION_ID"
 printf '%s' "$KEYCHAIN_SECRET" | "$KEYCHAIN_HELPER" set "$KEYCHAIN_SERVICE" "$KEYCHAIN_ACCOUNT"
 /bin/mkdir -p "$EXTRACTED_ROOT/data"
 /bin/cat >"$EXTRACTED_ROOT/data/anthropology-canteen-data.json" <<'JSON'
-{"version":7,"subscriptions":{"journal":[],"scholar":[],"keyword":[]},"states":{},"feed":null,"translations":{},"scholarProfiles":{}}
+{"version":8,"revision":0,"subscriptions":{"journal":[],"scholar":[],"keyword":[]},"states":{},"feed":null,"translations":{},"scholarProfiles":{}}
 JSON
 /bin/cat >"$EXTRACTED_ROOT/data/anthropology-canteen-settings.json" <<JSON
 {"version":3,"openAlexApiKey":"","semanticScholarApiKey":"","reminders":{"enabled":true,"installationId":"$INSTALLATION_ID","credentialRef":"$INSTALLATION_ID","provider":"custom","sender":"sender@example.com","recipient":"recipient@example.com","host":"smtp.example.com","port":465,"security":"tls","username":"sender@example.com","schedule":{"cadence":"daily","time":"23:59","weekday":1,"monthDay":1}}}
@@ -224,12 +224,13 @@ wait_ready "$BASE_URL" || fail "portable server did not start"
   const base = process.argv[1];
   const status = await fetch(`${base}/api/runtime-status`).then((r) => r.json());
   if (status.app !== "anthropology-canteen") throw new Error("bad runtime status");
-  const blank = await fetch(`${base}/api/local-data`).then((r) => r.json());
-  if (blank.version !== 7) throw new Error("blank data is not version 7");
+  const headers = { "content-type": "application/json", "x-anthropology-canteen-session": status.sessionToken };
+  const blank = await fetch(`${base}/api/local-data`, { headers }).then((r) => r.json());
+  if (blank.version !== 8) throw new Error("blank data is not version 8");
   if (blank.subscriptions.journal.length || blank.subscriptions.scholar.length || blank.subscriptions.keyword.length) throw new Error("blank data has subscriptions");
   const saved = await fetch(`${base}/api/local-data`, {
     method: "PUT",
-    headers: { "content-type": "application/json" },
+    headers,
     body: JSON.stringify({ ...blank, states: { "smoke-record": { saved: true } } }),
   }).then((r) => r.json());
   if (!saved.states["smoke-record"].saved) throw new Error("PUT failed");
@@ -240,7 +241,9 @@ PORT="$PORT" "$NODE" "$SERVER" >"$TEMP_ROOT/server-restart.log" 2>&1 &
 SERVER_PID=$!
 wait_ready "$BASE_URL" || fail "portable server did not restart"
 "$NODE" --input-type=module -e '
-  const data = await fetch(`${process.argv[1]}/api/local-data`).then((r) => r.json());
+  const base = process.argv[1];
+  const status = await fetch(`${base}/api/runtime-status`).then((r) => r.json());
+  const data = await fetch(`${base}/api/local-data`, { headers: { "x-anthropology-canteen-session": status.sessionToken } }).then((r) => r.json());
   if (!data.states["smoke-record"]?.saved) throw new Error("data did not persist across restart");
 ' "$BASE_URL"
 stop_server

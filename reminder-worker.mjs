@@ -12,9 +12,9 @@ import {
 import { renderDigest, sendMail } from "./reminder-mail.mjs";
 import {
   fetchFeedForReminder,
+  patchLocalDataFile,
   readLocalDataFile,
   readLocalSettingsFile,
-  writeLocalDataFile,
 } from "./portable-server.mjs";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
@@ -26,30 +26,45 @@ function nowIso() {
 function articleKey(article) {
   const doi = String(article.doi || "").replace(/^https?:\/\/doi\.org\//i, "").trim().toLowerCase();
   if (doi) return `doi:${doi}`;
-  const stable = String(article.id || "").trim();
-  if (stable) return `id:${stable}`;
   const title = String(article.title || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   const year = String(article.publishedAt || "").slice(0, 4);
   const author = String(article.authors?.[0]?.name || "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!title) {
+    const stable = String(article.id || "").trim();
+    if (stable) return `id:${stable}`;
+  }
   return `hash:${createHash("sha256").update(`${title}|${year}|${author}`).digest("hex")}`;
 }
 
-function scopeKey(kind, label) {
+function legacyScopeKey(kind, label) {
   return `${kind}:${String(label || "").trim().toLowerCase()}`;
+}
+
+function subscriptionScopeKey(kind, item) {
+  if (kind === "scholar") {
+    return `scholar:${String(item.subscriptionId || "").trim() || String(item.label || "").trim().toLowerCase()}`;
+  }
+  if (kind === "journal") {
+    return `journal:${String(item.issn || "").trim().toLowerCase() || String(item.label || "").trim().toLowerCase()}`;
+  }
+  return `keyword:${String(item.root || "").trim().toLowerCase()}`;
 }
 
 function subscriptionScopes(subscriptions) {
   return [
     ...(subscriptions?.scholar || []).map((item) => ({
-      key: scopeKey("scholar", item.label),
+      key: subscriptionScopeKey("scholar", item),
+      legacyKey: legacyScopeKey("scholar", item.label),
       followedAt: item.followedAt,
     })),
     ...(subscriptions?.journal || []).map((item) => ({
-      key: scopeKey("journal", item.label),
+      key: subscriptionScopeKey("journal", item),
+      legacyKey: legacyScopeKey("journal", item.label),
       followedAt: item.followedAt,
     })),
     ...(subscriptions?.keyword || []).map((item) => ({
-      key: scopeKey("keyword", item.root),
+      key: subscriptionScopeKey("keyword", item),
+      legacyKey: legacyScopeKey("keyword", item.root),
       followedAt: item.followedAt,
     })),
   ];
@@ -62,15 +77,9 @@ function articleScopes(article) {
       const label = match.kind === "keyword"
         ? String(match.label || "").split(" /")[0]
         : match.label;
-      return scopeKey(match.kind, label);
+      if (match.subscriptionId) return `${match.kind}:${match.subscriptionId}`;
+      return legacyScopeKey(match.kind, label);
     });
-}
-
-function dateBefore(value, threshold) {
-  if (!value || !threshold) return false;
-  const left = Date.parse(value);
-  const right = Date.parse(threshold);
-  return Number.isFinite(left) && Number.isFinite(right) && left < right;
 }
 
 function nextDueAt(config, from = new Date()) {
@@ -102,11 +111,72 @@ function digestId(itemKeys) {
   return `ac-${createHash("sha256").update(itemKeys.join("|")).digest("hex").slice(0, 24)}`;
 }
 
-function updateFeedData(data, feed) {
-  return {
-    ...data,
-    feed,
-  };
+export function reconcileReminderState(state, subscriptions, feed, startedAt) {
+  const scopes = subscriptionScopes(subscriptions);
+  const scopeMap = new Map(scopes.map((scope) => [scope.key, scope]));
+  const failedScopes = new Set(
+    (feed.coverage || [])
+      .filter((entry) => entry.status === "failed")
+      .map((entry) => `${entry.kind}:${entry.subscriptionId}`),
+  );
+  const baselineItems = Array.isArray(feed.items)
+    ? feed.items.map(sanitizeArticle)
+    : [];
+  const items = feed.source === "fallback" ? [] : baselineItems;
+
+  for (const scope of scopes) {
+    if (failedScopes.has(scope.key)) continue;
+    if (!state.baselines[scope.key] && state.baselines[scope.legacyKey]) {
+      state.baselines[scope.key] = state.baselines[scope.legacyKey];
+      delete state.baselines[scope.legacyKey];
+    }
+    if (!state.baselines[scope.key]) {
+      state.baselines[scope.key] = {
+        followedAt: scope.followedAt || startedAt,
+        itemKeys: [],
+        ready: false,
+      };
+    }
+    if (!state.baselines[scope.key].ready) {
+      const baselineKeys = baselineItems
+        .filter((item) => articleScopes(item).includes(scope.key))
+        .map(articleKey);
+      state.baselines[scope.key].itemKeys = [...new Set(baselineKeys)];
+      state.baselines[scope.key].ready = true;
+    }
+  }
+
+  const knownKeys = new Set(Object.keys(state.items));
+  for (const article of items) {
+    const key = articleKey(article);
+    if (!key || knownKeys.has(key)) continue;
+    const matchedScopes = articleScopes(article).filter(
+      (scope) => scopeMap.has(scope) && !failedScopes.has(scope),
+    );
+    if (!matchedScopes.length) continue;
+    const isBaseline = matchedScopes.some((scope) =>
+      state.baselines[scope]?.itemKeys.includes(key),
+    );
+    state.items[key] = {
+      firstSeenAt: startedAt,
+      baseline: isBaseline,
+      sentAt: isBaseline ? startedAt : "",
+      article,
+    };
+    knownKeys.add(key);
+  }
+
+  state.baselineComplete = scopes.every(
+    (scope) => Boolean(state.baselines[scope.key]?.ready),
+  );
+  return Object.entries(state.items)
+    .filter(([, item]) => item && !item.baseline && !item.sentAt && item.article)
+    .map(([key, item]) => ({ key, article: item.article }))
+    .sort(
+      (a, b) =>
+        Date.parse(b.article.publishedAt || "") -
+        Date.parse(a.article.publishedAt || ""),
+    );
 }
 
 async function processReminder({ force = false, test = false } = {}) {
@@ -132,55 +202,22 @@ async function processReminder({ force = false, test = false } = {}) {
     // Re-read immediately before writing so a browser save that happened
     // while providers were loading is preserved; the worker only replaces
     // the feed field.
-    const latestData = await readLocalDataFile();
-    const mergedData = updateFeedData(latestData, feed);
-    await writeLocalDataFile(mergedData);
-    const scopes = subscriptionScopes(mergedData.subscriptions);
-    const scopeMap = new Map(scopes.map((scope) => [scope.key, scope]));
-    // A fallback feed is a cached display snapshot, not evidence that a new
-    // publication was observed.  Keep the feed for the UI but do not advance
-    // reminder baselines or send notifications from it.
-    const baselineItems = Array.isArray(feed.items)
-      ? feed.items.map(sanitizeArticle)
-      : [];
-    const items = feed.source === "fallback" ? [] : baselineItems;
-
-    for (const scope of scopes) {
-      if (!state.baselines[scope.key]) {
-        state.baselines[scope.key] = { followedAt: scope.followedAt || startedAt, itemKeys: [], ready: false };
-      }
-      if (!state.baselines[scope.key].ready) {
-        const baselineKeys = baselineItems
-          .filter((item) => articleScopes(item).includes(scope.key))
-          .map(articleKey);
-        state.baselines[scope.key].itemKeys = [...new Set(baselineKeys)].slice(0, 1000);
-        state.baselines[scope.key].ready = true;
-      }
-    }
-
-    const knownKeys = new Set(Object.keys(state.items));
-    for (const article of items) {
-      const key = articleKey(article);
-      if (!key || knownKeys.has(key)) continue;
-      const matchedScopes = articleScopes(article).filter((scope) => scopeMap.has(scope));
-      if (!matchedScopes.length) continue;
-      const isBeforeFollow = matchedScopes.some((scope) => dateBefore(article.publishedAt, scopeMap.get(scope).followedAt));
-      const isBaseline = matchedScopes.some((scope) => state.baselines[scope]?.itemKeys.includes(key)) || isBeforeFollow;
-      state.items[key] = { firstSeenAt: startedAt, baseline: isBaseline, sentAt: isBaseline ? startedAt : "", article };
-      knownKeys.add(key);
-    }
-
-    state.baselineComplete = true;
-    const pending = Object.entries(state.items)
-      .filter(([, item]) => item && !item.baseline && !item.sentAt && item.article)
-      .map(([key, item]) => ({ key, article: item.article }))
-      .sort((a, b) => Date.parse(b.article.publishedAt || "") - Date.parse(a.article.publishedAt || ""));
+    const mergedData = await patchLocalDataFile({ feed });
+    const pending = reconcileReminderState(
+      state,
+      mergedData.subscriptions,
+      feed,
+      startedAt,
+    );
 
     const warnings = Array.isArray(feed.warnings) ? feed.warnings.slice(0, 8) : [];
+    const hasFailedCoverage = (feed.coverage || []).some(
+      (entry) => entry.status === "failed",
+    );
     if (!pending.length) {
       state.lastCheckAt = startedAt;
-      state.lastSuccessfulCheckAt = startedAt;
-      state.lastResult = "no-updates";
+      if (!hasFailedCoverage) state.lastSuccessfulCheckAt = startedAt;
+      state.lastResult = hasFailedCoverage ? "partial-failure" : "no-updates";
       state.lastError = warnings.length ? warnings.join("；") : "";
       state.nextDueAt = nextDueAt(config, new Date());
       await writeReminderState(ROOT, state);
@@ -217,7 +254,7 @@ async function processReminder({ force = false, test = false } = {}) {
     }
     state.pendingDigest = null;
     state.lastCheckAt = startedAt;
-    state.lastSuccessfulCheckAt = sentAt;
+    if (!hasFailedCoverage) state.lastSuccessfulCheckAt = sentAt;
     state.lastSuccessfulSendAt = sentAt;
     state.lastResult = `sent-${selected.length}`;
     state.lastError = warnings.length ? warnings.join("；") : "";

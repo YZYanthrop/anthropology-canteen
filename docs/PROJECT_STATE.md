@@ -1,20 +1,20 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-08-18
+Last updated: 2026-08-20
 
 ## Stable baseline
 
-- Current public product version: `v1.3.0`.
-- Stable Git tag: `v1.3.0`; Windows x64, macOS arm64, and macOS x64 artifacts
+- Current public product version: `v1.3.1`.
+- Stable Git tag: `v1.3.1`; Windows x64, macOS arm64, and macOS x64 artifacts
   are built from that one immutable tag.
-- Local data schema: version 7.
+- Local data schema: version 8; v1.3.0 public packages used version 7.
 - Local API-key and reminder settings schema: version 3; the main research data
-  schema remains version 7.
+  schema becomes version 8 in v1.3.1 while settings remain version 3.
 - Version 5 and 6 data are migrated defensively: previously auto-merged author
   IDs are quarantined while subscriptions and user states are preserved.
 - Current published distributions: Windows x64 plus unsigned macOS Apple
   Silicon arm64 and Intel x64 portable ZIPs in one
-  [v1.3.0 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.0).
+  [v1.3.1 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.1).
 - macOS bootstrap tag: `macos-v1.1.1-beta.1` at the validated build commit
   `c2ec6d1`; its GitHub Pre-release is
   [published here](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/macos-v1.1.1-beta.1).
@@ -23,7 +23,7 @@ Last updated: 2026-08-18
 - Source development requires Node.js 22.13 or newer and pnpm 11.9. The current
   Windows share package pins Node.js 24.14.0.
 
-The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, and `v1.3.0` tags are immutable.
+The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, and `v1.3.1` tags are immutable.
 
 ## v1.2.0 release baseline
 
@@ -78,6 +78,16 @@ The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, and `v1.3.0` tags are immutable.
   privacy are part of the final-package smoke coverage.
 - The three public platform ZIPs are built from the immutable `v1.3.0` tag;
   macOS artifacts remain unsigned and unnotarized.
+
+## v1.3.1 release baseline
+
+- Harden loopback APIs against DNS rebinding and cross-origin requests; all folder-local data and settings calls require the process session token.
+- Replace whole-document browser saves with field-level patches and isolate data, settings, and reminder locks. JSON writes retain a last-known-good backup.
+- Upgrade main data to version 8 and reminder state to version 2 without changing settings version 3. Version 2–7 research data and version 1 reminder state remain importable.
+- Track reminder baselines by stable subscription ID or ISSN, retain late-indexed works, and do not advance failed subscription scopes.
+- Treat total feed failure as an error so the UI and worker preserve prior cache and cursors.
+- Permit automatic author consolidation only from ORCID, a shared provider ID, or a shared DOI. Institutional pages are saved as manual evidence links and are not fetched automatically.
+- Update direct production dependencies and expand deterministic regression coverage. No account, cloud service, new provider, or hosted scheduler is added.
 
 ## Current product contract
 
@@ -138,19 +148,12 @@ points to the exact build commit, and both architecture packages were
 published with SHA-256 files. The product displayed by that beta remains 1.1.1,
 and Intel has no recorded human test.
 
-The v1.3.0 local-reminder milestone is complete:
+The v1.3.0 local-reminder milestone is complete. The v1.3.1 stabilization milestone is complete:
 
-1. Keep Windows x64, macOS Apple Silicon, and macOS Intel on one source commit,
-   one product version, and one build-only workflow.
-2. Preserve folder-local data, blank-archive privacy, migration compatibility,
-   transactional import, and automatic shutdown on every platform.
-3. Collect an Intel Mac human first-launch test when available; native Intel CI
-   is required for every published version even without that optional report.
-4. Verify optional reminder baseline/deduplication, secure credential storage,
-   scheduler install/repair/disable, and blank-archive privacy on both
-   platforms.
-5. Keep signing and notarization optional and separately authorized; current
-   macOS packages remain unsigned and unnotarized.
+1. Security, persistence, provider-degradation, identity and reminder-ledger regressions are covered by deterministic tests.
+2. All three v1.3.1 packages are built from one immutable tag and pass native package smoke tests.
+3. Existing v1.3.0 tags and public artifacts remain immutable.
+4. Signing and notarization remain optional and separately authorized; current macOS packages are unsigned and unnotarized.
 
 The v1.3.0 release also treats the stable friendly localhost origin as an
 upgrade boundary: launchers use a per-launch query, portable HTML responses are

@@ -17,6 +17,7 @@ import {
   readReminderSecret,
   readReminderState,
   saveReminderSecret,
+  withDirectoryLock,
   withReminderLock,
   writeJsonAtomic,
 } from "./reminder-utils.mjs";
@@ -33,6 +34,8 @@ const dataFile = resolve(dataRoot, "anthropology-canteen-data.json");
 const settingsFile = resolve(dataRoot, "anthropology-canteen-settings.json");
 const pidFile = resolve(dataRoot, "anthropology-canteen-server.pid");
 const runtimeSessionToken = randomUUID();
+const LOCAL_DATA_VERSION = 8;
+const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
 let activeReminderJobs = 0;
 const reminderRequestTimes = new Map();
 
@@ -84,8 +87,23 @@ async function serveAsset(input) {
 
 async function readRequestBody(request) {
   if (request.method === "GET" || request.method === "HEAD") return undefined;
+  const declaredLength = Number(request.headers["content-length"] || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BODY_BYTES) {
+    const error = new Error("Request body is too large.");
+    error.code = "BODY_TOO_LARGE";
+    throw error;
+  }
   const chunks = [];
-  for await (const chunk of request) chunks.push(chunk);
+  let length = 0;
+  for await (const chunk of request) {
+    length += chunk.length;
+    if (length > MAX_REQUEST_BODY_BYTES) {
+      const error = new Error("Request body is too large.");
+      error.code = "BODY_TOO_LARGE";
+      throw error;
+    }
+    chunks.push(chunk);
+  }
   return chunks.length ? Buffer.concat(chunks) : undefined;
 }
 
@@ -111,7 +129,8 @@ function cleanTimestamp(value, fallback = new Date().toISOString()) {
 
 function emptyLocalData() {
   return {
-    version: 7,
+    version: LOCAL_DATA_VERSION,
+    revision: 0,
     savedAt: new Date().toISOString(),
     subscriptions: { journal: [], scholar: [], keyword: [] },
     states: {},
@@ -239,7 +258,6 @@ function cleanSubscriptions(
 ) {
   const journal = Array.isArray(value.journal)
     ? value.journal
-        .slice(0, 40)
         .map((item) => ({
           label: clean(item?.label, 180),
           issn: clean(item?.issn, 40),
@@ -249,7 +267,6 @@ function cleanSubscriptions(
     : [];
   const scholar = Array.isArray(value.scholar)
     ? value.scholar
-        .slice(0, 60)
         .map((item) => {
           const candidate =
             typeof item === "string" ? { label: item } : item;
@@ -280,7 +297,6 @@ function cleanSubscriptions(
             : storedSemanticScholarIds;
           const institutions = Array.isArray(candidate?.institutions)
             ? candidate.institutions
-                .slice(0, 12)
                 .map((value) => clean(value, 240))
                 .filter(Boolean)
             : [];
@@ -299,7 +315,6 @@ function cleanSubscriptions(
             label,
             aliases: Array.isArray(candidate?.aliases)
               ? candidate.aliases
-                  .slice(0, 16)
                   .map((value) => clean(value, 180))
                   .filter(Boolean)
               : [],
@@ -328,7 +343,6 @@ function cleanSubscriptions(
             profileUrl: clean(candidate?.profileUrl, 500) || undefined,
             profileUrls: Array.isArray(candidate?.profileUrls)
               ? candidate.profileUrls
-                  .slice(0, 12)
                   .map((value) => clean(value, 800))
                   .filter(Boolean)
               : undefined,
@@ -347,7 +361,6 @@ function cleanSubscriptions(
               candidate?.institutionalEvidence,
             )
               ? candidate.institutionalEvidence
-                  .slice(0, 12)
                   .map((item) => clean(item, 200))
                   .filter(Boolean)
               : [],
@@ -358,13 +371,11 @@ function cleanSubscriptions(
                 : undefined,
             researchAreas: Array.isArray(candidate?.researchAreas)
               ? candidate.researchAreas
-                  .slice(0, 8)
                   .map((area) => clean(area, 160))
                   .filter(Boolean)
               : undefined,
             verifiedWorkDois: Array.isArray(candidate?.verifiedWorkDois)
               ? candidate.verifiedWorkDois
-                  .slice(0, 120)
                   .map((doi) =>
                     clean(doi, 300)
                       .replace(/^https?:\/\/doi\.org\//i, "")
@@ -374,7 +385,6 @@ function cleanSubscriptions(
               : undefined,
             sources: Array.isArray(candidate?.sources)
               ? candidate.sources
-                  .slice(0, 8)
                   .map((source) => clean(source, 80))
                   .filter(Boolean)
               : undefined,
@@ -417,7 +427,6 @@ function cleanSubscriptions(
                 ]
               : Array.isArray(candidate?.mergeEvidence)
               ? candidate.mergeEvidence
-                  .slice(0, 20)
                   .map((item) => clean(item, 160))
                   .filter(Boolean)
               : [],
@@ -427,7 +436,6 @@ function cleanSubscriptions(
     : [];
   const keyword = Array.isArray(value.keyword)
     ? value.keyword
-        .slice(0, 60)
         .map((item) => cleanKeywordGroup(item, migrationBaseline))
         .filter(Boolean)
         .filter(
@@ -454,7 +462,12 @@ function cleanMatches(value) {
                 .map((term) => clean(term, 80))
                 .filter(Boolean)
             : undefined;
-          return { kind, label, terms };
+          return {
+            kind,
+            label,
+            subscriptionId: clean(item?.subscriptionId, 300) || undefined,
+            terms,
+          };
         })
         .filter(Boolean)
     : [];
@@ -517,6 +530,16 @@ function cleanFeed(value) {
       : [],
     warnings: Array.isArray(value.warnings)
       ? value.warnings.slice(0, 20).map((item) => clean(item, 500)).filter(Boolean)
+      : [],
+    coverage: Array.isArray(value.coverage)
+      ? value.coverage.map((item) => ({
+          subscriptionId: clean(item?.subscriptionId, 300),
+          kind: ["journal", "scholar"].includes(item?.kind)
+            ? item.kind
+            : "scholar",
+          label: clean(item?.label, 300),
+          status: item?.status === "failed" ? "failed" : "success",
+        })).filter((item) => item.subscriptionId && item.label)
       : [],
   };
 }
@@ -605,7 +628,6 @@ function cleanScholarProfileCandidate(value) {
   if (!subscription) return null;
   const representativeWorks = Array.isArray(value.representativeWorks)
     ? value.representativeWorks
-        .slice(0, 100)
         .map(cleanScholarWork)
         .filter(Boolean)
     : [];
@@ -636,13 +658,11 @@ function cleanScholarProfileCandidate(value) {
     },
     identityWarnings: Array.isArray(value.identityWarnings)
       ? value.identityWarnings
-          .slice(0, 12)
           .map((item) => clean(item, 500))
           .filter(Boolean)
       : [],
     scoreReasons: Array.isArray(value.scoreReasons)
       ? value.scoreReasons
-          .slice(0, 12)
           .map((item) => clean(item, 200))
           .filter(Boolean)
       : [],
@@ -656,13 +676,13 @@ function cleanScholarProfileCandidate(value) {
 function cleanScholarProfiles(value) {
   const profiles = {};
   if (!value || typeof value !== "object") return profiles;
-  for (const [storedKey, profile] of Object.entries(value).slice(0, 60)) {
+  for (const [storedKey, profile] of Object.entries(value)) {
     const key = clean(storedKey, 300);
     if (!key || !profile || typeof profile !== "object") continue;
     const candidate = cleanScholarProfileCandidate(profile.candidate);
     if (!candidate) continue;
     const works = Array.isArray(profile.works)
-      ? profile.works.slice(0, 1000).map(cleanScholarWork).filter(Boolean)
+      ? profile.works.map(cleanScholarWork).filter(Boolean)
       : candidate.representativeWorks;
     profiles[key] = {
       candidate,
@@ -686,7 +706,7 @@ function cleanLocalData(value = {}, refreshSavedAt = false) {
   const quarantineLegacyIdentity = [5, 6].includes(Number(value.version));
   const states = {};
   if (value.states && typeof value.states === "object") {
-    for (const [id, state] of Object.entries(value.states).slice(0, 2000)) {
+    for (const [id, state] of Object.entries(value.states)) {
       const key = clean(id, 500);
       if (key) states[key] = cleanArticleState(state);
     }
@@ -694,7 +714,7 @@ function cleanLocalData(value = {}, refreshSavedAt = false) {
 
   const translations = {};
   if (value.translations && typeof value.translations === "object") {
-    for (const [id, translation] of Object.entries(value.translations).slice(0, 1000)) {
+    for (const [id, translation] of Object.entries(value.translations)) {
       const key = clean(id, 500);
       const text = clean(translation, 12000);
       if (key && text) translations[key] = text;
@@ -702,7 +722,11 @@ function cleanLocalData(value = {}, refreshSavedAt = false) {
   }
 
   return {
-    version: 7,
+    version: LOCAL_DATA_VERSION,
+    revision:
+      Number.isSafeInteger(value.revision) && value.revision >= 0
+        ? value.revision
+        : 0,
     savedAt,
     subscriptions: cleanSubscriptions(
       value.subscriptions,
@@ -732,6 +756,21 @@ function hasLocalDataContent(data) {
 
 async function ensureDataRoot() {
   await mkdir(dataRoot, { recursive: true });
+}
+
+async function readJsonWithBackup(file) {
+  try {
+    return parseJson(await readFile(file, "utf8"));
+  } catch (primaryError) {
+    if (primaryError?.code === "ENOENT") throw primaryError;
+    try {
+      const recovered = parseJson(await readFile(`${file}.backup`, "utf8"));
+      await writeJsonAtomic(file, recovered);
+      return recovered;
+    } catch {
+      throw primaryError;
+    }
+  }
 }
 
 async function findSiblingLocalData() {
@@ -777,8 +816,7 @@ async function findSiblingLocalData() {
 async function readLocalDataFile() {
   await ensureDataRoot();
   try {
-    const text = await readFile(dataFile, "utf8");
-    const data = cleanLocalData(parseJson(text));
+    const data = cleanLocalData(await readJsonWithBackup(dataFile));
     // A first launch may have created an empty file before the user places the
     // new portable folder beside the old version. Keep retrying neighboring
     // migration while the current file is still genuinely empty.
@@ -801,8 +839,36 @@ async function readLocalDataFile() {
 async function writeLocalDataFile(value) {
   await ensureDataRoot();
   const data = cleanLocalData(value, true);
+  data.revision = Math.max(0, data.revision) + 1;
   await writeJsonAtomic(dataFile, data);
   return data;
+}
+
+function localDataLockPath() {
+  return resolve(dataRoot, ".anthropology-canteen-local-data.lock");
+}
+
+function localSettingsLockPath() {
+  return resolve(dataRoot, ".anthropology-canteen-local-settings.lock");
+}
+
+async function patchLocalDataFile(patch) {
+  return withDirectoryLock(localDataLockPath(), async () => {
+    const current = await readLocalDataFile();
+    const allowed = {};
+    for (const key of [
+      "subscriptions",
+      "states",
+      "feed",
+      "translations",
+      "scholarProfiles",
+    ]) {
+      if (Object.prototype.hasOwnProperty.call(patch || {}, key)) {
+        allowed[key] = patch[key];
+      }
+    }
+    return writeLocalDataFile({ ...current, ...allowed, revision: current.revision });
+  });
 }
 
 async function findSiblingLocalSettings() {
@@ -853,7 +919,7 @@ async function readLocalSettingsFile() {
   await ensureDataRoot();
   try {
     return cleanLocalSettings(
-      parseJson(await readFile(settingsFile, "utf8")),
+      await readJsonWithBackup(settingsFile),
     );
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
@@ -878,6 +944,13 @@ async function writeLocalSettingsFile(value) {
   await writeJsonAtomic(settingsFile, settings);
   applyRuntimeSettings(settings);
   return settings;
+}
+
+async function patchLocalSettingsFile(patch) {
+  return withDirectoryLock(localSettingsLockPath(), async () => {
+    const current = await readLocalSettingsFile();
+    return writeLocalSettingsFile({ ...current, ...(patch || {}) });
+  });
 }
 
 function applyRuntimeSettings(settings) {
@@ -932,13 +1005,64 @@ function reminderPublicConfig(config) {
   };
 }
 
-function reminderRequestAuthorized(headers) {
+function allowedLocalHostname(value) {
+  const hostname = String(value || "")
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "");
+  return [
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "anthropology-canteen.localhost",
+  ].includes(hostname);
+}
+
+function parsedLocalHost(host) {
+  try {
+    const parsed = new URL(`http://${host}`);
+    return allowedLocalHostname(parsed.hostname) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function localRequestAuthorized(headers) {
   const token = headers?.["x-anthropology-canteen-session"];
   const origin = headers?.origin;
   const host = headers?.host || "";
   if (token !== runtimeSessionToken) return false;
   if (!origin) return true;
-  return origin === `http://${host}` || origin === `http://localhost:${host.split(":").pop()}`;
+  try {
+    const parsedOrigin = new URL(origin);
+    const parsedHost = parsedLocalHost(host);
+    return Boolean(
+      parsedHost &&
+      parsedOrigin.protocol === "http:" &&
+      allowedLocalHostname(parsedOrigin.hostname) &&
+      parsedOrigin.port === parsedHost.port,
+    );
+  } catch {
+    return false;
+  }
+}
+
+function localOriginAllowed(headers) {
+  const origin = headers?.origin;
+  if (!origin) return true;
+  const host = headers?.host || "";
+  try {
+    const parsedOrigin = new URL(origin);
+    const parsedHost = parsedLocalHost(host);
+    return Boolean(
+      parsedHost &&
+      parsedOrigin.protocol === "http:" &&
+      allowedLocalHostname(parsedOrigin.hostname) &&
+      parsedOrigin.port === parsedHost.port,
+    );
+  } catch {
+    return false;
+  }
 }
 
 function reminderRequestAllowed(headers, pathname) {
@@ -998,15 +1122,15 @@ async function handleReminders(url, method, body, headers) {
   if (url.pathname !== "/api/reminders/status" && !url.pathname.startsWith("/api/reminders/")) {
     return undefined;
   }
+  if (!localRequestAuthorized(headers)) {
+    return jsonResponse({ message: "邮件提醒请求未通过本地会话验证。" }, { status: 403 });
+  }
   if (method === "GET" && url.pathname === "/api/reminders/status") {
     try {
       return jsonResponse(await readReminderStatus());
     } catch {
       return jsonResponse({ message: "无法读取邮件提醒状态。" }, { status: 500 });
     }
-  }
-  if (!reminderRequestAuthorized(headers)) {
-    return jsonResponse({ message: "邮件提醒请求未通过本地会话验证。" }, { status: 403 });
   }
   if (!reminderRequestAllowed(headers, url.pathname)) {
     return jsonResponse(
@@ -1036,9 +1160,7 @@ async function handleReminders(url, method, body, headers) {
         return jsonResponse({ message: "发件地址必须与 SMTP 认证邮箱一致。" }, { status: 400 });
       }
       if (current.enabled || current.schedulerPath) await uninstallScheduler(root, current);
-      await withReminderLock(root, () =>
-        writeLocalSettingsFile({ ...settings, reminders: next }),
-      );
+      await patchLocalSettingsFile({ reminders: next });
       return jsonResponse(await readReminderStatus());
     }
     if (url.pathname === "/api/reminders/credential" && method === "POST") {
@@ -1048,9 +1170,7 @@ async function handleReminders(url, method, body, headers) {
         await saveReminderSecret(root, current, clean(input?.secret, 500));
       });
       const next = { ...current, testedConfigHash: "", enabled: false, schedulerPath: "", configuredAt: new Date().toISOString() };
-      await withReminderLock(root, () =>
-        writeLocalSettingsFile({ ...settings, reminders: next }),
-      );
+      await patchLocalSettingsFile({ reminders: next });
       return jsonResponse(await readReminderStatus());
     }
     if (url.pathname === "/api/reminders/credential" && method === "DELETE") {
@@ -1059,17 +1179,13 @@ async function handleReminders(url, method, body, headers) {
         await deleteReminderSecret(root, current);
       });
       const next = { ...current, enabled: false, testedConfigHash: "", schedulerPath: "" };
-      await withReminderLock(root, () =>
-        writeLocalSettingsFile({ ...settings, reminders: next }),
-      );
+      await patchLocalSettingsFile({ reminders: next });
       return jsonResponse(await readReminderStatus());
     }
     if (url.pathname === "/api/reminders/test" && method === "POST") {
       await runReminderJob({ test: true });
       const next = { ...current, testedConfigHash: reminderConfigHash(current) };
-      await withReminderLock(root, () =>
-        writeLocalSettingsFile({ ...settings, reminders: next }),
-      );
+      await patchLocalSettingsFile({ reminders: next });
       return jsonResponse(await readReminderStatus());
     }
     if (url.pathname === "/api/reminders/enable" && method === "POST") {
@@ -1078,26 +1194,19 @@ async function handleReminders(url, method, body, headers) {
       }
       const wasEnabled = current.enabled;
       const next = { ...current, enabled: true, enabledAt: current.enabledAt || new Date().toISOString() };
-      await withReminderLock(root, () =>
-        writeLocalSettingsFile({ ...settings, reminders: next }),
-      );
+      await patchLocalSettingsFile({ reminders: next });
       try {
         if (!wasEnabled) await runReminderJob({ force: true });
         const scheduler = await installScheduler(root, next);
-        await withReminderLock(root, () =>
-          writeLocalSettingsFile({
-            ...settings,
-            reminders: {
-              ...next,
-              schedulerPath: scheduler.plist || scheduler.taskName || root,
-            },
-          }),
-        );
+        await patchLocalSettingsFile({
+          reminders: {
+            ...next,
+            schedulerPath: scheduler.plist || scheduler.taskName || root,
+          },
+        });
         return jsonResponse({ ...(await readReminderStatus()), scheduler });
       } catch (error) {
-        await withReminderLock(root, () =>
-          writeLocalSettingsFile({ ...settings, reminders: { ...next, enabled: false } }),
-        );
+        await patchLocalSettingsFile({ reminders: { ...next, enabled: false } });
         throw error;
       }
     }
@@ -1108,9 +1217,7 @@ async function handleReminders(url, method, body, headers) {
     if (url.pathname === "/api/reminders/disable" && method === "POST") {
       await uninstallScheduler(root, current);
       const next = { ...current, enabled: false, schedulerPath: "" };
-      await withReminderLock(root, () =>
-        writeLocalSettingsFile({ ...settings, reminders: next }),
-      );
+      await patchLocalSettingsFile({ reminders: next });
       return jsonResponse(await readReminderStatus());
     }
     return jsonResponse({ message: "Unsupported reminder operation." }, { status: 405 });
@@ -1119,22 +1226,28 @@ async function handleReminders(url, method, body, headers) {
   }
 }
 
-async function handleLocalData(url, method, body) {
+async function handleLocalData(url, method, body, headers) {
   if (url.pathname !== "/api/local-data") return undefined;
+  if (!localRequestAuthorized(headers)) {
+    return jsonResponse({ message: "本地数据请求未通过会话验证。" }, { status: 403 });
+  }
   try {
     if (method === "GET" || method === "HEAD") {
       const data = await readLocalDataFile();
       return jsonResponse(method === "HEAD" ? null : data);
     }
-    if (method !== "PUT") {
+    if (!["PUT", "PATCH"].includes(method)) {
       return jsonResponse(
-        { message: "Only GET and PUT are supported." },
-        { status: 405, headers: { allow: "GET, PUT" } },
+        { message: "Only GET, PUT and PATCH are supported." },
+        { status: 405, headers: { allow: "GET, PUT, PATCH" } },
       );
     }
-    const data = await withReminderLock(root, () =>
-      writeLocalDataFile(parseJson(textFromBody(body))),
-    );
+    const input = parseJson(textFromBody(body));
+    const data = method === "PATCH"
+      ? await patchLocalDataFile(input?.patch || {})
+      : await withDirectoryLock(localDataLockPath(), () =>
+          writeLocalDataFile(input),
+        );
     return jsonResponse(data);
   } catch {
     return jsonResponse(
@@ -1144,8 +1257,11 @@ async function handleLocalData(url, method, body) {
   }
 }
 
-async function handleLocalSettings(url, method, body) {
+async function handleLocalSettings(url, method, body, headers) {
   if (url.pathname !== "/api/local-settings") return undefined;
+  if (!localRequestAuthorized(headers)) {
+    return jsonResponse({ message: "本地设置请求未通过会话验证。" }, { status: 403 });
+  }
   try {
     if (method === "GET" || method === "HEAD") {
       const settings = await refreshRuntimeSettings();
@@ -1187,13 +1303,10 @@ async function handleLocalSettings(url, method, body) {
         { status: 400 },
       );
     }
-    const settings = await withReminderLock(root, () =>
-      writeLocalSettingsFile({
-        openAlexApiKey: rawOpenAlexKey,
-        semanticScholarApiKey: rawSemanticScholarKey,
-        reminders: current.reminders,
-      }),
-    );
+    const settings = await patchLocalSettingsFile({
+      openAlexApiKey: rawOpenAlexKey,
+      semanticScholarApiKey: rawSemanticScholarKey,
+    });
     return jsonResponse(publicLocalSettings(settings));
   } catch {
     return jsonResponse(
@@ -1247,6 +1360,7 @@ export {
   emptyLocalData,
   readLocalDataFile,
   readLocalSettingsFile,
+  patchLocalDataFile,
   writeLocalDataFile,
   writeLocalSettingsFile,
 };
@@ -1265,13 +1379,38 @@ export function createAnthropologyServer({ autoClose = false } = {}) {
 
   const server = createServer(async (incoming, outgoing) => {
     try {
-      const host = incoming.headers.host || "127.0.0.1:3000";
+      const host = incoming.headers.host || "";
+      if (!parsedLocalHost(host)) {
+        outgoing.writeHead(421, {
+          "cache-control": "no-store",
+          "content-type": "application/json; charset=utf-8",
+        });
+        outgoing.end(JSON.stringify({ message: "Invalid local host." }));
+        return;
+      }
       const url = new URL(incoming.url || "/", `http://${host}`);
+      if (
+        url.pathname.startsWith("/api/") &&
+        url.pathname !== "/api/runtime-status" &&
+        !localOriginAllowed(incoming.headers)
+      ) {
+        outgoing.writeHead(403, {
+          "cache-control": "no-store",
+          "content-type": "application/json; charset=utf-8",
+        });
+        outgoing.end(JSON.stringify({ message: "Invalid local origin." }));
+        return;
+      }
 
       if (
         url.pathname === "/api/browser-session" &&
         incoming.method === "GET"
       ) {
+        if (!localOriginAllowed(incoming.headers)) {
+          outgoing.writeHead(403, { "cache-control": "no-store" });
+          outgoing.end();
+          return;
+        }
         browserSessionSeen = true;
         clearCloseTimer();
         if (startupTimer) clearTimeout(startupTimer);
@@ -1326,7 +1465,12 @@ export function createAnthropologyServer({ autoClose = false } = {}) {
         body,
       });
       let response =
-        await handleLocalData(url, incoming.method || "GET", body);
+        await handleLocalData(
+          url,
+          incoming.method || "GET",
+          body,
+          incoming.headers,
+        );
       if (!response) {
         response = await handleReminders(
           url,
@@ -1340,6 +1484,7 @@ export function createAnthropologyServer({ autoClose = false } = {}) {
           url,
           incoming.method || "GET",
           body,
+          incoming.headers,
         );
       }
       if (!response) {
@@ -1364,6 +1509,10 @@ export function createAnthropologyServer({ autoClose = false } = {}) {
 
       outgoing.statusCode = response.status;
       response.headers.forEach((value, key) => outgoing.setHeader(key, value));
+      outgoing.setHeader("x-content-type-options", "nosniff");
+      outgoing.setHeader("referrer-policy", "no-referrer");
+      outgoing.setHeader("cross-origin-resource-policy", "same-origin");
+      outgoing.setHeader("content-security-policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
       const responseType = response.headers.get("content-type") || "";
       if (responseType.startsWith("text/html")) {
         // Every portable version uses the same friendly localhost origin.
@@ -1380,6 +1529,14 @@ export function createAnthropologyServer({ autoClose = false } = {}) {
       }
       outgoing.end(Buffer.from(await response.arrayBuffer()));
     } catch (error) {
+      if (error?.code === "BODY_TOO_LARGE") {
+        outgoing.writeHead(413, {
+          "cache-control": "no-store",
+          "content-type": "application/json; charset=utf-8",
+        });
+        outgoing.end(JSON.stringify({ message: "Request body is too large." }));
+        return;
+      }
       console.error(error);
       outgoing.statusCode = 500;
       outgoing.setHeader("content-type", "text/plain; charset=utf-8");
