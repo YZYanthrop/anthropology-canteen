@@ -1,6 +1,6 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-08-20
+Last updated: 2026-08-23
 
 ## Stable baseline
 
@@ -142,18 +142,23 @@ See `docs/ARCHITECTURE.md` and `docs/PLATFORMS.md` for boundaries.
 
 ## Active milestone
 
-The one-time macOS 1.1.1 bootstrap remains complete historical work: the native
-matrix passed, the Apple Silicon M2 human check passed, the immutable beta tag
-points to the exact build commit, and both architecture packages were
-published with SHA-256 files. The product displayed by that beta remains 1.1.1,
-and Intel has no recorded human test.
-
-The v1.3.0 local-reminder milestone is complete. The v1.3.1 stabilization milestone is complete:
+The v1.3.0 local-reminder milestone and v1.3.1 stabilization milestone are
+complete:
 
 1. Security, persistence, provider-degradation, identity and reminder-ledger regressions are covered by deterministic tests.
 2. All three v1.3.1 packages are built from one immutable tag and pass native package smoke tests.
 3. Existing v1.3.0 tags and public artifacts remain immutable.
 4. Signing and notarization remain optional and separately authorized; current macOS packages are unsigned and unnotarized.
+
+No new product implementation is currently approved. The next candidate is a
+proposed v1.3.2 usability and recoverability plan. Its status and exact link
+live in `docs/work/ACTIVE.md`; implementation must not begin until that packet
+and the plan both say `Approved`.
+
+Project continuation no longer depends on a permanent Codex conversation.
+`docs/CURRENT.md` is the lightweight entry point, `docs/WORKFLOW.md` defines the
+short planning/implementation/release task model, and `docs/handoffs/` records
+completed implementation evidence.
 
 The v1.3.0 release also treats the stable friendly localhost origin as an
 upgrade boundary: launchers use a per-launch query, portable HTML responses are

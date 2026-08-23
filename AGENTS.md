@@ -2,11 +2,16 @@
 
 ## Start here
 
-- Read `docs/PROJECT_STATE.md`, `docs/ARCHITECTURE.md`,
-  `docs/PLATFORMS.md`, and `docs/RELEASING.md` before changing behavior,
-  persistence, packaging, or release automation.
-- Treat the repository and those documents as the source of truth. Chat history
-  is supplementary context only.
+- Every task first reads `docs/CURRENT.md` and `docs/work/ACTIVE.md`. Then read
+  the exact approved plan linked by the active packet, when one exists.
+- Read longer documents only when the task needs their domain:
+  - app behavior, persistence, providers, or migration: `docs/ARCHITECTURE.md`;
+  - launchers, packaging, or OS integration: `docs/PLATFORMS.md`;
+  - versions, tags, CI artifacts, or publication: `docs/RELEASING.md` and
+    `docs/PROJECT_STATE.md`.
+- `docs/WORKFLOW.md` defines planning, implementation, handoff, and release task
+  boundaries. Treat the repository and these files as the source of truth;
+  never require an old chat or cached conversation to continue work.
 - Preserve the existing pnpm/Vinext structure and `.openai/hosting.json`.
 
 ## Product invariants
@@ -36,7 +41,7 @@
 - A Codex task name or chat is not persistent project state. Before archiving
   or deleting a temporary task, verify that its changes are committed, its
   branch is merged or intentionally retained, and the applicable project
-  documents are updated.
+  documents and handoff are updated.
 - Use `pnpm lint`, `pnpm build`, and `node --test tests/*.test.mjs` as the base
   verification set. Packaging changes also require a platform-specific startup
   smoke test, local-data persistence test, and blank-archive privacy check.
@@ -44,7 +49,9 @@
   deterministic tests; mock provider responses and test provider degradation.
 - Update `docs/PROJECT_STATE.md` after architectural or milestone changes,
   `docs/PLATFORMS.md` after packaging changes, `docs/RELEASING.md` after release
-  workflow changes, and `CHANGELOG.md` for user-visible changes.
+  workflow changes, and `CHANGELOG.md` for user-visible changes. Keep
+  `docs/CURRENT.md` and `docs/work/ACTIVE.md` short and current at every task
+  handoff.
 - Do not move, rewrite, or reuse an existing release tag. Do not push, publish,
   deploy, sign, notarize, or create a GitHub Release unless the user explicitly
   authorizes that external action.
