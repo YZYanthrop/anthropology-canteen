@@ -46,6 +46,8 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/.codex-backups/
+/.codex-worktrees/
 
 # local user data
 /data/
