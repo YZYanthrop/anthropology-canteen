@@ -31,9 +31,10 @@ document router below.
 
 ## Active work
 
-- No product implementation is currently approved or in progress.
-- A proposed v1.3.2 usability/recoverability plan is linked from
-  `docs/work/ACTIVE.md`; it must be reviewed before implementation.
+- The v1.3.2 usability/recoverability plan linked from
+  `docs/work/ACTIVE.md` is approved, but no implementation is in progress yet.
+- The next bounded task is the UI interaction-test prerequisite; Slices A, B,
+  and C must follow sequentially from verified, merged baselines.
 - Published v1.3.1 artifacts and tags are immutable.
 
 ## Read only what the task needs
