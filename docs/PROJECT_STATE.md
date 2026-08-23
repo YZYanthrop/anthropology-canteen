@@ -88,6 +88,11 @@ The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, and `v1.3.1` tags are i
 - Treat total feed failure as an error so the UI and worker preserve prior cache and cursors.
 - Permit automatic author consolidation only from ORCID, a shared provider ID, or a shared DOI. Institutional pages are saved as manual evidence links and are not fetched automatically.
 - Update direct production dependencies and expand deterministic regression coverage. No account, cloud service, new provider, or hosted scheduler is added.
+- The immutable tag points to `7695e3a2e2620aa28c78958f9547d9e06f63e6f4`.
+  Formal run [#32341349020](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32341349020)
+  passed tag validation, shared verification, Windows x64, native macOS arm64,
+  native macOS x64, and the source archive. Public ZIP sizes and SHA-256 values
+  are recorded in `CHANGELOG.md` and the GitHub Release.
 
 ## Current product contract
 

@@ -171,6 +171,10 @@ system-wide security.
   The formal native run [#32140570991](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32140570991)
   passed all six jobs; the public Release lists the three platform ZIP sizes
   and SHA-256 values.
+- v1.3.1 is published from tag commit `7695e3a2e2620aa28c78958f9547d9e06f63e6f4`.
+  The formal native run [#32341349020](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32341349020)
+  passed all six jobs; the public Release lists the three platform ZIP sizes
+  and SHA-256 values.
 
 ## Validation limits
 
