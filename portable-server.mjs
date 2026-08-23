@@ -20,11 +20,13 @@ import {
   withDirectoryLock,
   withReminderLock,
   writeJsonAtomic,
+  writeReminderState,
 } from "./reminder-utils.mjs";
 import {
   getSchedulerStatus,
   installScheduler,
   uninstallScheduler,
+  WINDOWS_SCHEDULER_PERMISSION_MESSAGE,
 } from "./reminder-scheduler.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -1207,6 +1209,84 @@ async function runReminderJob(options = {}) {
   }
 }
 
+function schedulerReference(scheduler, fallback) {
+  return scheduler?.plist || scheduler?.taskName || scheduler?.path || fallback;
+}
+
+export function publicReminderErrorMessage(error) {
+  const preferred = typeof error?.userMessage === "string"
+    ? error.userMessage.trim()
+    : "";
+  const raw = String(preferred || error?.message || error || "邮件提醒操作失败");
+  if (
+    /(ANTHROPOLOGY_CANTEEN_SCHEDULER_PERMISSION_DENIED|PermissionDenied|Access\s+is\s+denied|HRESULT\s*0x80070005|0x80070005|UnauthorizedAccess)/i.test(raw)
+  ) {
+    return WINDOWS_SCHEDULER_PERMISSION_MESSAGE;
+  }
+  let summary = raw.replaceAll("\0", "").split(/\r?\n/)[0].trim();
+  if (!summary || /\uFFFD/.test(summary)) return "邮件提醒操作失败，请重试。";
+  summary = summary
+    .replace(/[A-Za-z]:\\[^\r\n]*/g, "[本机路径]")
+    .replace(/\/(?:Users|home)\/[^\r\n]*/gi, "[本机路径]")
+    .replace(/file:\/\/\/[^\s]+/gi, "[本机路径]")
+    .slice(0, 600);
+  return summary || "邮件提醒操作失败，请重试。";
+}
+
+export async function enableReminderTransaction({
+  current,
+  rootPath,
+  install,
+  uninstall,
+  persist,
+  runInitialCheck,
+  snapshotLedger,
+  restoreLedger,
+  now = () => new Date().toISOString(),
+}) {
+  const wasEnabled = Boolean(current.enabled);
+  const activating = {
+    ...current,
+    enabled: true,
+    enabledAt: current.enabledAt || now(),
+  };
+  const ledgerSnapshot = wasEnabled ? undefined : await snapshotLedger();
+  const scheduler = await install(activating);
+  const activated = {
+    ...activating,
+    schedulerPath: schedulerReference(scheduler, rootPath),
+  };
+  try {
+    await persist(activated);
+    if (!wasEnabled) await runInitialCheck();
+    return { config: activated, scheduler };
+  } catch (primaryError) {
+    const rollbackErrors = [];
+    try {
+      await persist(current);
+    } catch (error) {
+      rollbackErrors.push(error);
+    }
+    try {
+      await uninstall(activated);
+    } catch (error) {
+      rollbackErrors.push(error);
+    }
+    if (!wasEnabled) {
+      try {
+        await restoreLedger(ledgerSnapshot);
+      } catch (error) {
+        rollbackErrors.push(error);
+      }
+    }
+    if (rollbackErrors.length) {
+      primaryError.userMessage =
+        `${publicReminderErrorMessage(primaryError)} 提醒未继续启用，但自动回滚未完全成功；请关闭应用后重试停用。`;
+    }
+    throw primaryError;
+  }
+}
+
 async function handleReminders(url, method, body, headers) {
   if (url.pathname !== "/api/reminders/status" && !url.pathname.startsWith("/api/reminders/")) {
     return undefined;
@@ -1281,23 +1361,20 @@ async function handleReminders(url, method, body, headers) {
       if (!current.sender || !current.recipient || !current.testedConfigHash || current.testedConfigHash !== reminderConfigHash(current)) {
         return jsonResponse({ message: "请先保存配置并发送测试邮件。" }, { status: 400 });
       }
-      const wasEnabled = current.enabled;
-      const next = { ...current, enabled: true, enabledAt: current.enabledAt || new Date().toISOString() };
-      await patchLocalSettingsFile({ reminders: next });
-      try {
-        if (!wasEnabled) await runReminderJob({ force: true });
-        const scheduler = await installScheduler(root, next);
-        await patchLocalSettingsFile({
-          reminders: {
-            ...next,
-            schedulerPath: scheduler.plist || scheduler.taskName || root,
-          },
-        });
-        return jsonResponse({ ...(await readReminderStatus()), scheduler });
-      } catch (error) {
-        await patchLocalSettingsFile({ reminders: { ...next, enabled: false } });
-        throw error;
-      }
+      const { scheduler } = await enableReminderTransaction({
+        current,
+        rootPath: root,
+        install: (config) => installScheduler(root, config),
+        uninstall: (config) => uninstallScheduler(root, config),
+        persist: (config) => patchLocalSettingsFile({ reminders: config }),
+        runInitialCheck: () => runReminderJob({ force: true }),
+        snapshotLedger: () => readReminderState(root),
+        restoreLedger: (state) => withReminderLock(
+          root,
+          () => writeReminderState(root, state),
+        ),
+      });
+      return jsonResponse({ ...(await readReminderStatus()), scheduler });
     }
     if (url.pathname === "/api/reminders/run-now" && method === "POST") {
       const result = await runReminderJob({ force: true });
@@ -1311,7 +1388,7 @@ async function handleReminders(url, method, body, headers) {
     }
     return jsonResponse({ message: "Unsupported reminder operation." }, { status: 405 });
   } catch (error) {
-    return jsonResponse({ message: String(error?.message || "邮件提醒操作失败").slice(0, 600) }, { status: 500 });
+    return jsonResponse({ message: publicReminderErrorMessage(error) }, { status: 500 });
   }
 }
 

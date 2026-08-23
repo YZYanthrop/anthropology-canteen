@@ -177,6 +177,15 @@ import into the new extracted folder. All package probes passed except temporary
 Task Scheduler registration, which this desktop session denied and which remains
 an explicit user/native-candidate check.
 
+The Windows reminder-registration follow-up is isolated on
+`codex/v1.3.2-windows-reminder-registration`. It makes enablement transactional:
+Task Scheduler registration precedes both `enabled=true` and the first worker
+run, while a first-check failure restores the previous disabled config and
+ledger and removes the new task. Windows permission errors are translated to a
+short administrator-launch instruction without PowerShell stacks or personal
+paths. The task definition continues to use the current user and `RunLevel
+Limited`; schemas, DPAPI, imports, and other v1.3.2 behavior are unchanged.
+
 Project continuation no longer depends on a permanent Codex conversation.
 `docs/CURRENT.md` is the lightweight entry point, `docs/WORKFLOW.md` defines the
 short planning/implementation/release task model, and `docs/handoffs/` records

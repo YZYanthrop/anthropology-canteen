@@ -43,6 +43,14 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
     new URL("../import-data-from-old-version.cmd", import.meta.url),
     "utf8",
   );
+  const registerReminder = await readFile(
+    new URL("../tools/register-windows-reminder.ps1", import.meta.url),
+    "utf8",
+  );
+  const unregisterReminder = await readFile(
+    new URL("../tools/unregister-windows-reminder.ps1", import.meta.url),
+    "utf8",
+  );
 
   assert.match(build, /\$NodeVersion = "24\.14\.0"/);
   assert.match(build, /node-v\$NodeVersion-win-x64\.zip/);
@@ -84,6 +92,11 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(smoke, /\$RejectedImportExitCode -ne 1/);
   assert.match(smoke, /\$global:LASTEXITCODE = 0/);
   assert.match(smoke, /failed packaged import changed existing data/);
+  assert.match(registerReminder, /-LogonType Interactive/);
+  assert.match(registerReminder, /-RunLevel Limited/);
+  assert.match(registerReminder, /ANTHROPOLOGY_CANTEEN_SCHEDULER_PERMISSION_DENIED/);
+  assert.match(unregisterReminder, /-ErrorAction Stop/);
+  assert.doesNotMatch(unregisterReminder, /SilentlyContinue/);
 
   assert.match(importLauncher, /runtime\\node\.exe/);
   assert.match(importLauncher, /tools\\import-data\.mjs/);

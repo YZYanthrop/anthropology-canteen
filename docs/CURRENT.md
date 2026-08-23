@@ -1,6 +1,6 @@
 # Current project snapshot
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 This is the lightweight entry point for a new Codex task. Chat history is not
 required. Read this file and `docs/work/ACTIVE.md` first, then follow the
@@ -43,6 +43,12 @@ document router below.
   `codex/v1.3.2-windows-local-trial` branch. Its final-package smoke passed
   with current-user Task Scheduler registration skipped because this desktop
   session returned `Access is denied`; no push, tag, or publication occurred.
+- The follow-up `codex/v1.3.2-windows-reminder-registration` branch fixes that
+  failure path: registration now precedes enablement and the first check,
+  permission errors return a safe Chinese administrator hint, and first-check
+  failure rolls back the new task, config, and ledger without touching SMTP
+  credentials. Deterministic tests pass; native registration is still blocked
+  by this desktop session and is not recorded as passed.
 - Published v1.3.1 artifacts and tags are immutable.
 
 ## Read only what the task needs
