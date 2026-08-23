@@ -37,8 +37,10 @@ document router below.
   `531e04e`.
 - Slice B was reviewed without blockers and is merged into local `main` at
   `a42e134`.
-- Slice C is implemented and verified on the branch and handoff named in
-  `docs/work/ACTIVE.md`; it is awaiting review and merge before local trial.
+- Slice C was reviewed without blockers and is merged into local `main` at
+  `2f392c6`. All approved v1.3.2 implementation slices are now merged locally.
+- The merged build is ready for local trial; push, tag, packaging, and release
+  remain a separate explicitly authorized task.
 - Published v1.3.1 artifacts and tags are immutable.
 
 ## Read only what the task needs

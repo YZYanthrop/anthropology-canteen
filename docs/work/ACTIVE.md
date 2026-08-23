@@ -2,20 +2,21 @@
 
 Last updated: 2026-08-23
 
-- Status: `In progress`
+- Status: `Merged`
 - Approved for implementation: yes
 - Target version: `v1.3.2`
 - Plan: [`docs/plans/v1.3.2-usability-and-recovery.md`](../plans/v1.3.2-usability-and-recovery.md)
-- Implementation branch: `codex/v1.3.2-reminder-accessibility-narrow`
-- Current step: Slice C `Verified`, awaiting review and merge
+- Implementation branch: local `main`
+- Current step: merged v1.3.2 implementation ready for local trial
 - Implementation handoff: [`docs/handoffs/v1.3.2-slice-c.md`](../handoffs/v1.3.2-slice-c.md)
 - Release task: none
 
 ## Next action
 
-Review and merge `codex/v1.3.2-reminder-accessibility-narrow`. After merge,
-start the compiled portable app locally for user trial. Do not push, tag,
-package, publish, or start the separate release task.
+Inspect the compiled portable app locally. If the trial is accepted, open a
+separate release task to freeze the version and prepare native candidates. Do
+not push, tag, package, publish, or start release work without new explicit
+authorization.
 
 ## Repository note
 
