@@ -270,6 +270,16 @@ test("portable server upgrades version 2 data without losing saved content", asy
             ...oldSchema8Saved.feed.items[0],
             title: "Fresh feed title",
           }],
+          coverage: [{
+            kind: "journal",
+            subscriptionId: "0091-2131",
+            label: "Ethos",
+            status: "partial",
+            providers: [
+              { provider: "openalex", status: "success" },
+              { provider: "crossref", status: "failed" },
+            ],
+          }],
         },
       }),
     }).then((response) => response.json());
@@ -277,6 +287,11 @@ test("portable server upgrades version 2 data without losing saved content", asy
       refreshedArchive.articleArchive["10.1234/example"].title,
       "Fresh feed title",
     );
+    assert.equal(refreshedArchive.feed.coverage[0].status, "partial");
+    assert.deepEqual(refreshedArchive.feed.coverage[0].providers, [
+      { provider: "openalex", status: "success" },
+      { provider: "crossref", status: "failed" },
+    ]);
 
     const expandedSubscriptions = {
       journal: Array.from({ length: 45 }, (_, index) => ({

@@ -581,7 +581,24 @@ function cleanFeed(value) {
             ? item.kind
             : "scholar",
           label: clean(item?.label, 300),
-          status: item?.status === "failed" ? "failed" : "success",
+          status: ["success", "partial", "failed"].includes(item?.status)
+            ? item.status
+            : "success",
+          providers: Array.isArray(item?.providers)
+            ? item.providers
+                .map((provider) => ({
+                  provider: [
+                    "openalex",
+                    "semanticScholar",
+                    "crossref",
+                  ].includes(provider?.provider)
+                    ? provider.provider
+                    : "",
+                  status:
+                    provider?.status === "failed" ? "failed" : "success",
+                }))
+                .filter((provider) => provider.provider)
+            : [],
         })).filter((item) => item.subscriptionId && item.label)
       : [],
   };

@@ -1539,6 +1539,138 @@ test("feed refresh queries a saved multi-ID scholar as one profile", async () =>
       ).publishedPrecision,
       "day",
     );
+    assert.equal(payload.coverage[0].status, "success");
+    assert.deepEqual(payload.coverage[0].providers, [
+      { provider: "openalex", status: "success" },
+    ]);
+  } finally {
+    mockFetch = null;
+  }
+});
+
+test("feed reports partial journal coverage from providers actually attempted", async () => {
+  mockFetch = async (input) => {
+    const url = new URL(
+      typeof input === "string" ? input : input instanceof URL ? input : input.url,
+    );
+    if (url.hostname === "api.openalex.org") return json({ results: [] });
+    if (url.hostname === "api.crossref.org") return json({}, 503);
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  try {
+    const response = await worker.fetch(
+      new Request("http://local/api/feed", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          subscriptions: {
+            journal: [{ label: "Ethos", issn: "0091-2131" }],
+            keyword: [],
+            scholar: [],
+          },
+        }),
+      }),
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.coverage[0].status, "partial");
+    assert.deepEqual(payload.coverage[0].providers, [
+      { provider: "openalex", status: "success" },
+      { provider: "crossref", status: "failed" },
+    ]);
+    assert.match(payload.warnings[0], /1 个关注项/);
+  } finally {
+    mockFetch = null;
+  }
+});
+
+test("feed omits providers that a saved scholar did not attempt", async () => {
+  mockFetch = async (input) => {
+    const url = new URL(
+      typeof input === "string" ? input : input instanceof URL ? input : input.url,
+    );
+    if (url.hostname === "api.openalex.org") return json({ results: [] });
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  try {
+    const response = await worker.fetch(
+      new Request("http://local/api/feed", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          subscriptions: {
+            journal: [],
+            keyword: [],
+            scholar: [{
+              subscriptionId: "openalex:A123",
+              label: "Scholar Name",
+              openAlexIds: ["A123"],
+              semanticScholarIds: [],
+              institution: "University",
+            }],
+          },
+        }),
+      }),
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.coverage[0].status, "success");
+    assert.deepEqual(payload.coverage[0].providers, [
+      { provider: "openalex", status: "success" },
+    ]);
+  } finally {
+    mockFetch = null;
+  }
+});
+
+test("forced feed refresh bypasses the in-memory provider cache", async () => {
+  let providerAvailable = true;
+  mockFetch = async (input) => {
+    const url = new URL(
+      typeof input === "string" ? input : input instanceof URL ? input : input.url,
+    );
+    if (url.hostname === "api.openalex.org") {
+      return providerAvailable ? json({ results: [] }) : json({}, 503);
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  const body = JSON.stringify({
+    subscriptions: {
+      journal: [],
+      keyword: [],
+      scholar: [{
+        subscriptionId: "openalex:AFORCE",
+        label: "Force Refresh Scholar",
+        openAlexIds: ["A777777"],
+        semanticScholarIds: [],
+        institution: "University",
+      }],
+    },
+  });
+  try {
+    const first = await worker.fetch(new Request("http://local/api/feed?refresh=1", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    }));
+    assert.equal(first.status, 200);
+
+    providerAvailable = false;
+    const cached = await worker.fetch(new Request("http://local/api/feed", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    }));
+    assert.equal(cached.status, 200);
+
+    const refreshed = await worker.fetch(new Request("http://local/api/feed?refresh=1", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    }));
+    const payload = await refreshed.json();
+    assert.equal(refreshed.status, 503);
+    assert.equal(payload.coverage[0].providers[0].status, "failed");
   } finally {
     mockFetch = null;
   }
@@ -1553,13 +1685,13 @@ test("feed reports total provider failure without replacing a saved cache", asyn
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           subscriptions: {
-            journal: [{ label: "Ethos", issn: "0091-2131" }],
+            journal: [{ label: "Failed Journal", issn: "1111-2222" }],
             keyword: [],
             scholar: [{
-              subscriptionId: "openalex:A123",
+              subscriptionId: "openalex:A999",
               label: "Scholar Name",
-              openAlexIds: ["A123"],
-              semanticScholarIds: ["S123"],
+              openAlexIds: ["A999"],
+              semanticScholarIds: ["S999"],
               institution: "University",
             }],
           },
@@ -1571,6 +1703,14 @@ test("feed reports total provider failure without replacing a saved cache", asyn
     assert.equal(payload.source, "fallback");
     assert.equal(payload.coverage.length, 2);
     assert.ok(payload.coverage.every((entry) => entry.status === "failed"));
+    assert.deepEqual(payload.coverage[0].providers, [
+      { provider: "openalex", status: "failed" },
+      { provider: "crossref", status: "failed" },
+    ]);
+    assert.deepEqual(payload.coverage[1].providers, [
+      { provider: "openalex", status: "failed" },
+      { provider: "semanticScholar", status: "failed" },
+    ]);
   } finally {
     mockFetch = null;
   }

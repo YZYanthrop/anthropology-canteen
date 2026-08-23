@@ -156,10 +156,13 @@ complete:
 4. Signing and notarization remain optional and separately authorized; current macOS packages are unsigned and unnotarized.
 
 The approved v1.3.2 usability and recoverability milestone is in progress. Its
-UI interaction-test prerequisite is merged, and Slice A implements reversible
-ignored-state recovery, uncapped version-8 article snapshots, and explicit
-publication-date precision without changing the schema number. Slice B may
-begin only after Slice A is reviewed and merged; Slice C remains sequential.
+UI interaction-test prerequisite and Slice A are merged into the local `main`
+baseline. Slice A provides reversible ignored-state recovery, uncapped
+version-8 article snapshots, and explicit publication-date precision without
+changing the schema number. Slice B adds one complete return-to-overview path,
+scholar-scoped new-item actions, native card controls, and real subscription and
+provider update health while preserving the last successful feed after total
+failure. Slice C remains sequential and has not started.
 The exact branch, handoff, and next action live in `docs/work/ACTIVE.md`.
 
 Project continuation no longer depends on a permanent Codex conversation.

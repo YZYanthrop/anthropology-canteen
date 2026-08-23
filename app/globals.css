@@ -74,8 +74,18 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--forest);
+  cursor: pointer;
+  font: inherit;
   text-decoration: none;
+}
+
+.brand:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 4px;
 }
 
 .brand-mark {
@@ -588,7 +598,6 @@ i.keyword {
 
 .scholar-card {
   display: flex;
-  height: 510px;
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
@@ -596,16 +605,13 @@ i.keyword {
   border-radius: 16px;
   background: rgba(255, 254, 250, 0.96);
   box-shadow: var(--shadow);
-  cursor: pointer;
-  outline: none;
   transition:
     transform 160ms ease,
     border-color 160ms ease,
     box-shadow 160ms ease;
 }
 
-.scholar-card:hover,
-.scholar-card:focus-visible {
+.scholar-card:hover {
   transform: translateY(-2px);
   border-color: #b9aa98;
   box-shadow: 0 15px 38px rgba(46, 54, 49, 0.11);
@@ -676,11 +682,30 @@ i.keyword {
   white-space: nowrap;
 }
 
+.scholar-card-update-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 19px 12px;
+  color: var(--forest);
+  font-size: 10px;
+}
+
+.scholar-card-update-status button {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid #c9d8d0;
+  border-radius: 7px;
+  background: var(--forest-soft);
+  color: var(--forest);
+  cursor: pointer;
+  font: 700 9px var(--font-sans), sans-serif;
+}
+
 .scholar-latest {
   box-sizing: border-box;
-  height: 218px;
   min-height: 218px;
-  overflow: hidden;
   margin: 0 12px;
   padding: 16px 17px;
   border-radius: 11px;
@@ -759,9 +784,7 @@ i.keyword {
 
 .scholar-history {
   box-sizing: border-box;
-  height: 112px;
   min-height: 112px;
-  overflow: hidden;
   padding: 15px 20px 14px;
 }
 
@@ -810,21 +833,46 @@ i.keyword {
   font-size: 9.5px;
 }
 
-.scholar-card > footer {
+.scholar-card-actions {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border-top: 1px solid #eee9e0;
+  margin-top: auto;
+}
+
+.scholar-card-actions button {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 11px 20px;
-  border-top: 1px solid #eee9e0;
+  border: 0;
+  background: transparent;
   color: var(--forest);
-  font-size: 10px;
-  font-weight: 700;
-  margin-top: auto;
+  cursor: pointer;
+  font: 700 10px var(--font-sans), sans-serif;
 }
 
-.scholar-card > footer span {
+.scholar-card-actions button:hover,
+.scholar-card-actions button:focus-visible {
+  background: var(--forest-soft);
+}
+
+.scholar-card-actions span {
   color: var(--coral);
   font-size: 14px;
+}
+
+.scholar-overview-return {
+  margin: 0 0 12px;
+  padding: 7px 10px;
+  border: 1px solid #cbd4cf;
+  border-radius: 8px;
+  background: rgba(255, 254, 250, 0.78);
+  color: var(--forest);
+  cursor: pointer;
+  font: 700 10px var(--font-sans), sans-serif;
 }
 
 .scholar-empty button {
@@ -1426,40 +1474,55 @@ mark {
   font-size: 9px;
 }
 
-.mini-bars {
-  height: 58px;
+.health-last-success,
+.health-providers {
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+
+.health-last-success span,
+.health-providers span {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.health-last-success strong,
+.health-providers strong {
+  color: var(--forest);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.health-counts {
   display: flex;
-  align-items: flex-end;
   gap: 8px;
-  margin-top: 13px;
-  padding: 0 3px 8px;
-  border-bottom: 1px solid var(--line);
+  margin: 14px 0 0;
 }
 
-.mini-bars i {
+.health-counts div {
   flex: 1;
-  min-height: 5px;
-  border-radius: 3px 3px 0 0;
-  background: #93ad9e;
+  padding: 8px 5px;
+  border-radius: 8px;
+  background: var(--forest-soft);
+  text-align: center;
 }
 
-.mini-bars i:nth-child(5),
-.mini-bars i:nth-child(6) {
-  background: var(--coral);
-}
-
-.signal-legend {
-  display: flex;
-  gap: 12px;
-  margin-top: 11px;
-  color: #858b87;
+.health-counts dt {
+  color: var(--muted);
   font-size: 8px;
 }
 
-.signal-legend span {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.health-counts dd {
+  margin: 3px 0 0;
+  color: var(--forest);
+  font: 700 16px var(--font-serif), serif;
+}
+
+.update-health-compact {
+  display: none;
 }
 
 .toast {
@@ -2149,6 +2212,19 @@ mark {
   .right-rail {
     display: none;
   }
+
+  .update-health-compact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin: -4px 0 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: rgba(255, 254, 250, 0.7);
+    color: var(--muted);
+    font-size: 9px;
+  }
 }
 
 @media (max-width: 820px) {
@@ -2224,8 +2300,9 @@ mark {
     grid-template-columns: 1fr;
   }
 
-  .scholar-card {
-    height: 510px;
+  .scholar-card-update-status {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

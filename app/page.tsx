@@ -134,6 +134,18 @@ type CachedScholarProfile = ScholarProfile & {
   complete: boolean;
 };
 
+type FeedProvider = "openalex" | "semanticScholar" | "crossref";
+type FeedCoverage = {
+  kind: "journal" | "scholar";
+  subscriptionId: string;
+  label: string;
+  status: "success" | "partial" | "failed";
+  providers: Array<{
+    provider: FeedProvider;
+    status: "success" | "failed";
+  }>;
+};
+
 type FeedResponse = {
   items: Article[];
   updatedAt: string;
@@ -141,12 +153,7 @@ type FeedResponse = {
   historyScholar?: string;
   scholars?: Scholar[];
   warnings?: string[];
-  coverage?: Array<{
-    kind: "journal" | "scholar";
-    subscriptionId: string;
-    label: string;
-    status: "success" | "failed";
-  }>;
+  coverage?: FeedCoverage[];
 };
 
 type ArticleState = { saved: boolean; read: boolean; ignored: boolean };
@@ -287,6 +294,14 @@ function kindLabel(kind: MatchKind) {
   return kind === "journal" ? "期刊" : kind === "scholar" ? "学者" : "关键词";
 }
 
+function providerLabel(provider: FeedProvider) {
+  return provider === "openalex"
+    ? "OpenAlex"
+    : provider === "semanticScholar"
+      ? "Semantic Scholar"
+      : "Crossref";
+}
+
 function defaultArticleState(): ArticleState {
   return { saved: false, read: false, ignored: false };
 }
@@ -316,6 +331,16 @@ function missingArchiveArticle(id: string): Article {
   };
 }
 
+function articleMatchesScholar(article: Article, scholar: Scholar) {
+  return article.matches.some(
+    (match) =>
+      match.kind === "scholar" &&
+      ((match.subscriptionId &&
+        match.subscriptionId === scholar.subscriptionId) ||
+        match.label.toLowerCase() === scholar.label.toLowerCase()),
+  );
+}
+
 function articlePublishedSinceFollow(
   article: Article,
   subscriptions: Subscriptions,
@@ -323,7 +348,10 @@ function articlePublishedSinceFollow(
   return article.matches.some((match) => {
     if (match.kind === "scholar") {
       const scholar = subscriptions.scholar.find(
-        (item) => item.label.toLowerCase() === match.label.toLowerCase(),
+        (item) =>
+          (match.subscriptionId &&
+            item.subscriptionId === match.subscriptionId) ||
+          item.label.toLowerCase() === match.label.toLowerCase(),
       );
       return scholar
         ? publicationIsAfterFollow(
@@ -340,7 +368,10 @@ function articlePublishedSinceFollow(
     }
     if (match.kind === "journal") {
       const journal = subscriptions.journal.find(
-        (item) => item.label.toLowerCase() === match.label.toLowerCase(),
+        (item) =>
+          (match.subscriptionId &&
+            item.issn.toLowerCase() === match.subscriptionId.toLowerCase()) ||
+          item.label.toLowerCase() === match.label.toLowerCase(),
       );
       return journal
         ? publicationIsAfterFollow(
@@ -887,14 +918,40 @@ function safeFeed(value: unknown): FeedResponse | null {
       ? feed.warnings.filter((item): item is string => typeof item === "string")
       : [],
     coverage: Array.isArray(feed.coverage)
-      ? feed.coverage.filter(
-          (item) =>
-            item &&
-            typeof item.subscriptionId === "string" &&
-            typeof item.label === "string" &&
-            (item.kind === "journal" || item.kind === "scholar") &&
-            (item.status === "success" || item.status === "failed"),
-        )
+      ? feed.coverage.flatMap((item): FeedCoverage[] => {
+          if (
+            !item ||
+            typeof item.subscriptionId !== "string" ||
+            typeof item.label !== "string" ||
+            (item.kind !== "journal" && item.kind !== "scholar") ||
+            (item.status !== "success" &&
+              item.status !== "partial" &&
+              item.status !== "failed")
+          ) {
+            return [];
+          }
+          const providers = Array.isArray(item.providers)
+            ? item.providers.flatMap((provider) =>
+                provider &&
+                (provider.provider === "openalex" ||
+                  provider.provider === "semanticScholar" ||
+                  provider.provider === "crossref") &&
+                (provider.status === "success" || provider.status === "failed")
+                  ? [{
+                      provider: provider.provider,
+                      status: provider.status,
+                    }]
+                  : [],
+              )
+            : [];
+          return [{
+            kind: item.kind,
+            subscriptionId: item.subscriptionId,
+            label: item.label,
+            status: item.status,
+            providers,
+          }];
+        })
       : [],
   };
 }
@@ -1164,6 +1221,9 @@ async function patchLocalData(patch: Partial<LocalData>) {
 
 export default function Home() {
   const [feed, setFeed] = useState<FeedResponse | null>(null);
+  const [attemptCoverage, setAttemptCoverage] = useState<FeedCoverage[] | null>(
+    null,
+  );
   const [subscriptions, setSubscriptions] =
     useState<Subscriptions>(DEFAULT_SUBSCRIPTIONS);
   const [loading, setLoading] = useState(true);
@@ -1226,10 +1286,12 @@ export default function Home() {
   >({});
   const [profileLoading, setProfileLoading] = useState(false);
   const localDataRef = useRef<LocalData>(defaultLocalData());
+  const overviewFeedRef = useRef<FeedResponse | null>(null);
   const saveQueueRef = useRef(Promise.resolve());
   const noticeTimerRef = useRef<number | undefined>(undefined);
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchRequestRef = useRef(0);
+  const profileRequestRef = useRef(0);
   const keywordSuggestion = useMemo(
     () => (addKind === "keyword" ? createKeywordGroup(addQuery) : null),
     [addKind, addQuery],
@@ -1261,6 +1323,8 @@ export default function Home() {
     setArticleArchive(data.articleArchive);
     setTranslations(data.translations);
     setFeed(data.feed);
+    if (!data.feed?.historyScholar) overviewFeedRef.current = data.feed;
+    setAttemptCoverage(null);
     setScholarProfiles(data.scholarProfiles);
   }
 
@@ -1666,7 +1730,7 @@ export default function Home() {
     force = false,
     scholar?: string,
     sourceSubscriptions = subscriptions,
-    cachedFeed = localDataRef.current.feed,
+    cachedFeed: FeedResponse | null | undefined = undefined,
   ) {
     setLoading(true);
     setError("");
@@ -1680,8 +1744,11 @@ export default function Home() {
           historyScholar: scholar,
         }),
       });
-      if (!response.ok) throw new Error("feed unavailable");
       const data = safeFeed(await response.json());
+      if (!response.ok) {
+        if (data) setAttemptCoverage(data.coverage || []);
+        throw new Error("feed unavailable");
+      }
       if (!data) throw new Error("feed unavailable");
       const resolvedSubscriptions = Array.isArray(data.scholars)
         ? {
@@ -1694,6 +1761,8 @@ export default function Home() {
           }
         : sourceSubscriptions;
       setFeed(data);
+      if (!scholar) overviewFeedRef.current = data;
+      setAttemptCoverage(data.coverage || []);
       setSubscriptions(resolvedSubscriptions);
       const nextArchive = reconcileArticleArchive(
         localDataRef.current.states,
@@ -1708,7 +1777,8 @@ export default function Home() {
       });
       if (force) showNotice("已检查最新出版记录");
     } catch {
-      const cached = cachedFeed || localDataRef.current.feed;
+      const cached =
+        cachedFeed === undefined ? localDataRef.current.feed : cachedFeed;
       if (cached) {
         setFeed(cached);
         setError("暂时无法更新，正在显示上次保存的内容。");
@@ -2086,6 +2156,8 @@ export default function Home() {
   }
 
   async function openScholarProfile(result: SearchResult) {
+    const requestId = profileRequestRef.current + 1;
+    profileRequestRef.current = requestId;
     const cached = findCachedProfile(result);
     const requestResult = cached?.candidate || result;
     setAddOpen(false);
@@ -2161,6 +2233,7 @@ export default function Home() {
         `/api/scholar-profile?${params.toString()}`,
         { cache: "no-store" },
       );
+      if (requestId !== profileRequestRef.current) return;
       if (!response.ok) throw new Error("profile unavailable");
       const data = (await response.json()) as {
         candidate?: SearchResult | null;
@@ -2168,6 +2241,7 @@ export default function Home() {
         works?: ScholarWork[];
         needsConfirmation?: boolean;
       };
+      if (requestId !== profileRequestRef.current) return;
       if (data.candidate) {
         const enrichedCandidate: SearchResult = {
           ...requestResult,
@@ -2215,6 +2289,7 @@ export default function Home() {
         setFilter("scholar");
       }
     } catch {
+      if (requestId !== profileRequestRef.current) return;
       if (!cached) {
         setProfile({
           candidate: requestResult,
@@ -2228,7 +2303,7 @@ export default function Home() {
           : "暂时无法补充学者档案，正在显示已有身份信息。",
       );
     } finally {
-      setProfileLoading(false);
+      if (requestId === profileRequestRef.current) setProfileLoading(false);
     }
   }
 
@@ -2525,11 +2600,7 @@ export default function Home() {
           .filter(
             (article) =>
               !states[article.id]?.ignored &&
-              article.matches.some(
-                (match) =>
-                  match.kind === "scholar" &&
-                  match.label.toLowerCase() === scholar.label.toLowerCase(),
-              ),
+              articleMatchesScholar(article, scholar),
           )
           .filter(
             (article, index, all) =>
@@ -2543,7 +2614,21 @@ export default function Home() {
             { ...articlePublication(a), id: a.id },
             { ...articlePublication(b), id: b.id },
           ));
-        return { scholar, articles, latest: articles[0] };
+        const newArticleIds = (feed?.items || [])
+          .filter(
+            (article) =>
+              articleMatchesScholar(article, scholar) &&
+              articlePublishedSinceFollow(article, subscriptions) &&
+              !states[article.id]?.read &&
+              !states[article.id]?.ignored,
+          )
+          .map((article) => article.id);
+        return {
+          scholar,
+          articles,
+          latest: articles[0],
+          newArticleIds,
+        };
       })
       .filter(({ scholar, articles }) => {
         if (!normalizedQuery) return true;
@@ -2573,7 +2658,7 @@ export default function Home() {
         if (b.latest) return 1;
         return a.scholar.label.localeCompare(b.scholar.label);
       });
-  }, [feed, query, scholarProfiles, states, subscriptions.scholar]);
+  }, [feed, query, scholarProfiles, states, subscriptions]);
 
   const unreadCount = (feed?.items || []).filter(
     (article) =>
@@ -2587,6 +2672,24 @@ export default function Home() {
   const ignoredCount = Object.values(states).filter(
     (state) => state.ignored,
   ).length;
+  const healthCoverage = attemptCoverage ?? feed?.coverage ?? [];
+  const healthCounts = {
+    success: healthCoverage.filter((entry) => entry.status === "success").length,
+    partial: healthCoverage.filter((entry) => entry.status === "partial").length,
+    failed: healthCoverage.filter((entry) => entry.status === "failed").length,
+  };
+  const failedProviders = [...new Set(
+    healthCoverage.flatMap((entry) =>
+      entry.providers
+        .filter((provider) => provider.status === "failed")
+        .map((provider) => providerLabel(provider.provider)),
+    ),
+  )];
+  const lastSuccessfulUpdate = feed?.updatedAt && Number.isFinite(
+    Date.parse(feed.updatedAt),
+  )
+    ? new Date(feed.updatedAt).toLocaleString("zh-CN")
+    : "尚未成功取得数据";
   const currentScholar =
     profile
       ? scholarFromResult(profile.candidate)
@@ -2627,11 +2730,7 @@ export default function Home() {
     const cached = findCachedProfile(scholar);
     const feedWorks = (feed?.items || [])
       .filter((article) =>
-        article.matches.some(
-          (match) =>
-            match.kind === "scholar" &&
-            match.label.toLowerCase() === scholar.label.toLowerCase(),
-        ),
+        articleMatchesScholar(article, scholar),
       )
       .map((article): ScholarWork => ({
         id: article.id,
@@ -2652,13 +2751,55 @@ export default function Home() {
     });
   }
 
+  function markScholarArticlesRead(
+    scholar: Scholar,
+    articleIds: string[],
+  ) {
+    if (articleIds.length === 0) return;
+    const nextStates = { ...localDataRef.current.states };
+    for (const id of articleIds) {
+      nextStates[id] = {
+        ...(nextStates[id] || defaultArticleState()),
+        read: true,
+      };
+    }
+    setStates(nextStates);
+    void persistLocalData({ states: nextStates });
+    showNotice(`已将 ${scholar.label} 的 ${articleIds.length} 篇新文章标为已读`);
+  }
+
+  async function resetToScholarOverview() {
+    profileRequestRef.current += 1;
+    const needsFeedReset = Boolean(
+      historyScholar || localDataRef.current.feed?.historyScholar,
+    );
+    setProfile(null);
+    setProfileLoading(false);
+    setActiveSubscription(null);
+    setHistoryScholar(undefined);
+    setFilter("all");
+    setQuery("");
+    setError("");
+    if (needsFeedReset) {
+      const cachedOverview = overviewFeedRef.current;
+      setFeed(cachedOverview);
+      setAttemptCoverage(cachedOverview?.coverage || null);
+      await loadFeed(false, undefined, subscriptions, cachedOverview);
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#" aria-label="Anthropology Canteen 首页">
+        <button
+          type="button"
+          className="brand"
+          aria-label="返回学者动态"
+          onClick={() => void resetToScholarOverview()}
+        >
           <span className="brand-mark">AC</span>
           <strong>ANTHROPOLOGY CANTEEN</strong>
-        </a>
+        </button>
         <div className="topbar-actions">
           <label className="search">
             <span aria-hidden="true">⌕</span>
@@ -2831,6 +2972,27 @@ export default function Home() {
               公开学术数据
             </div>
           </div>
+
+          <section className="update-health-compact" aria-label="更新健康摘要">
+            <span>上次成功：{lastSuccessfulUpdate}</span>
+            <span>
+              订阅：{healthCounts.success} 成功 · {healthCounts.partial} 部分失败 ·{" "}
+              {healthCounts.failed} 失败
+            </span>
+            {failedProviders.length > 0 && (
+              <span>失败来源：{failedProviders.join("、")}</span>
+            )}
+          </section>
+
+          {currentScholar && (
+            <button
+              type="button"
+              className="scholar-overview-return"
+              onClick={() => void resetToScholarOverview()}
+            >
+              ← 返回学者动态
+            </button>
+          )}
 
           {currentScholar && (
             <section className="scholar-profile">
@@ -3058,7 +3220,12 @@ export default function Home() {
               </div>
             ) : (
               <div className="scholar-card-grid">
-                {scholarCards.map(({ scholar, articles, latest }) => {
+                {scholarCards.map(({
+                  scholar,
+                  articles,
+                  latest,
+                  newArticleIds,
+                }) => {
                   const matchedKeywordGroups = latest
                     ? latest.matches.filter(
                         (match) => match.kind === "keyword",
@@ -3071,16 +3238,6 @@ export default function Home() {
                     <article
                       className="scholar-card"
                       key={scholar.subscriptionId}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`查看 ${scholar.label} 的全部发表`}
-                      onClick={() => void openScholar(scholar)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          void openScholar(scholar);
-                        }
-                      }}
                     >
                       <header>
                         <span className="scholar-card-monogram" aria-hidden="true">
@@ -3106,6 +3263,25 @@ export default function Home() {
                           {scholar.researchAreas.slice(0, 3).join(" · ")}
                         </p>
                       ) : null}
+
+                      <div className="scholar-card-update-status">
+                        <strong>
+                          {newArticleIds.length > 0
+                            ? `${newArticleIds.length} 篇关注后未读新文章`
+                            : "暂无关注后未读新文章"}
+                        </strong>
+                        {newArticleIds.length > 0 && (
+                          <button
+                            type="button"
+                            aria-label={`将 ${scholar.label} 的 ${newArticleIds.length} 篇新文章全部标为已读`}
+                            onClick={() =>
+                              markScholarArticlesRead(scholar, newArticleIds)
+                            }
+                          >
+                            全部标为已读
+                          </button>
+                        )}
+                      </div>
 
                       {latest ? (
                         <section className="scholar-latest">
@@ -3163,9 +3339,15 @@ export default function Home() {
                         )}
                       </section>
 
-                      <footer>
-                        查看全部发表
-                        <span aria-hidden="true">→</span>
+                      <footer className="scholar-card-actions">
+                        <button
+                          type="button"
+                          aria-label={`查看 ${scholar.label} 的全部发表`}
+                          onClick={() => void openScholar(scholar)}
+                        >
+                          查看全部发表
+                          <span aria-hidden="true">→</span>
+                        </button>
                       </footer>
                     </article>
                   );
@@ -3417,22 +3599,29 @@ export default function Home() {
         <aside className="right-rail">
           <section className="signal-card">
             <div className="section-heading">
-              <span>当前信号</span>
-              <small>本次检索</small>
+              <span>更新健康</span>
+              <small>真实数据源</small>
             </div>
             <div className="signal-stat">
               <strong>{feed?.items.length || 0}</strong>
               <span>条出版记录</span>
             </div>
-            <div className="mini-bars" aria-label="更新信号">
-              {[32, 48, 26, 61, 44, 79, 55].map((height, index) => (
-                <i key={index} style={{ height: `${height}%` }} />
-              ))}
+            <div className="health-last-success">
+              <span>上次成功取得数据</span>
+              <strong>{lastSuccessfulUpdate}</strong>
             </div>
-            <div className="signal-legend">
-              <span><i className="journal" /> 期刊</span>
-              <span><i className="scholar" /> 学者</span>
-              <span><i className="keyword" /> 关键词</span>
+            <dl className="health-counts">
+              <div><dt>成功</dt><dd>{healthCounts.success}</dd></div>
+              <div><dt>部分失败</dt><dd>{healthCounts.partial}</dd></div>
+              <div><dt>失败</dt><dd>{healthCounts.failed}</dd></div>
+            </dl>
+            <div className="health-providers">
+              <span>失败来源</span>
+              <strong>
+                {failedProviders.length > 0
+                  ? failedProviders.join("、")
+                  : "无"}
+              </strong>
             </div>
           </section>
         </aside>

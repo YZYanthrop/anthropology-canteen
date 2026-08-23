@@ -130,6 +130,17 @@ and other configured public metadata sources. A provider failure or rate limit
 must degrade independently. Tests use deterministic mocks rather than consuming
 public quotas.
 
+Feed coverage records one `success`, `partial`, or `failed` result per journal
+or scholar subscription. Each entry contains only the OpenAlex, Semantic
+Scholar, or Crossref providers actually attempted for that subscription, with
+their individual success or failure; an unattempted provider is never inferred.
+Manual refresh requests bypass the process-local provider cache so the health
+result describes a new attempt. If every subscription fails, the route returns
+an error response with the failed coverage. The client may show that attempt's
+health, but it keeps the last successful feed and timestamp and does not persist
+the failed response over them. A mixed result remains usable and exposes its
+partial coverage and warnings.
+
 ## Build and release
 
 - Source verification runs lint, production build, and offline regression

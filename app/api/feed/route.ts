@@ -127,6 +127,16 @@ type ArticleAuthor = {
   orcid?: string;
 };
 
+type FeedProvider = "openalex" | "semanticScholar" | "crossref";
+type ProviderCoverage = {
+  provider: FeedProvider;
+  status: "success" | "failed";
+};
+type SubscriptionFetchResult = {
+  items: Article[];
+  providers: ProviderCoverage[];
+};
+
 type SemanticScholarPaper = {
   paperId?: string;
   title?: string;
@@ -908,70 +918,101 @@ async function fetchCrossrefScholarWorks(
     .filter((article): article is Article => Boolean(article));
 }
 
-async function fetchJournalWorks(journal: Journal, fromDate: string) {
+async function attemptProvider(
+  provider: FeedProvider,
+  run: () => Promise<Article[]>,
+) {
+  try {
+    return {
+      items: await run(),
+      coverage: { provider, status: "success" as const },
+    };
+  } catch {
+    return {
+      items: [],
+      coverage: { provider, status: "failed" as const },
+    };
+  }
+}
+
+async function fetchJournalWorks(
+  journal: Journal,
+  fromDate: string,
+): Promise<SubscriptionFetchResult> {
   const match: Match = {
     kind: "journal",
     label: journal.label,
     subscriptionId: journal.issn.toLowerCase(),
   };
-  const settled = await Promise.allSettled([
-    fetchWorks(
-      worksUrl(
-        [
-          `primary_location.source.issn:${journal.issn}`,
-          `from_publication_date:${fromDate}`,
-        ],
-        20,
+  const attempts = await Promise.all([
+    attemptProvider("openalex", () =>
+      fetchWorks(
+        worksUrl(
+          [
+            `primary_location.source.issn:${journal.issn}`,
+            `from_publication_date:${fromDate}`,
+          ],
+          20,
+        ),
+        match,
       ),
-      match,
     ),
-    fetchCrossrefJournalWorks(journal, fromDate, match),
+    attemptProvider("crossref", () =>
+      fetchCrossrefJournalWorks(journal, fromDate, match),
+    ),
   ]);
-  const results = settled.flatMap((result) =>
-    result.status === "fulfilled" ? result.value : [],
-  );
-  if (
-    results.length === 0 &&
-    settled.every((result) => result.status === "rejected")
-  ) {
-    throw new Error(`期刊 ${journal.label} 的公开索引暂时不可用`);
-  }
-  return results;
+  return {
+    items: attempts.flatMap((attempt) => attempt.items),
+    providers: attempts.map((attempt) => attempt.coverage),
+  };
 }
 
-async function fetchScholarWorks(scholar: Scholar, limit: number) {
+async function fetchScholarWorks(
+  scholar: Scholar,
+  limit: number,
+): Promise<SubscriptionFetchResult> {
   const match: Match = {
     kind: "scholar",
     label: scholar.label,
     subscriptionId: scholar.subscriptionId,
   };
   const openAlexIds = [...new Set(scholar.openAlexIds)].slice(0, 30);
-  const indexedResults: Article[] = [];
+  const attempts: Array<Promise<{
+    items: Article[];
+    coverage: ProviderCoverage;
+  }>> = [];
   if (openAlexIds.length) {
-    try {
-      indexedResults.push(...(await fetchWorks(
-        worksUrl(
-          [`authorships.author.id:${openAlexIds.join("|")}`],
-          Math.min(limit, 100),
+    attempts.push(
+      attemptProvider("openalex", () =>
+        fetchWorks(
+          worksUrl(
+            [`authorships.author.id:${openAlexIds.join("|")}`],
+            Math.min(limit, 100),
+          ),
+          match,
         ),
-        match,
-      )));
-    } catch {
-      // A secondary index can still keep the saved profile usable.
-    }
+      ),
+    );
   }
   const semanticId = (scholar.semanticScholarIds || [])[0];
   if (semanticId) {
-    try {
-      indexedResults.push(
-        ...(await fetchSemanticScholarWorks(scholar, semanticId, limit)),
-      );
-    } catch {
-      // Name-only Crossref is used only when no stable provider ID exists.
-    }
+    attempts.push(
+      attemptProvider("semanticScholar", () =>
+        fetchSemanticScholarWorks(scholar, semanticId, limit),
+      ),
+    );
   }
-  if (indexedResults.length) {
-    return indexedResults.filter(
+  if (!openAlexIds.length && !semanticId) {
+    attempts.push(
+      attemptProvider("crossref", () =>
+        fetchCrossrefScholarWorks(scholar, limit),
+      ),
+    );
+  }
+  const completed = await Promise.all(attempts);
+  const items = completed
+    .flatMap((attempt) => attempt.items)
+    .filter(
       (article, index, all) =>
         all.findIndex(
           (item) =>
@@ -979,11 +1020,10 @@ async function fetchScholarWorks(scholar: Scholar, limit: number) {
             Boolean(item.doi && article.doi && item.doi === article.doi),
         ) === index,
     );
-  }
-  if (!openAlexIds.length && !semanticId) {
-    return fetchCrossrefScholarWorks(scholar, limit);
-  }
-  throw new Error(`学者 ${scholar.label} 的公开索引暂时不可用`);
+  return {
+    items,
+    providers: completed.map((attempt) => attempt.coverage),
+  };
 }
 
 async function runTasks<T>(
@@ -1548,7 +1588,7 @@ async function buildFeed(
     kind: "journal" | "scholar";
     subscriptionId: string;
     label: string;
-    run: () => Promise<Article[]>;
+    run: () => Promise<SubscriptionFetchResult>;
   }> = [];
   const resolvedScholars = subscriptions.scholar;
 
@@ -1590,12 +1630,13 @@ async function buildFeed(
   }
 
   const settled = await runTasks(tasks.map((task) => task.run), 4);
-  const groups = settled
+  const completed = settled
     .filter(
-      (result): result is PromiseFulfilledResult<Article[]> =>
+      (result): result is PromiseFulfilledResult<SubscriptionFetchResult> =>
         result.status === "fulfilled",
     )
     .map((result) => result.value);
+  const groups = completed.map((result) => result.items);
   const curatedScholars = historyScholar
     ? resolvedScholars.filter(
         (item) =>
@@ -1613,13 +1654,34 @@ async function buildFeed(
       subscriptions.keyword,
       historyScholar ? 180 : 120,
     ),
-    failures: settled.filter((result) => result.status === "rejected").length,
+    failures: settled.filter((result) => {
+      if (result.status === "rejected") return true;
+      const providers = result.value.providers;
+      return providers.length > 0 && providers.every(
+        (provider) => provider.status === "failed",
+      );
+    }).length,
     totalTasks: tasks.length,
     coverage: tasks.map((task, index) => ({
       kind: task.kind,
       subscriptionId: task.subscriptionId,
       label: task.label,
-      status: settled[index]?.status === "fulfilled" ? "success" : "failed",
+      status:
+        settled[index]?.status !== "fulfilled"
+          ? "failed"
+          : settled[index].value.providers.every(
+                (provider) => provider.status === "success",
+              )
+            ? "success"
+            : settled[index].value.providers.some(
+                  (provider) => provider.status === "success",
+                )
+              ? "partial"
+              : "failed",
+      providers:
+        settled[index]?.status === "fulfilled"
+          ? settled[index].value.providers
+          : [],
     })),
     scholars: resolvedScholars,
   };
@@ -1633,7 +1695,8 @@ function response(
     kind: "journal" | "scholar";
     subscriptionId: string;
     label: string;
-    status: "success" | "failed";
+    status: "success" | "partial" | "failed";
+    providers: ProviderCoverage[];
   }>,
   scholars: Scholar[],
   historyScholar?: string,
@@ -1646,10 +1709,11 @@ function response(
       historyScholar,
       scholars,
       coverage,
-      warnings:
-        failures > 0
-          ? [`${failures} 个数据查询暂时失败，其他来源仍正常显示。`]
-          : [],
+      warnings: coverage.some((entry) => entry.status !== "success")
+        ? [
+            `${coverage.filter((entry) => entry.status !== "success").length} 个关注项的数据来源未完整返回。`,
+          ]
+        : [],
     },
     {
       status: totalTasks > 0 && failures === totalTasks ? 503 : 200,
@@ -1665,6 +1729,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (new URL(request.url).searchParams.get("refresh") === "1") {
+    remoteCache.clear();
+  }
   let payload: { subscriptions?: unknown; historyScholar?: unknown } = {};
   try {
     payload = await request.json();
