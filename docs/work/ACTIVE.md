@@ -2,22 +2,20 @@
 
 Last updated: 2026-08-23
 
-- Status: `Approved`
+- Status: `In progress`
 - Approved for implementation: yes
 - Target version: `v1.3.2`
 - Plan: [`docs/plans/v1.3.2-usability-and-recovery.md`](../plans/v1.3.2-usability-and-recovery.md)
-- Implementation branch: none
-- Implementation handoff: none
+- Implementation branch: `codex/v1.3.2-ui-test-foundation`
+- Current step: UI interaction-test prerequisite `Verified`, awaiting merge
+- Implementation handoff: [`docs/handoffs/v1.3.2-ui-test-foundation.md`](../handoffs/v1.3.2-ui-test-foundation.md)
 - Release task: none
 
 ## Next action
 
-Open a short implementation task named
-`执行 v1.3.2-0：UI 交互测试基础`. Use the ready-to-copy prerequisite prompt in
-the approved plan. Do not start Slice A until the prerequisite is verified and
-merged; all later slices remain sequential.
-
-No implementation branch or handoff exists yet.
+Review and merge `codex/v1.3.2-ui-test-foundation`. After merge, open the short
+Slice A task using the ready-to-copy prompt in the approved plan. Do not start
+Slice B or C; all slices remain sequential.
 
 ## Repository note
 

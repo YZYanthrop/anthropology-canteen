@@ -31,10 +31,10 @@ document router below.
 
 ## Active work
 
-- The v1.3.2 usability/recoverability plan linked from
-  `docs/work/ACTIVE.md` is approved, but no implementation is in progress yet.
-- The next bounded task is the UI interaction-test prerequisite; Slices A, B,
-  and C must follow sequentially from verified, merged baselines.
+- The approved v1.3.2 UI interaction-test prerequisite is verified on the
+  branch and handoff named in `docs/work/ACTIVE.md`; it is awaiting merge.
+- Slices A, B, and C have not started. Slice A may begin only after the
+  prerequisite is merged, and all later slices remain sequential.
 - Published v1.3.1 artifacts and tags are immutable.
 
 ## Read only what the task needs
