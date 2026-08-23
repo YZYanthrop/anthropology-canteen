@@ -33,12 +33,18 @@ data root, import old data, and assemble an archive.
 `portable-server.mjs` runs only on loopback and provides:
 
 - compiled application and static assets;
-- `GET` and `PUT /api/local-data`;
+- authenticated `GET`, `PUT`, and field-level `PATCH /api/local-data`;
 - local API-key settings without returning complete keys to the browser;
 - data migration and neighboring-version import support;
 - `/api/runtime-status` for launchers and smoke tests;
 - `/api/browser-session` tracking so `--auto-close` stops the process after the
   last application page closes.
+
+The portable server accepts only the expected loopback hostnames. Local data,
+settings, and reminder requests require the per-process session token; API
+requests with a foreign browser Origin are rejected. Request bodies have an
+explicit 32 MiB ceiling and responses carry same-origin framing, MIME, referrer,
+and content-policy protections.
 
 The default local data root is the directory `data/` beside
 `portable-server.mjs`. That path is already cross-platform and should remain the
@@ -53,12 +59,19 @@ must remain inside the user-selected portable folder.
   state, article and scholar caches, and translations.
 - `data/anthropology-canteen-settings.json`: optional provider API keys.
 - `data/anthropology-canteen-reminder-state.json`: reminder baselines,
-  pending outbox and delivery ledger (version 1).
+  pending outbox and delivery ledger (version 2).
 - `data/anthropology-canteen-reminder-secret.json`: Windows DPAPI ciphertext;
   macOS keeps the equivalent secret in the user Keychain.
 - `data/anthropology-canteen-server.pid`: ephemeral runtime PID.
 
 These files are never build inputs and never belong in Git or a share archive.
+The main data schema is version 8 and carries a monotonic revision. Browser
+saves use top-level field patches so a reminder feed refresh cannot overwrite a
+simultaneous subscription, article-state, translation, or profile change.
+Data, settings, and reminder state have separate owner-token locks; writes use
+temporary files, fsync, atomic replacement, and a last-known-good backup. User
+records are never silently removed to satisfy an in-memory item cap.
+
 The same JSON formats must work on Windows and macOS so a user can migrate by
 copying or importing the `data/` directory.
 
@@ -70,7 +83,7 @@ open. Reminder delivery state is separate from article read state, and writes
 use the reminder lock plus atomic replacement so a background run does not
 leave a partial JSON file.
 
-An empty first run creates a blank version 7 data structure. While that file
+An empty first run creates a blank version 8 data structure. While that file
 remains empty, automatic neighboring-version migration is retried so an old
 portable folder placed beside the new one after the first launch can still be
 found. Manual import must

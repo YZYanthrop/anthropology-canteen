@@ -6,7 +6,7 @@ test("product version and provider User-Agents stay aligned", async () => {
   const metadata = JSON.parse(
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );
-  assert.equal(metadata.version, "1.3.0");
+  assert.equal(metadata.version, "1.3.1");
 
   for (const file of [
     "../app/lib/scholar-search.ts",
@@ -60,7 +60,7 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(build, /dpapi-helper\.ps1/);
   assert.match(readme, /@PRODUCT_VERSION@/);
 
-  assert.match(smoke, /blank version 7 structure/);
+  assert.match(smoke, /blank version 8 structure/);
   assert.match(smoke, /did not persist after restart/);
   assert.match(smoke, /api\/browser-session/);
   assert.match(smoke, /approximately eight seconds/);

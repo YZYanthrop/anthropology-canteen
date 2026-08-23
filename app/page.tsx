@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type MatchKind = "journal" | "scholar" | "keyword";
-type Match = { kind: MatchKind; label: string; terms?: string[] };
+type Match = {
+  kind: MatchKind;
+  label: string;
+  subscriptionId?: string;
+  terms?: string[];
+};
 type Journal = { label: string; issn: string; followedAt?: string };
 type KeywordGroup = {
   root: string;
@@ -125,6 +130,12 @@ type FeedResponse = {
   historyScholar?: string;
   scholars?: Scholar[];
   warnings?: string[];
+  coverage?: Array<{
+    kind: "journal" | "scholar";
+    subscriptionId: string;
+    label: string;
+    status: "success" | "failed";
+  }>;
 };
 
 type ArticleState = { saved: boolean; read: boolean; ignored: boolean };
@@ -135,6 +146,8 @@ type SubscriptionSelection = {
   id?: string;
 } | null;
 type LocalData = {
+  version: number;
+  revision: number;
   subscriptions: Subscriptions;
   states: Record<string, ArticleState>;
   feed: FeedResponse | null;
@@ -308,6 +321,8 @@ function articlePublishedSinceFollow(
 
 function defaultLocalData(): LocalData {
   return {
+    version: 8,
+    revision: 0,
     subscriptions: DEFAULT_SUBSCRIPTIONS,
     states: {},
     feed: null,
@@ -794,6 +809,16 @@ function safeFeed(value: unknown): FeedResponse | null {
     warnings: Array.isArray(feed.warnings)
       ? feed.warnings.filter((item): item is string => typeof item === "string")
       : [],
+    coverage: Array.isArray(feed.coverage)
+      ? feed.coverage.filter(
+          (item) =>
+            item &&
+            typeof item.subscriptionId === "string" &&
+            typeof item.label === "string" &&
+            (item.kind === "journal" || item.kind === "scholar") &&
+            (item.status === "success" || item.status === "failed"),
+        )
+      : [],
   };
 }
 
@@ -922,6 +947,11 @@ function safeLocalData(value: unknown): LocalData {
   const data = value as Partial<LocalData>;
   const subscriptions = safeSubscriptions(data.subscriptions);
   return {
+    version: 8,
+    revision:
+      typeof data.revision === "number" && Number.isSafeInteger(data.revision)
+        ? Math.max(0, data.revision)
+        : 0,
     subscriptions,
     states: safeArticleStates(data.states),
     feed: migrateFeedKeywordMatches(
@@ -970,12 +1000,51 @@ function clearLegacyBrowserData() {
   for (const key of LEGACY_STORAGE_KEYS) localStorage.removeItem(key);
 }
 
+let portableSessionTokenPromise: Promise<string> | null = null;
+
+async function portableSessionToken() {
+  if (!portableSessionTokenPromise) {
+    portableSessionTokenPromise = fetch("/api/runtime-status", {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("portable runtime unavailable");
+        const value = (await response.json()) as { sessionToken?: string };
+        if (!value.sessionToken) throw new Error("portable session unavailable");
+        return value.sessionToken;
+      })
+      .catch((error) => {
+        portableSessionTokenPromise = null;
+        throw error;
+      });
+  }
+  return portableSessionTokenPromise;
+}
+
+async function localApiHeaders() {
+  return {
+    "content-type": "application/json",
+    "x-anthropology-canteen-session": await portableSessionToken(),
+  };
+}
+
 async function writeLocalData(data: LocalData) {
   const response = await fetch("/api/local-data", {
     method: "PUT",
-    headers: { "content-type": "application/json" },
+    headers: await localApiHeaders(),
     cache: "no-store",
     body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error("local data unavailable");
+  return safeLocalData(await response.json());
+}
+
+async function patchLocalData(patch: Partial<LocalData>) {
+  const response = await fetch("/api/local-data", {
+    method: "PATCH",
+    headers: await localApiHeaders(),
+    cache: "no-store",
+    body: JSON.stringify({ patch }),
   });
   if (!response.ok) throw new Error("local data unavailable");
   return safeLocalData(await response.json());
@@ -1085,9 +1154,11 @@ export default function Home() {
     localDataRef.current = next;
     saveQueueRef.current = saveQueueRef.current
       .catch(() => undefined)
-      .then(() => writeLocalData(next))
+      .then(() => patchLocalData(patch))
       .then((saved) => {
-        if (localDataRef.current === next) localDataRef.current = saved;
+        if (localDataRef.current === next) {
+          localDataRef.current = { ...next, revision: saved.revision };
+        }
       })
       .catch(() => {
         // showNotice is a stable component helper; this promise runs after render.
@@ -1103,7 +1174,10 @@ export default function Home() {
       setLoading(true);
       setError("");
       try {
-        const response = await fetch("/api/local-data", { cache: "no-store" });
+        const response = await fetch("/api/local-data", {
+          headers: await localApiHeaders(),
+          cache: "no-store",
+        });
         if (!response.ok) throw new Error("local data unavailable");
         let data = safeLocalData(await response.json());
         const legacyData = !hasStoredLocalData(data)
@@ -1153,6 +1227,7 @@ export default function Home() {
     async function loadLocalSettings() {
       try {
         const response = await fetch("/api/local-settings", {
+          headers: await localApiHeaders(),
           cache: "no-store",
         });
         if (!response.ok) return;
@@ -1195,12 +1270,12 @@ export default function Home() {
 
   async function loadReminderStatus() {
     try {
-      const runtime = await fetch("/api/runtime-status", { cache: "no-store" });
-      if (!runtime.ok) return;
-      const runtimeValue = (await runtime.json()) as { sessionToken?: string };
-      if (!runtimeValue.sessionToken) return;
-      setReminderSessionToken(runtimeValue.sessionToken);
-      const response = await fetch("/api/reminders/status", { cache: "no-store" });
+      const token = await portableSessionToken();
+      setReminderSessionToken(token);
+      const response = await fetch("/api/reminders/status", {
+        headers: await localApiHeaders(),
+        cache: "no-store",
+      });
       if (!response.ok) return;
       applyReminderStatus((await response.json()) as ReminderStatus);
     } catch {
@@ -1209,11 +1284,12 @@ export default function Home() {
   }
 
   async function reminderRequest(path: string, method: string, body?: unknown) {
+    const token = reminderSessionToken || await portableSessionToken();
     const response = await fetch(path, {
       method,
       headers: {
         "content-type": "application/json",
-        "x-anthropology-canteen-session": reminderSessionToken,
+        "x-anthropology-canteen-session": token,
       },
       cache: "no-store",
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -1448,7 +1524,7 @@ export default function Home() {
     try {
       const response = await fetch("/api/local-settings", {
         method: "PUT",
-        headers: { "content-type": "application/json" },
+        headers: await localApiHeaders(),
         cache: "no-store",
         body: JSON.stringify({ [`${provider}ApiKey`]: key }),
       });
@@ -2583,7 +2659,7 @@ export default function Home() {
               <div className="scholar-profile-content">
                 <p>
                   {currentScholar.trackingStatus === "verified"
-                    ? "身份已确认"
+                    ? "已连接稳定索引记录"
                     : "身份仍需核验"}
                 </p>
                 <h2>{currentScholar.label}</h2>
@@ -3473,7 +3549,7 @@ export default function Home() {
                             ? "最可能的主档案"
                             : result.trackingStatus === "limited"
                             ? "需进一步核验"
-                            : "可自动追踪"}
+                            : "可按索引记录追踪"}
                         </span>
                       </div>
                       <p>

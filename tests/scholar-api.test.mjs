@@ -1538,6 +1538,38 @@ test("feed refresh queries a saved multi-ID scholar as one profile", async () =>
   }
 });
 
+test("feed reports total provider failure without replacing a saved cache", async () => {
+  mockFetch = async () => json({}, 503);
+  try {
+    const response = await worker.fetch(
+      new Request("http://local/api/feed", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          subscriptions: {
+            journal: [{ label: "Ethos", issn: "0091-2131" }],
+            keyword: [],
+            scholar: [{
+              subscriptionId: "openalex:A123",
+              label: "Scholar Name",
+              openAlexIds: ["A123"],
+              semanticScholarIds: ["S123"],
+              institution: "University",
+            }],
+          },
+        }),
+      }),
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 503);
+    assert.equal(payload.source, "fallback");
+    assert.equal(payload.coverage.length, 2);
+    assert.ok(payload.coverage.every((entry) => entry.status === "failed"));
+  } finally {
+    mockFetch = null;
+  }
+});
+
 test("scholar profile endpoint aggregates identity and publication history", async () => {
   mockFetch = async (input) => {
     const url = new URL(

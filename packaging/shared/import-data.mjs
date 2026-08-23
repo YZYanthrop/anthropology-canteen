@@ -69,8 +69,8 @@ function isObject(value) {
 }
 
 function validateDataSchema(value, label) {
-  if (!Number.isInteger(value.version) || value.version < 2 || value.version > 7) {
-    throw new Error(`${label} must use a supported data version from 2 through 7.`);
+  if (!Number.isInteger(value.version) || value.version < 2 || value.version > 8) {
+    throw new Error(`${label} must use a supported data version from 2 through 8.`);
   }
   if (!isObject(value.subscriptions)) {
     throw new Error(`${label} must contain a subscriptions object.`);
@@ -101,8 +101,8 @@ function validateSettingsSchema(value, label) {
 }
 
 function validateReminderStateSchema(value, label) {
-  if (value.version !== 1 || !isObject(value.items) || !isObject(value.baselines)) {
-    throw new Error(`${label} must use reminder state version 1.`);
+  if (![1, 2].includes(value.version) || !isObject(value.items) || !isObject(value.baselines)) {
+    throw new Error(`${label} must use reminder state version 1 or 2.`);
   }
 }
 

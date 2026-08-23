@@ -11,6 +11,7 @@ import {
   writeReminderState,
 } from "../reminder-utils.mjs";
 import { renderDigest, smtpConfig } from "../reminder-mail.mjs";
+import { reconcileReminderState } from "../reminder-worker.mjs";
 
 test("reminder configuration clamps schedule and enforces safe defaults", () => {
   const config = cleanReminderConfig({
@@ -83,19 +84,129 @@ test("digest is scholar-first, static, escaped, and keeps abstracts optional", (
   assert.doesNotMatch(result.html, /javascript:/i);
 });
 
+test("reminder baselines use stable subscriptions and keep late-indexed works", () => {
+  const state = emptyReminderState();
+  const subscriptions = {
+    scholar: [{
+      subscriptionId: "openalex:A123",
+      label: "Scholar Name",
+      followedAt: "2026-06-01T00:00:00.000Z",
+    }],
+    journal: [],
+    keyword: [],
+  };
+  const match = {
+    kind: "scholar",
+    label: "Scholar Name",
+    subscriptionId: "openalex:A123",
+  };
+  const historical = {
+    id: "old",
+    doi: "10.1000/old",
+    title: "Historical work",
+    authors: ["Scholar Name"],
+    publishedAt: "2020-01-01",
+    matches: [match],
+  };
+  const firstPending = reconcileReminderState(
+    state,
+    subscriptions,
+    { source: "live", items: [historical], coverage: [{ kind: "scholar", subscriptionId: "openalex:A123", status: "success" }] },
+    "2026-06-01T08:00:00.000Z",
+  );
+  assert.equal(firstPending.length, 0);
+  assert.ok(state.baselines["scholar:openalex:A123"]);
+
+  const lateIndexed = {
+    ...historical,
+    id: "late",
+    doi: "10.1000/late",
+    title: "Late indexed work",
+    publishedAt: "2025-01-01",
+  };
+  const renamedSubscriptions = {
+    ...subscriptions,
+    scholar: [{ ...subscriptions.scholar[0], label: "Scholar Updated Name" }],
+  };
+  const secondPending = reconcileReminderState(
+    state,
+    renamedSubscriptions,
+    { source: "live", items: [historical, lateIndexed], coverage: [{ kind: "scholar", subscriptionId: "openalex:A123", status: "success" }] },
+    "2026-06-02T08:00:00.000Z",
+  );
+  assert.deepEqual(secondPending.map((item) => item.key), ["doi:10.1000/late"]);
+
+  const unavailable = {
+    ...lateIndexed,
+    id: "unavailable",
+    doi: "10.1000/unavailable",
+  };
+  const thirdPending = reconcileReminderState(
+    state,
+    renamedSubscriptions,
+    { source: "live", items: [unavailable], coverage: [{ kind: "scholar", subscriptionId: "openalex:A123", status: "failed" }] },
+    "2026-06-03T08:00:00.000Z",
+  );
+  assert.equal(thirdPending.some((item) => item.key === "doi:10.1000/unavailable"), false);
+
+  const partialState = emptyReminderState();
+  reconcileReminderState(
+    partialState,
+    {
+      ...subscriptions,
+      journal: [{ label: "Ethos", issn: "0091-2131", followedAt: "2026-06-01T00:00:00.000Z" }],
+    },
+    {
+      source: "live",
+      items: [historical],
+      coverage: [
+        { kind: "scholar", subscriptionId: "openalex:A123", status: "success" },
+        { kind: "journal", subscriptionId: "0091-2131", status: "failed" },
+      ],
+    },
+    "2026-06-01T08:00:00.000Z",
+  );
+  assert.equal(partialState.baselineComplete, false);
+  assert.equal(partialState.baselines["journal:0091-2131"], undefined);
+});
+
 test("reminder state writes atomically and survives a second read", async () => {
   const root = await mkdtemp(join(tmpdir(), "anthropology-canteen-reminder-"));
   try {
     const state = emptyReminderState();
     state.baselineComplete = true;
     state.lastResult = "no-updates";
+    state.baselines["scholar:stable-id"] = {
+      followedAt: "2026-01-01T00:00:00.000Z",
+      itemKeys: Array.from({ length: 505 }, (_, index) => `doi:baseline-${index}`),
+      ready: true,
+    };
+    for (let index = 0; index < 5005; index += 1) {
+      state.items[`doi:item-${index}`] = {
+        firstSeenAt: "2026-01-02T00:00:00.000Z",
+        baseline: true,
+        sentAt: "2026-01-02T00:00:00.000Z",
+        article: {
+          id: `item-${index}`,
+          title: `Work ${index}`,
+          authors: ["Author"],
+          matches: [{ kind: "scholar", label: "Scholar", subscriptionId: "stable-id" }],
+        },
+      };
+    }
     await withReminderLock(root, () => writeReminderState(root, state));
     const restored = await readReminderState(root);
-    assert.equal(restored.version, 1);
+    assert.equal(restored.version, 2);
     assert.equal(restored.baselineComplete, true);
     assert.equal(restored.lastResult, "no-updates");
+    assert.equal(restored.baselines["scholar:stable-id"].itemKeys.length, 505);
+    assert.equal(Object.keys(restored.items).length, 5005);
+    assert.equal(
+      restored.items["doi:item-5004"].article.matches[0].subscriptionId,
+      "stable-id",
+    );
     const disk = JSON.parse(await readFile(join(root, "data", "anthropology-canteen-reminder-state.json"), "utf8"));
-    assert.equal(disk.version, 1);
+    assert.equal(disk.version, 2);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

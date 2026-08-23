@@ -168,12 +168,7 @@ type OpenLibraryDocument = {
   publisher?: string[];
 };
 
-type InstitutionalProfileEvidence = {
-  url: string;
-  text: string;
-};
-
-const USER_AGENT = "AnthropologyCanteen/1.3.0";
+const USER_AGENT = "AnthropologyCanteen/1.3.1";
 const RESPONSE_CACHE_TTL = 15 * 60 * 1000;
 const responseCache = new Map<
   string,
@@ -296,17 +291,6 @@ function canonicalDisplayName(value: unknown) {
 
 function canonicalPersonName(value: unknown) {
   return normalizeName(value).split(/\s+/).filter(Boolean).sort().join(" ");
-}
-
-function distinctivePersonName(value: unknown) {
-  const tokens = canonicalPersonName(value).split(/\s+/).filter(Boolean);
-  const hasCompoundSurname =
-    /[\p{L}]{2,}[-‐‑‒–—][\p{L}]{4,}/u.test(clean(value, 180));
-  return (
-    tokens.length >= 2 &&
-    tokens.join("").length >= 10 &&
-    (tokens.some((token) => token.length >= 8) || hasCompoundSurname)
-  );
 }
 
 function comparableName(value: unknown) {
@@ -1379,81 +1363,6 @@ function candidateDois(candidate: ScholarCandidate) {
   ]);
 }
 
-function candidateWorkFamilies(candidate: ScholarCandidate) {
-  return unique(
-    candidate.representativeWorks.flatMap((work) => [
-      ...(work.familyIds || []),
-      ...doiFamilyIds(work.doi),
-    ]),
-  );
-}
-
-function candidateWorkSignatures(candidate: ScholarCandidate) {
-  return unique(
-    candidate.representativeWorks.map(
-      (work) => `${normalizeName(work.title)}:${work.year || ""}`,
-    ),
-  );
-}
-
-function meaningfulEvidenceText(value: string, kind: "institution" | "topic") {
-  const normalized = normalizeName(value);
-  if (!normalized || /未收录|待确认|unknown|not recorded/.test(normalized)) {
-    return "";
-  }
-  if (
-    kind === "topic" &&
-    [
-      "social sciences",
-      "arts and humanities",
-      "science",
-      "humanities",
-    ].includes(normalized)
-  ) {
-    return "";
-  }
-  return normalized;
-}
-
-function evidenceCollectionsOverlap(
-  left: string[],
-  right: string[],
-  kind: "institution" | "topic",
-) {
-  const leftValues = left
-    .map((item) => meaningfulEvidenceText(item, kind))
-    .filter(Boolean);
-  const rightValues = right
-    .map((item) => meaningfulEvidenceText(item, kind))
-    .filter(Boolean);
-  return leftValues.some((leftValue) =>
-    rightValues.some((rightValue) => {
-      if (leftValue === rightValue) return true;
-      const shorter =
-        leftValue.length <= rightValue.length ? leftValue : rightValue;
-      const longer =
-        leftValue.length > rightValue.length ? leftValue : rightValue;
-      if (shorter.length >= 8 && longer.includes(shorter)) return true;
-      const leftTokens = new Set(
-        leftValue.split(" ").filter((token) => token.length >= 7),
-      );
-      return rightValue
-        .split(" ")
-        .filter((token) => token.length >= 7)
-        .some((token) => leftTokens.has(token));
-    }),
-  );
-}
-
-function coauthorOverlap(left: ScholarCandidate, right: ScholarCandidate) {
-  const leftNames = new Set(
-    left.coauthorNames.map(canonicalPersonName).filter(Boolean),
-  );
-  return right.coauthorNames
-    .map(canonicalPersonName)
-    .some((name) => name && leftNames.has(name));
-}
-
 type IdentityLink = {
   connect: boolean;
   confidence: "verified" | "high";
@@ -1496,67 +1405,9 @@ function identityLink(
     };
   }
 
-  if (
-    !sharedName ||
-    (!distinctivePersonName(left.label) &&
-      !distinctivePersonName(right.label))
-  ) {
-    return { connect: false, confidence: "high", evidence: [] };
-  }
-  const contextualEvidence: string[] = [];
-  if (
-    evidenceCollectionsOverlap(
-      left.institutions,
-      right.institutions,
-      "institution",
-    )
-  ) {
-    contextualEvidence.push("任职单位重合");
-  }
-  if (
-    evidenceCollectionsOverlap(
-      left.researchAreas,
-      right.researchAreas,
-      "topic",
-    )
-  ) {
-    contextualEvidence.push("研究方向重合");
-  }
-  if (coauthorOverlap(left, right)) {
-    contextualEvidence.push("共同作者网络重合");
-  }
-  if (overlap(candidateWorkFamilies(left), candidateWorkFamilies(right))) {
-    contextualEvidence.push("属于同一专著或作品系列");
-  }
-  if (overlap(candidateWorkSignatures(left), candidateWorkSignatures(right))) {
-    contextualEvidence.push("共同作品题名与年份一致");
-  }
-  const sharedInstitutionalProfile =
-    left.institutionalProfileUrl &&
-    left.institutionalProfileUrl === right.institutionalProfileUrl;
-  if (sharedInstitutionalProfile) {
-    contextualEvidence.push("同一机构个人主页核验");
-  }
-  const hasStrongWorkEvidence = contextualEvidence.some((item) =>
-    /同一专著|共同作品/.test(item),
-  );
-  const hasInstitutionAndNetwork =
-    contextualEvidence.includes("任职单位重合") &&
-    (contextualEvidence.includes("研究方向重合") ||
-      contextualEvidence.includes("共同作者网络重合"));
-  const hasVerifiedHomepage =
-    Boolean(sharedInstitutionalProfile);
-  if (
-    hasStrongWorkEvidence ||
-    hasInstitutionAndNetwork ||
-    hasVerifiedHomepage
-  ) {
-    return {
-      connect: true,
-      confidence: "high",
-      evidence: contextualEvidence,
-    };
-  }
+  // Contextual similarity is useful for ranking candidates, but it is not an
+  // identity anchor. Never merge two provider records from a name,
+  // institution, topic, coauthor network, book family, or homepage alone.
   return { connect: false, confidence: "high", evidence: [] };
 }
 
@@ -2001,20 +1852,6 @@ function safeInstitutionalProfileUrl(value: string) {
   }
 }
 
-function htmlToEvidenceText(value: string) {
-  return clean(
-    value
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;|&#160;/gi, " ")
-      .replace(/&amp;/gi, "&")
-      .replace(/&quot;|&#34;/gi, '"')
-      .replace(/&#39;|&apos;/gi, "'"),
-    200_000,
-  );
-}
-
 async function openLibraryWorkAuthorSearch(query: string) {
   const isbn = normalizeIsbn(query);
   const url = new URL("https://openlibrary.org/search.json");
@@ -2079,97 +1916,6 @@ async function openLibraryWorkAuthorSearch(query: string) {
     });
   }
   return [...candidates.values()];
-}
-
-async function fetchInstitutionalProfileEvidence(
-  value: string,
-): Promise<InstitutionalProfileEvidence | null> {
-  const safeUrl = safeInstitutionalProfileUrl(value);
-  if (!safeUrl) return null;
-  const response = await fetch(safeUrl, {
-    headers: {
-      accept: "text/html,application/xhtml+xml",
-      "user-agent": USER_AGENT,
-    },
-    redirect: "error",
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (!response.ok) throw new Error(`机构主页 ${response.status}`);
-  const contentType = response.headers.get("content-type") || "";
-  if (!/text\/html|application\/xhtml\+xml/i.test(contentType)) {
-    throw new Error("机构主页不是可核验的网页");
-  }
-  const text = htmlToEvidenceText(await response.text());
-  return text ? { url: safeUrl, text } : null;
-}
-
-function pageContainsPersonName(pageText: string, personName: string) {
-  const page = normalizeName(pageText);
-  const name = normalizeName(personName);
-  if (!page || !name) return false;
-  if (page.includes(name)) return true;
-  const tokens = name.split(/\s+/).filter((token) => token.length > 1);
-  return tokens.length >= 2 && tokens.every((token) => page.includes(token));
-}
-
-function titleMatchesInstitutionalPage(pageText: string, title: string) {
-  const page = normalizeName(pageText);
-  const tokens = normalizeName(title)
-    .split(/\s+/)
-    .filter((token) => token.length >= 5);
-  return (
-    tokens.length >= 3 &&
-    tokens.filter((token) => page.includes(token)).length >=
-      Math.min(5, Math.ceil(tokens.length * 0.6))
-  );
-}
-
-function applyInstitutionalEvidence(
-  candidates: ScholarCandidate[],
-  evidence: InstitutionalProfileEvidence | null,
-  query: string,
-  institutionQueries: string[],
-) {
-  if (!evidence) return candidates;
-  return candidates.map((candidate) => {
-    if (!pageContainsPersonName(evidence.text, candidate.label)) {
-      return candidate;
-    }
-    const matchedInstitution =
-      candidate.institutions.some((item) =>
-        institutionMatchesAny(evidence.text, [item]),
-      ) ||
-      (institutionQueries.length > 0 &&
-        institutionQueries.some((item) =>
-          institutionMatchesAny(evidence.text, [item]),
-        ));
-    const matchedWork = candidate.representativeWorks.some((work) =>
-      titleMatchesInstitutionalPage(evidence.text, work.title),
-    );
-    if (!matchedInstitution && !matchedWork) return candidate;
-    const institutionalEvidence = unique([
-      ...candidate.institutionalEvidence,
-      matchedInstitution ? "机构主页中的姓名与任职单位一致" : undefined,
-      matchedWork ? "机构主页列出的代表作一致" : undefined,
-    ]);
-    return {
-      ...candidate,
-      institutionalProfileUrl: evidence.url,
-      institutionalProfileVerifiedAt: new Date().toISOString(),
-      institutionalEvidence,
-      profileUrl: evidence.url,
-      profileUrls: unique([evidence.url, ...candidate.profileUrls]),
-      mergeEvidence: unique([
-        ...candidate.mergeEvidence,
-        ...institutionalEvidence,
-      ]),
-      score: candidate.score + 45,
-      scoreReasons: unique([
-        ...candidate.scoreReasons,
-        "机构个人主页已核验",
-      ]),
-    };
-  });
 }
 
 function rankCandidate(
@@ -2433,24 +2179,19 @@ export async function searchScholars({
     }
   }
 
-  const homepageResult = homepage
-    ? await fetchInstitutionalProfileEvidence(homepage)
-        .then((value) => ({ value, warning: "" }))
-        .catch((error) => ({
-          value: null,
-          warning:
-            clean((error as Error)?.message) ||
-            "机构主页暂时无法核验",
-        }))
-    : { value: null, warning: "" };
-  if (homepageResult.warning) warnings.push(homepageResult.warning);
-
-  const verifiedCandidates = applyInstitutionalEvidence(
-    candidates,
-    homepageResult.value,
-    cleanQuery,
-    institutionQueries,
-  );
+  const safeHomepage = safeInstitutionalProfileUrl(homepage);
+  if (homepage && !safeHomepage) {
+    warnings.push("机构主页必须是公开的 HTTPS 地址。该链接未保存。");
+  } else if (safeHomepage) {
+    warnings.push("机构主页仅作为人工核验链接保存；程序不会自动抓取或据此合并作者档案。");
+  }
+  const verifiedCandidates = safeHomepage
+    ? candidates.map((candidate) => ({
+        ...candidate,
+        institutionalProfileUrl: safeHomepage,
+        profileUrls: unique([safeHomepage, ...candidate.profileUrls]),
+      }))
+    : candidates;
   const identityCandidates = workMode
     ? consolidateScholarCandidates(verifiedCandidates)
     : verifiedCandidates
