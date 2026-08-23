@@ -6,16 +6,16 @@ Last updated: 2026-08-23
 - Approved for implementation: yes
 - Target version: `v1.3.2`
 - Plan: [`docs/plans/v1.3.2-usability-and-recovery.md`](../plans/v1.3.2-usability-and-recovery.md)
-- Implementation branch: `codex/v1.3.2-ui-test-foundation`
-- Current step: UI interaction-test prerequisite `Verified`, awaiting merge
-- Implementation handoff: [`docs/handoffs/v1.3.2-ui-test-foundation.md`](../handoffs/v1.3.2-ui-test-foundation.md)
+- Implementation branch: `codex/v1.3.2-article-recovery-dates`
+- Current step: Slice A `Verified`, awaiting review and merge
+- Implementation handoff: [`docs/handoffs/v1.3.2-slice-a.md`](../handoffs/v1.3.2-slice-a.md)
 - Release task: none
 
 ## Next action
 
-Review and merge `codex/v1.3.2-ui-test-foundation`. After merge, open the short
-Slice A task using the ready-to-copy prompt in the approved plan. Do not start
-Slice B or C; all slices remain sequential.
+Review and merge `codex/v1.3.2-article-recovery-dates`. After merge, open the
+short Slice B task using the ready-to-copy prompt in the approved plan. Do not
+start Slice C; all remaining slices stay sequential.
 
 ## Repository note
 
