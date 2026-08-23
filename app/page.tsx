@@ -160,6 +160,7 @@ type ArticleState = { saved: boolean; read: boolean; ignored: boolean };
 type Notice = {
   message: string;
   action?: { label: string; run: () => void };
+  kind?: "status" | "error";
 };
 type Filter = "all" | MatchKind | "saved" | "ignored";
 type SubscriptionSelection = {
@@ -224,6 +225,179 @@ type ReminderStatus = {
   };
   sessionToken?: string;
 };
+
+type ReminderFormConfig = {
+  provider: string;
+  sender: string;
+  recipient: string;
+  host: string;
+  port: number;
+  security: "tls" | "starttls";
+  username: string;
+  format: "concise" | "detailed";
+  cadence: "daily" | "weekly" | "monthly";
+  time: string;
+  weekday: number;
+  monthDay: number;
+};
+
+const DEFAULT_REMINDER_CONFIG: ReminderFormConfig = {
+  provider: "qq",
+  sender: "",
+  recipient: "",
+  host: "smtp.qq.com",
+  port: 465,
+  security: "tls",
+  username: "",
+  format: "concise",
+  cadence: "daily",
+  time: "08:00",
+  weekday: 1,
+  monthDay: 1,
+};
+
+function reminderProviderPreset(provider: string) {
+  return {
+    qq: { host: "smtp.qq.com", port: 465, security: "tls" as const },
+    "163": { host: "smtp.163.com", port: 465, security: "tls" as const },
+    "126": { host: "smtp.126.com", port: 465, security: "tls" as const },
+    yeah: { host: "smtp.yeah.net", port: 465, security: "tls" as const },
+    gmail: { host: "smtp.gmail.com", port: 465, security: "tls" as const },
+    icloud: {
+      host: "smtp.mail.me.com",
+      port: 587,
+      security: "starttls" as const,
+    },
+  }[provider];
+}
+
+function normalizeReminderFormConfig(
+  value?: ReminderStatus["config"] | ReminderFormConfig,
+): ReminderFormConfig {
+  const rawProvider = value?.provider || DEFAULT_REMINDER_CONFIG.provider;
+  const provider =
+    rawProvider === "custom" && !value?.sender && !value?.host
+      ? DEFAULT_REMINDER_CONFIG.provider
+      : rawProvider;
+  const preset = reminderProviderPreset(provider);
+  const sender = value?.sender?.trim() || "";
+  const port = value?.port === 587 ? 587 : 465;
+  const savedSchedule =
+    value && !("cadence" in value) ? value.schedule : undefined;
+  const cadence =
+    value && "cadence" in value
+      ? value.cadence
+      : savedSchedule?.cadence || DEFAULT_REMINDER_CONFIG.cadence;
+  const time =
+    value && "time" in value
+      ? value.time
+      : savedSchedule?.time || DEFAULT_REMINDER_CONFIG.time;
+  const weekday =
+    value && "weekday" in value
+      ? value.weekday
+      : savedSchedule?.weekday ?? DEFAULT_REMINDER_CONFIG.weekday;
+  const monthDay =
+    value && "monthDay" in value
+      ? value.monthDay
+      : savedSchedule?.monthDay ?? DEFAULT_REMINDER_CONFIG.monthDay;
+  return {
+    provider,
+    sender,
+    recipient: value?.recipient?.trim() || "",
+    host: (value?.host || preset?.host || DEFAULT_REMINDER_CONFIG.host)
+      .trim()
+      .toLowerCase(),
+    port,
+    security:
+      value?.security ||
+      preset?.security ||
+      (port === 587 ? "starttls" : "tls"),
+    username: value?.username?.trim() || sender,
+    format: value?.format === "detailed" ? "detailed" : "concise",
+    cadence:
+      cadence === "weekly" || cadence === "monthly" ? cadence : "daily",
+    time: /^\d{2}:\d{2}$/.test(time) ? time : DEFAULT_REMINDER_CONFIG.time,
+    weekday: Math.min(6, Math.max(0, Number(weekday) || 0)),
+    monthDay: Math.min(28, Math.max(1, Number(monthDay) || 1)),
+  };
+}
+
+function reminderConfigKey(value: ReminderFormConfig) {
+  return JSON.stringify(normalizeReminderFormConfig(value));
+}
+
+type ElementRef<T extends HTMLElement> = { current: T | null };
+
+function useDialogFocus(
+  open: boolean,
+  dialogRef: ElementRef<HTMLElement>,
+  initialFocusRef: ElementRef<HTMLElement>,
+  returnFocusRef: ElementRef<HTMLElement>,
+  onRequestClose: () => void,
+) {
+  const closeRef = useRef(onRequestClose);
+
+  useEffect(() => {
+    closeRef.current = onRequestClose;
+  }, [onRequestClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const returnTarget = returnFocusRef.current;
+    const focusableSelector = [
+      "button:not([disabled])",
+      "a[href]",
+      "input:not([disabled])",
+      "select:not([disabled])",
+      "textarea:not([disabled])",
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(",");
+    const focusable = () =>
+      [...dialog.querySelectorAll<HTMLElement>(focusableSelector)].filter(
+        (element) => element.getAttribute("aria-hidden") !== "true",
+      );
+    const focusTimer = window.setTimeout(() => {
+      const target = initialFocusRef.current || focusable()[0] || dialog;
+      target.focus();
+    }, 0);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (!dialog.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.setTimeout(() => {
+        if (returnTarget?.isConnected) returnTarget.focus();
+      }, 0);
+    };
+  }, [dialogRef, initialFocusRef, open, returnFocusRef]);
+}
 
 const FILTERS: { id: Filter; label: string; icon: string }[] = [
   { id: "all", label: "学者动态", icon: "●" },
@@ -1260,20 +1434,11 @@ export default function Home() {
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderSaving, setReminderSaving] = useState(false);
   const [reminderSecretInput, setReminderSecretInput] = useState("");
-  const [reminderConfig, setReminderConfig] = useState({
-    provider: "qq",
-    sender: "",
-    recipient: "",
-    host: "smtp.qq.com",
-    port: 465,
-    security: "tls" as "tls" | "starttls",
-    username: "",
-    format: "concise" as "concise" | "detailed",
-    cadence: "daily" as "daily" | "weekly" | "monthly",
-    time: "08:00",
-    weekday: 1,
-    monthDay: 1,
-  });
+  const [reminderConfig, setReminderConfig] = useState<ReminderFormConfig>(
+    DEFAULT_REMINDER_CONFIG,
+  );
+  const [savedReminderConfig, setSavedReminderConfig] =
+    useState<ReminderFormConfig>(DEFAULT_REMINDER_CONFIG);
   const [reminderSessionToken, setReminderSessionToken] = useState("");
   const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
   const [openAlexApiKeyInput, setOpenAlexApiKeyInput] = useState("");
@@ -1292,6 +1457,26 @@ export default function Home() {
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchRequestRef = useRef(0);
   const profileRequestRef = useRef(0);
+  const addDialogRef = useRef<HTMLElement | null>(null);
+  const addInitialFocusRef = useRef<HTMLInputElement | null>(null);
+  const addReturnFocusRef = useRef<HTMLElement | null>(null);
+  const reminderDialogRef = useRef<HTMLElement | null>(null);
+  const reminderInitialFocusRef = useRef<HTMLSelectElement | null>(null);
+  const reminderReturnFocusRef = useRef<HTMLElement | null>(null);
+
+  function showNotice(
+    message: string,
+    action?: Notice["action"],
+    kind: Notice["kind"] = "status",
+  ) {
+    if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+    setNotice({ message, action, kind });
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 4200);
+  }
+
+  function showError(message: string) {
+    showNotice(message, undefined, "error");
+  }
   const keywordSuggestion = useMemo(
     () => (addKind === "keyword" ? createKeywordGroup(addQuery) : null),
     [addKind, addQuery],
@@ -1340,9 +1525,7 @@ export default function Home() {
         }
       })
       .catch(() => {
-        // showNotice is a stable component helper; this promise runs after render.
-        // eslint-disable-next-line react-hooks/immutability
-        if (!silent) showNotice("本地文件保存失败，请确认文件夹可写");
+        if (!silent) showError("本地文件保存失败，请确认文件夹可写");
       });
     return saveQueueRef.current;
   }
@@ -1422,29 +1605,14 @@ export default function Home() {
     };
   }, []);
 
-  function applyReminderStatus(status: ReminderStatus) {
+  function applyReminderStatus(status: ReminderStatus, syncForm = false) {
     setReminderStatus(status);
     if (status.sessionToken) setReminderSessionToken(status.sessionToken);
     const config = status.config;
     if (!config) return;
-    setReminderConfig((current) => ({
-      ...current,
-      provider:
-        config.provider === "custom" && !config.sender && !config.host
-          ? "qq"
-          : config.provider || current.provider,
-      sender: config.sender || current.sender,
-      recipient: config.recipient || current.recipient,
-      host: config.host || current.host,
-      port: config.port || current.port,
-      security: config.security || current.security,
-      username: config.username || current.username,
-      format: config.format || current.format,
-      cadence: config.schedule?.cadence || current.cadence,
-      time: config.schedule?.time || current.time,
-      weekday: typeof config.schedule?.weekday === "number" ? config.schedule.weekday : current.weekday,
-      monthDay: typeof config.schedule?.monthDay === "number" ? config.schedule.monthDay : current.monthDay,
-    }));
+    const saved = normalizeReminderFormConfig(config);
+    setSavedReminderConfig(saved);
+    if (syncForm) setReminderConfig(saved);
   }
 
   async function loadReminderStatus() {
@@ -1456,7 +1624,7 @@ export default function Home() {
         cache: "no-store",
       });
       if (!response.ok) return;
-      applyReminderStatus((await response.json()) as ReminderStatus);
+      applyReminderStatus((await response.json()) as ReminderStatus, true);
     } catch {
       // Hosted previews and old portable packages do not expose reminders.
     }
@@ -1482,7 +1650,7 @@ export default function Home() {
   async function saveReminderConfig() {
     setReminderSaving(true);
     try {
-      await reminderRequest("/api/reminders/config", "PUT", {
+      const status = await reminderRequest("/api/reminders/config", "PUT", {
         provider: reminderConfig.provider,
         sender: reminderConfig.sender,
         recipient: reminderConfig.recipient,
@@ -1498,9 +1666,12 @@ export default function Home() {
           monthDay: reminderConfig.monthDay,
         },
       });
+      if (status.config) {
+        setReminderConfig(normalizeReminderFormConfig(status.config));
+      }
       showNotice("邮件提醒配置已保存到当前文件夹");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "配置保存失败");
+      showError(error instanceof Error ? error.message : "配置保存失败");
     } finally {
       setReminderSaving(false);
     }
@@ -1508,7 +1679,7 @@ export default function Home() {
 
   async function saveReminderCredential() {
     if (!reminderSecretInput.trim()) {
-      showNotice("请输入邮箱授权码或应用专用密码");
+      showError("请输入邮箱授权码或应用专用密码");
       return;
     }
     setReminderSaving(true);
@@ -1517,7 +1688,7 @@ export default function Home() {
       setReminderSecretInput("");
       showNotice("授权码已保存到系统安全存储");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "授权码保存失败");
+      showError(error instanceof Error ? error.message : "授权码保存失败");
     } finally {
       setReminderSaving(false);
     }
@@ -1529,7 +1700,7 @@ export default function Home() {
       await reminderRequest("/api/reminders/test", "POST");
       showNotice("测试邮件已发送，请检查收件箱和垃圾邮件文件夹");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "测试邮件发送失败");
+      showError(error instanceof Error ? error.message : "测试邮件发送失败");
     } finally {
       setReminderSaving(false);
     }
@@ -1541,7 +1712,7 @@ export default function Home() {
       await reminderRequest("/api/reminders/enable", "POST");
       showNotice("邮件提醒已启用；首次检查只建立当前成果基线");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "邮件提醒启用失败");
+      showError(error instanceof Error ? error.message : "邮件提醒启用失败");
     } finally {
       setReminderSaving(false);
     }
@@ -1553,7 +1724,7 @@ export default function Home() {
       await reminderRequest("/api/reminders/run-now", "POST");
       showNotice("已完成一次提醒检查");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "提醒检查失败");
+      showError(error instanceof Error ? error.message : "提醒检查失败");
     } finally {
       setReminderSaving(false);
     }
@@ -1566,7 +1737,7 @@ export default function Home() {
       if (removeCredential) await reminderRequest("/api/reminders/credential", "DELETE");
       showNotice(removeCredential ? "提醒已停用，授权码已删除" : "邮件提醒已停用");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "邮件提醒停用失败");
+      showError(error instanceof Error ? error.message : "邮件提醒停用失败");
     } finally {
       setReminderSaving(false);
     }
@@ -1696,7 +1867,7 @@ export default function Home() {
         : semanticScholarApiKeyInput;
     const key = remove ? "" : input.trim();
     if (!remove && key.length < 8) {
-      showNotice(`请输入完整的 ${providerLabel} API Key`);
+      showError(`请输入完整的 ${providerLabel} API Key`);
       return;
     }
     setApiSettingsSaving(true);
@@ -1720,7 +1891,7 @@ export default function Home() {
           : `${providerLabel} API Key 已保存在本地文件夹`,
       );
     } catch {
-      showNotice("API Key 保存失败，请确认程序文件夹可写");
+      showError("API Key 保存失败，请确认程序文件夹可写");
     } finally {
       setApiSettingsSaving(false);
     }
@@ -1788,12 +1959,6 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }
-
-  function showNotice(message: string, action?: Notice["action"]) {
-    if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
-    setNotice({ message, action });
-    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 4200);
   }
 
   function saveSubscriptions(next: Subscriptions) {
@@ -2132,7 +2297,7 @@ export default function Home() {
     const name = manualScholarName.trim();
     const homepage = scholarHomepage.trim() || addQuery.trim();
     if (name.length < 2 || !/^https?:\/\//i.test(homepage)) {
-      showNotice("请填写学者姓名和完整主页网址");
+      showError("请填写学者姓名和完整主页网址");
       return;
     }
     followScholar({
@@ -2280,7 +2445,7 @@ export default function Home() {
         setAddQuery(requestResult.label);
         setSearchResults(data.candidates);
         setAuthorContextName(requestResult.label);
-        setAddOpen(true);
+        openAddModal();
       } else {
         setProfile({
           candidate: requestResult,
@@ -2305,6 +2470,34 @@ export default function Home() {
     } finally {
       if (requestId === profileRequestRef.current) setProfileLoading(false);
     }
+  }
+
+  function rememberDialogTrigger(target: ElementRef<HTMLElement>) {
+    if (document.activeElement instanceof HTMLElement) {
+      target.current = document.activeElement;
+    }
+  }
+
+  function openAddModal() {
+    rememberDialogTrigger(addReturnFocusRef);
+    setAddOpen(true);
+  }
+
+  function openReminderModal() {
+    rememberDialogTrigger(reminderReturnFocusRef);
+    setReminderOpen(true);
+  }
+
+  function closeReminderModal() {
+    if (
+      reminderDirty &&
+      !window.confirm("放弃尚未保存或测试的邮件提醒修改？")
+    ) {
+      return;
+    }
+    setReminderConfig(savedReminderConfig);
+    setReminderSecretInput("");
+    setReminderOpen(false);
   }
 
   function closeAddModal() {
@@ -2360,7 +2553,7 @@ export default function Home() {
     setAddQuery(article.doi || article.title);
     setSearchResults([]);
     setSearchWarnings([]);
-    setAddOpen(true);
+    openAddModal();
   }
 
   function addSubscription(result?: SearchResult) {
@@ -2489,7 +2682,7 @@ export default function Home() {
         message?: string;
       };
       if (!response.ok || !data.translation) {
-        showNotice(data.message || "中文翻译暂时不可用");
+        showError(data.message || "中文翻译暂时不可用");
         return;
       }
       const next = {
@@ -2500,7 +2693,7 @@ export default function Home() {
       void persistLocalData({ translations: next });
       showNotice("已生成中文摘要");
     } catch {
-      showNotice("中文翻译暂时不可用");
+      showError("中文翻译暂时不可用");
     } finally {
       setTranslating(null);
     }
@@ -2714,17 +2907,40 @@ export default function Home() {
         (item) => scholarRecordsMatch(profile.candidate, item),
       )
     : currentScholar;
+  const normalizedReminderConfig = normalizeReminderFormConfig(reminderConfig);
+  const reminderConfigDirty =
+    reminderConfigKey(normalizedReminderConfig) !==
+    reminderConfigKey(savedReminderConfig);
+  const reminderCredentialDirty = reminderSecretInput.trim().length > 0;
+  const reminderDirty = reminderConfigDirty || reminderCredentialDirty;
   const reminderEmailReady = Boolean(
     reminderStatus?.config?.sender && reminderStatus?.config?.recipient,
   );
+  const reminderFormSaved = reminderEmailReady && !reminderConfigDirty;
   const reminderCredentialReady = Boolean(
     reminderStatus?.credentialConfigured,
   );
-  const reminderTestReady = Boolean(reminderStatus?.tested);
+  const savedReminderTestReady = Boolean(reminderStatus?.tested);
+  const reminderTestReady = savedReminderTestReady && !reminderDirty;
   const reminderEnabled = Boolean(reminderStatus?.config?.enabled);
   const reminderProviderGuidance =
     REMINDER_PROVIDER_GUIDANCE[reminderConfig.provider] ||
     REMINDER_PROVIDER_GUIDANCE.custom;
+
+  useDialogFocus(
+    addOpen,
+    addDialogRef,
+    addInitialFocusRef,
+    addReturnFocusRef,
+    closeAddModal,
+  );
+  useDialogFocus(
+    reminderOpen,
+    reminderDialogRef,
+    reminderInitialFocusRef,
+    reminderReturnFocusRef,
+    closeReminderModal,
+  );
 
   async function openScholar(scholar: Scholar) {
     const cached = findCachedProfile(scholar);
@@ -2821,7 +3037,7 @@ export default function Home() {
           {reminderStatus && (
             <button
               className="refresh-button"
-              onClick={() => setReminderOpen(true)}
+              onClick={openReminderModal}
               title="设置每日、每周或每月邮件提醒"
             >
               {reminderStatus.config?.enabled ? "邮件提醒已开" : "邮件提醒"}
@@ -2858,7 +3074,7 @@ export default function Home() {
               <button
                 aria-label="添加关注项"
                 title="搜索并添加关注"
-                onClick={() => setAddOpen(true)}
+                onClick={openAddModal}
               >
                 ＋
               </button>
@@ -3115,9 +3331,9 @@ export default function Home() {
             </section>
           )}
 
-          {error && <div className="error-banner">{error}</div>}
+          {error && <div className="error-banner" role="alert">{error}</div>}
           {feed?.warnings?.map((warning) => (
-            <div className="error-banner" key={warning}>{warning}</div>
+            <div className="error-banner" role="status" key={warning}>{warning}</div>
           ))}
 
           {profileLoading ? (
@@ -3206,7 +3422,7 @@ export default function Home() {
                 <button
                   onClick={() => {
                     setAddKind("scholar");
-                    setAddOpen(true);
+                    openAddModal();
                   }}
                 >
                   搜索并添加学者
@@ -3466,14 +3682,14 @@ export default function Home() {
                     <div className="match-row">
                       <span>收录原因</span>
                       {article.matches.map((match) => (
-                        <button
+                        <span
                           key={`${match.kind}-${match.label}`}
                           className={`match-chip ${match.kind}`}
                           title={`${kindLabel(match.kind)}匹配`}
                         >
                           {match.kind === "keyword" ? "#" : ""}
                           {match.label}
-                        </button>
+                        </span>
                       ))}
                     </div>
 
@@ -3630,10 +3846,12 @@ export default function Home() {
       {addOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={closeAddModal}>
           <section
+            ref={addDialogRef}
             className="add-modal"
             role="dialog"
             aria-modal="true"
             aria-label="添加关注"
+            tabIndex={-1}
             onMouseDown={(event) => event.stopPropagation()}
           >
             <header>
@@ -3691,7 +3909,7 @@ export default function Home() {
             <label className="add-search">
               <span>⌕</span>
               <input
-                autoFocus
+                ref={addInitialFocusRef}
                 value={addQuery}
                 onChange={(event) => setAddQuery(event.target.value)}
                 placeholder={
@@ -4097,12 +4315,14 @@ export default function Home() {
       )}
 
       {reminderOpen && reminderStatus && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setReminderOpen(false)}>
+        <div className="modal-backdrop" role="presentation" onMouseDown={closeReminderModal}>
           <section
+            ref={reminderDialogRef}
             className="add-modal reminder-modal"
             role="dialog"
             aria-modal="true"
             aria-label="邮件提醒设置"
+            tabIndex={-1}
             onMouseDown={(event) => event.stopPropagation()}
           >
             <header>
@@ -4111,57 +4331,61 @@ export default function Home() {
                 <h2>用 3 步开启自动提醒</h2>
                 <span className="reminder-header-copy">准备一个用于发信的小号邮箱，Anthropology Canteen 会定期把新发表汇总发到你的常用邮箱。</span>
               </div>
-              <button aria-label="关闭" onClick={() => setReminderOpen(false)}>×</button>
+              <button aria-label="关闭" onClick={closeReminderModal}>×</button>
             </header>
-            <div className={`reminder-overview ${reminderEnabled ? "is-enabled" : ""}`}>
+            <div className={`reminder-overview ${reminderEnabled ? "is-enabled" : ""} ${reminderDirty ? "is-dirty" : ""}`}>
               <span className="reminder-overview-icon" aria-hidden="true">{reminderEnabled ? "✓" : "✉"}</span>
               <div>
                 <strong>{reminderEnabled ? "邮件提醒正在运行" : "完成下面 3 步即可开启"}</strong>
-                <p>{reminderEnabled ? "网页关闭后，系统仍会按计划检查；没有新内容时不会发邮件。" : "全程在本机完成，不需要服务器，也不会把邮箱密码上传到任何地方。"}</p>
+                <p>
+                  {reminderEnabled && reminderDirty
+                    ? "后台提醒仍按已保存配置运行；保存并重新测试前，本次编辑不会生效。"
+                    : reminderEnabled
+                      ? "网页关闭后，系统仍会按计划检查；没有新内容时不会发邮件。"
+                      : reminderDirty
+                        ? "当前修改尚未保存或测试，关闭设置前会询问是否放弃。"
+                        : "全程在本机完成，不需要服务器，也不会把邮箱密码上传到任何地方。"}
+                </p>
               </div>
             </div>
 
             <ol className="reminder-progress" aria-label="邮件提醒配置进度">
-              <li className={reminderEmailReady ? "is-complete" : "is-active"}>
-                <b>{reminderEmailReady ? "✓" : "1"}</b><span>邮箱与时间</span>
+              <li className={reminderFormSaved ? "is-complete" : "is-active"}>
+                <b>{reminderFormSaved ? "✓" : "1"}</b><span>邮箱与时间</span>
               </li>
-              <li className={reminderTestReady ? "is-complete" : reminderEmailReady ? "is-active" : ""}>
+              <li className={reminderTestReady ? "is-complete" : reminderFormSaved ? "is-active" : ""}>
                 <b>{reminderTestReady ? "✓" : "2"}</b><span>授权码与测试</span>
               </li>
-              <li className={reminderEnabled ? "is-complete" : reminderTestReady ? "is-active" : ""}>
-                <b>{reminderEnabled ? "✓" : "3"}</b><span>开启提醒</span>
+              <li className={reminderEnabled && !reminderDirty ? "is-complete" : reminderTestReady ? "is-active" : ""}>
+                <b>{reminderEnabled && !reminderDirty ? "✓" : "3"}</b><span>开启提醒</span>
               </li>
             </ol>
 
             <div className="reminder-layout">
               <div className="reminder-steps">
-                <section className={`reminder-step-card ${reminderEmailReady ? "is-complete" : "is-current"}`}>
+                <section className={`reminder-step-card ${reminderFormSaved ? "is-complete" : "is-current"}`}>
                   <div className="reminder-step-heading">
                     <span>1</span>
                     <div><h3>填写发件邮箱、收件邮箱和时间</h3><p>发件邮箱建议使用不重要的小号；收件邮箱填写你日常查看的邮箱。</p></div>
-                    {reminderEmailReady && <em>已保存</em>}
+                    {reminderConfigDirty
+                      ? <em className="is-dirty">未保存</em>
+                      : reminderFormSaved && <em>已保存</em>}
                   </div>
                   <div className="reminder-form-grid reminder-form-grid--three">
                     <label>
                       <span>小号邮箱类型</span>
                       <select
+                        ref={reminderInitialFocusRef}
                         value={reminderConfig.provider}
                         onChange={(event) => {
                           const provider = event.target.value;
-                          const preset = {
-                            qq: ["smtp.qq.com", 465, "tls"],
-                            "163": ["smtp.163.com", 465, "tls"],
-                            "126": ["smtp.126.com", 465, "tls"],
-                            yeah: ["smtp.yeah.net", 465, "tls"],
-                            gmail: ["smtp.gmail.com", 465, "tls"],
-                            icloud: ["smtp.mail.me.com", 587, "starttls"],
-                          }[provider] as [string, number, "tls" | "starttls"] | undefined;
+                          const preset = reminderProviderPreset(provider);
                           setReminderConfig((current) => ({
                             ...current,
                             provider,
-                            host: preset?.[0] || current.host,
-                            port: preset?.[1] || current.port,
-                            security: preset?.[2] || current.security,
+                            host: preset?.host || current.host,
+                            port: preset?.port || current.port,
+                            security: preset?.security || current.security,
                           }));
                         }}
                       >
@@ -4198,16 +4422,24 @@ export default function Home() {
                     <label><span>邮件内容</span><select value={reminderConfig.format} onChange={(event) => setReminderConfig((current) => ({ ...current, format: event.target.value as "concise" | "detailed" }))}><option value="concise">简洁版</option><option value="detailed">包含摘要片段</option></select></label>
                   </div>
                   <div className="reminder-step-action">
-                    <small>修改并保存这些设置后，需要重新发送一次测试邮件。</small>
-                    <button type="button" className="primary-button" disabled={reminderSaving} onClick={() => void saveReminderConfig()}>保存第 1 步</button>
+                    <small>
+                      {reminderConfigDirty
+                        ? "当前修改尚未保存；保存后需要重新发送测试邮件。"
+                        : "这里显示的是当前已保存配置。"}
+                    </small>
+                    <button type="button" className="primary-button" disabled={reminderSaving || !reminderConfigDirty} onClick={() => void saveReminderConfig()}>保存第 1 步</button>
                   </div>
                 </section>
 
-                <section className={`reminder-step-card ${reminderTestReady ? "is-complete" : reminderEmailReady ? "is-current" : "is-locked"}`}>
+                <section className={`reminder-step-card ${reminderTestReady ? "is-complete" : reminderFormSaved ? "is-current" : "is-locked"}`}>
                   <div className="reminder-step-heading">
                     <span>2</span>
                     <div><h3>保存授权码，再发送测试邮件</h3><p>授权码由邮箱服务商单独生成，不是你登录邮箱时使用的密码。</p></div>
-                    {reminderTestReady && <em>测试成功</em>}
+                    {reminderTestReady
+                      ? <em>测试成功</em>
+                      : savedReminderTestReady && reminderDirty
+                        ? <em className="is-dirty">当前修改待重测</em>
+                        : null}
                   </div>
                   <div className="reminder-provider-tip">
                     <strong>{reminderProviderGuidance.title}</strong>
@@ -4215,34 +4447,46 @@ export default function Home() {
                   </div>
                   <label className="reminder-secret-field">
                     <span>授权码／应用专用密码</span>
-                    <input type="password" autoComplete="new-password" value={reminderSecretInput} onChange={(event) => setReminderSecretInput(event.target.value)} placeholder={reminderCredentialReady ? "已安全保存；留空表示不更换" : "把邮箱生成的授权码粘贴到这里"} disabled={!reminderEmailReady} />
+                    <input type="password" autoComplete="new-password" value={reminderSecretInput} onChange={(event) => setReminderSecretInput(event.target.value)} placeholder={reminderCredentialReady ? "已安全保存；留空表示不更换" : "把邮箱生成的授权码粘贴到这里"} disabled={!reminderFormSaved} />
                   </label>
                   <div className="reminder-step-action reminder-step-action--split">
-                    <span className={`reminder-inline-status ${reminderCredentialReady ? "is-ready" : ""}`}>{reminderCredentialReady ? "✓ 授权码已安全保存" : "请先完成并保存第 1 步"}</span>
+                    <span className={`reminder-inline-status ${reminderCredentialReady && !reminderCredentialDirty ? "is-ready" : ""}`}>
+                      {!reminderFormSaved
+                        ? "请先完成并保存第 1 步"
+                        : reminderCredentialDirty
+                          ? "新授权码尚未保存"
+                          : reminderCredentialReady
+                            ? "✓ 授权码已安全保存"
+                            : "请保存授权码"}
+                    </span>
                     <div>
-                      <button type="button" disabled={reminderSaving || !reminderEmailReady || !reminderSecretInput.trim()} onClick={() => void saveReminderCredential()}>{reminderCredentialReady ? "更换授权码" : "保存授权码"}</button>
-                      <button type="button" className="primary-button" disabled={reminderSaving || !reminderCredentialReady} onClick={() => void testReminder()}>发送测试邮件</button>
+                      <button type="button" disabled={reminderSaving || !reminderFormSaved || !reminderSecretInput.trim()} onClick={() => void saveReminderCredential()}>{reminderCredentialReady ? "更换授权码" : "保存授权码"}</button>
+                      <button type="button" className="primary-button" disabled={reminderSaving || !reminderCredentialReady || reminderDirty} onClick={() => void testReminder()}>发送测试邮件</button>
                     </div>
                   </div>
                 </section>
 
-                <section className={`reminder-step-card reminder-final-step ${reminderEnabled ? "is-complete" : reminderTestReady ? "is-current" : "is-locked"}`}>
+                <section className={`reminder-step-card reminder-final-step ${reminderEnabled && !reminderDirty ? "is-complete" : reminderTestReady ? "is-current" : "is-locked"}`}>
                   <div className="reminder-step-heading">
                     <span>3</span>
                     <div><h3>确认收到测试邮件，然后开启提醒</h3><p>首次开启只记录当前成果作为起点，不会把关注对象的历史发表一次性推送给你。</p></div>
-                    {reminderEnabled && <em>运行中</em>}
+                    {reminderEnabled && (
+                      <em className={reminderDirty ? "is-dirty" : undefined}>
+                        {reminderDirty ? "旧配置运行中" : "运行中"}
+                      </em>
+                    )}
                   </div>
                   {reminderEnabled ? (
                     <div className="reminder-enabled-actions">
                       <div><strong>后台提醒已开启</strong><span>{reminderStatus.state?.nextDueAt ? `下次计划：${new Date(reminderStatus.state.nextDueAt).toLocaleString("zh-CN")}` : "计划任务已安装"}</span></div>
-                      {reminderStatus.scheduler?.stalePath && <button type="button" className="primary-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady} onClick={() => void enableReminder()}>迁移到当前文件夹</button>}
+                      {reminderStatus.scheduler?.stalePath && <button type="button" className="primary-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>迁移到当前文件夹</button>}
                       <button type="button" disabled={reminderSaving} onClick={() => void runReminderNow()}>立即检查一次</button>
                       <button type="button" disabled={reminderSaving} onClick={() => void disableReminder(false)}>停用提醒</button>
                     </div>
                   ) : (
                     <div className="reminder-step-action">
                       <small>{reminderTestReady ? "测试成功，现在可以安全开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
-                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady} onClick={() => void enableReminder()}>开启自动邮件提醒</button>
+                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>开启自动邮件提醒</button>
                     </div>
                   )}
                 </section>
@@ -4267,7 +4511,7 @@ export default function Home() {
 
             {(reminderStatus.state?.lastError || reminderStatus.scheduler?.stalePath || reminderStatus.state?.lastCheckAt) && (
               <div className="reminder-runtime-status">
-                {reminderStatus.state?.lastError && <p className="search-warning">上次运行：{reminderStatus.state.lastError}</p>}
+                {reminderStatus.state?.lastError && <p className="search-warning" role="alert">上次运行：{reminderStatus.state.lastError}</p>}
                 {reminderStatus.scheduler?.stalePath && <p className="search-warning">提醒仍绑定旧版文件夹：{reminderStatus.scheduler.stalePath}</p>}
                 {reminderStatus.state?.lastCheckAt && <span>上次检查：{new Date(reminderStatus.state.lastCheckAt).toLocaleString("zh-CN")}</span>}
                 {reminderStatus.state?.lastSuccessfulSendAt && <span>上次发信：{new Date(reminderStatus.state.lastSuccessfulSendAt).toLocaleString("zh-CN")}</span>}
@@ -4279,7 +4523,12 @@ export default function Home() {
       )}
 
       {notice && (
-        <div className="toast">
+        <div
+          className="toast"
+          role={notice.kind === "error" ? "alert" : "status"}
+          aria-live={notice.kind === "error" ? "assertive" : "polite"}
+          aria-atomic="true"
+        >
           <span>{notice.message}</span>
           {notice.action && (
             <button

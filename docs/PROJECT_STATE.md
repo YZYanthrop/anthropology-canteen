@@ -162,7 +162,11 @@ version-8 article snapshots, and explicit publication-date precision without
 changing the schema number. Slice B adds one complete return-to-overview path,
 scholar-scoped new-item actions, native card controls, and real subscription and
 provider update health while preserving the last successful feed after total
-failure. Slice C remains sequential and has not started.
+failure. Slice C adds explicit saved-versus-edited reminder state, discard
+confirmation, keyboard-safe dialogs and feedback semantics, a persistent
+narrow-screen search row, and minimum text sizes for core metadata and controls.
+All v1.3.2 implementation slices are complete; merge and trial status remain in
+the active work packet until the milestone is frozen for a separate release task.
 The exact branch, handoff, and next action live in `docs/work/ACTIVE.md`.
 
 Project continuation no longer depends on a permanent Codex conversation.

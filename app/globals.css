@@ -96,7 +96,7 @@ button {
   border-radius: 50%;
   color: var(--paper);
   background: var(--forest);
-  font: 700 10px/1 var(--font-sans), sans-serif;
+  font: 700 11px/1 var(--font-sans), sans-serif;
   letter-spacing: 0.04em;
 }
 
@@ -139,7 +139,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 5px;
   background: var(--paper);
-  font-size: 10px;
+  font-size: 11px;
   color: #8d918e;
 }
 
@@ -247,7 +247,7 @@ button {
   border-radius: 20px;
   background: rgba(0, 0, 0, 0.08);
   font-style: normal;
-  font-size: 10px;
+  font-size: 11px;
   text-align: center;
 }
 
@@ -328,7 +328,7 @@ i.keyword {
 .subscription-group summary em {
   font-style: normal;
   color: #8d938f;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .subscription-group ul {
@@ -428,13 +428,13 @@ i.keyword {
 }
 
 .sidebar-note strong {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .sidebar-note small {
   margin-top: 2px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .feed-heading {
@@ -447,7 +447,7 @@ i.keyword {
 .eyebrow {
   margin: 0 0 6px;
   color: var(--coral);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -476,7 +476,7 @@ i.keyword {
   gap: 6px;
   padding-bottom: 5px;
   color: #7a817d;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .feed-status span {
@@ -532,7 +532,7 @@ i.keyword {
 
 .scholar-profile p {
   color: var(--coral);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
 }
@@ -557,7 +557,7 @@ i.keyword {
 .scholar-profile small {
   margin-top: 5px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.55;
 }
 
@@ -580,7 +580,7 @@ i.keyword {
 
 .scholar-profile a {
   color: var(--forest);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   text-decoration: none;
 }
@@ -656,7 +656,7 @@ i.keyword {
   overflow: hidden;
   margin-top: 4px;
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -667,7 +667,7 @@ i.keyword {
   border-radius: 20px;
   background: var(--forest-soft);
   color: var(--forest);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -676,7 +676,7 @@ i.keyword {
   overflow: hidden;
   margin: -2px 19px 13px 74px;
   color: #8a7567;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -689,7 +689,7 @@ i.keyword {
   gap: 10px;
   margin: 0 19px 12px;
   color: var(--forest);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .scholar-card-update-status button {
@@ -700,7 +700,7 @@ i.keyword {
   background: var(--forest-soft);
   color: var(--forest);
   cursor: pointer;
-  font: 700 9px var(--font-sans), sans-serif;
+  font: 700 11px var(--font-sans), sans-serif;
 }
 
 .scholar-latest {
@@ -716,7 +716,7 @@ i.keyword {
 .scholar-latest > small,
 .scholar-history small {
   color: var(--coral);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
 }
@@ -735,7 +735,7 @@ i.keyword {
   overflow: hidden;
   margin: 0;
   color: #758078;
-  font-size: 9.5px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -745,7 +745,7 @@ i.keyword {
   overflow: hidden;
   margin: 10px 0 0;
   color: #59655f;
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.65;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -763,7 +763,7 @@ i.keyword {
   border-radius: 5px;
   background: var(--ochre-soft);
   color: #805a1f;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -778,7 +778,7 @@ i.keyword {
   margin: 9px auto 0;
   max-width: 230px;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.7;
 }
 
@@ -796,7 +796,7 @@ i.keyword {
 
 .scholar-history > div span {
   color: #9a9e9b;
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 .scholar-history ol {
@@ -817,20 +817,20 @@ i.keyword {
 .scholar-history li span {
   overflow: hidden;
   color: #515c56;
-  font-size: 10px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .scholar-history li time {
   color: #989d9a;
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 .scholar-history > p {
   margin: 10px 0 0;
   color: #929793;
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .scholar-card-actions {
@@ -851,7 +851,7 @@ i.keyword {
   background: transparent;
   color: var(--forest);
   cursor: pointer;
-  font: 700 10px var(--font-sans), sans-serif;
+  font: 700 11px var(--font-sans), sans-serif;
 }
 
 .scholar-card-actions button:hover,
@@ -872,7 +872,7 @@ i.keyword {
   background: rgba(255, 254, 250, 0.78);
   color: var(--forest);
   cursor: pointer;
-  font: 700 10px var(--font-sans), sans-serif;
+  font: 700 11px var(--font-sans), sans-serif;
 }
 
 .scholar-empty button {
@@ -921,7 +921,7 @@ i.keyword {
   display: inline-block;
   margin-left: 4px;
   color: var(--forest);
-  font-size: 10px;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 
@@ -947,7 +947,7 @@ i.keyword {
   border-radius: 5px;
   background: #eeece6;
   color: #8b8d89;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .type-pill {
@@ -1033,7 +1033,7 @@ mark {
 
 .profile-publications-heading p {
   color: var(--coral);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
 }
@@ -1046,7 +1046,7 @@ mark {
 
 .profile-publications-heading > span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .profile-publications ol {
@@ -1068,7 +1068,7 @@ mark {
   display: flex;
   gap: 9px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .profile-publications li em {
@@ -1095,7 +1095,7 @@ mark {
   display: block;
   margin-top: 5px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .profile-abstract {
@@ -1108,7 +1108,7 @@ mark {
   background: transparent;
   color: var(--forest);
   cursor: pointer;
-  font: 700 10px/1.4 var(--font-sans), sans-serif;
+  font: 700 11px/1.4 var(--font-sans), sans-serif;
 }
 
 .profile-abstract button:hover {
@@ -1140,6 +1140,8 @@ mark {
 }
 
 .match-chip {
+  display: inline-flex;
+  align-items: center;
   padding: 6px 10px;
   border: 0;
   border-radius: 6px;
@@ -1178,7 +1180,7 @@ mark {
 
 .abstract-heading strong {
   color: var(--forest);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .abstract-heading .inline-translate {
@@ -1188,7 +1190,7 @@ mark {
   border-radius: 6px;
   background: #edf3ef;
   color: var(--forest);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .abstract-heading .inline-translate:hover {
@@ -1218,7 +1220,7 @@ mark {
 .source-keywords > span {
   padding-top: 4px;
   color: #969a97;
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .source-keywords > div {
@@ -1232,7 +1234,7 @@ mark {
   border: 1px solid #e5dfd5;
   border-radius: 5px;
   color: #7b817d;
-  font-size: 9px;
+  font-size: 11px;
   font-style: normal;
 }
 
@@ -1245,7 +1247,7 @@ mark {
 
 .abstract-block p.abstract-missing {
   color: #929792;
-  font-size: 10px;
+  font-size: 11px;
   font-style: italic;
 }
 
@@ -1263,7 +1265,7 @@ mark {
   background: transparent;
   color: var(--coral);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -1280,7 +1282,7 @@ mark {
   align-items: center;
   gap: 6px;
   color: var(--forest);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .guide-label > span {
@@ -1294,7 +1296,7 @@ mark {
   background: rgba(24, 61, 50, 0.08);
   color: #6e7f76;
   font-style: normal;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .guide-block p {
@@ -1313,7 +1315,7 @@ mark {
   background: rgba(237, 243, 239, 0.65);
   color: var(--forest);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-align: left;
 }
@@ -1343,7 +1345,7 @@ mark {
   background: transparent;
   color: #757c78;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 11px;
   text-decoration: none;
 }
 
@@ -1453,7 +1455,7 @@ mark {
 
 .signal-card .section-heading small {
   color: #969b98;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 500;
 }
 
@@ -1471,7 +1473,7 @@ mark {
 
 .signal-stat span {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .health-last-success,
@@ -1486,13 +1488,13 @@ mark {
 .health-last-success span,
 .health-providers span {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .health-last-success strong,
 .health-providers strong {
   color: var(--forest);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -1512,7 +1514,7 @@ mark {
 
 .health-counts dt {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .health-counts dd {
@@ -1582,7 +1584,7 @@ mark {
 .add-modal > header p {
   margin: 0 0 4px;
   color: var(--coral);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
 }
@@ -1643,7 +1645,7 @@ mark {
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -1702,7 +1704,7 @@ mark {
   display: block;
   margin: 0 0 5px 2px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .scholar-search-filters input,
@@ -1715,7 +1717,7 @@ mark {
   background: white;
   color: var(--ink);
   font: inherit;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .scholar-search-filters input:focus,
@@ -1726,7 +1728,7 @@ mark {
 .scholar-search-help {
   margin: 9px 29px 0;
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.55;
 }
 
@@ -1738,7 +1740,7 @@ mark {
   gap: 12px;
   margin: 9px 27px 0;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .api-access-row strong {
@@ -1753,7 +1755,7 @@ mark {
   background: transparent;
   color: var(--forest);
   cursor: pointer;
-  font: 700 9px/1.4 var(--font-sans), sans-serif;
+  font: 700 11px/1.4 var(--font-sans), sans-serif;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -1780,13 +1782,13 @@ mark {
 .api-settings-panel p {
   margin: 5px 0;
   color: #607068;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.6;
 }
 
 .api-settings-panel a {
   color: var(--forest);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   text-decoration: none;
 }
@@ -1800,7 +1802,7 @@ mark {
   display: block;
   margin-bottom: 5px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .api-settings-panel input {
@@ -1812,7 +1814,7 @@ mark {
   background: white;
   color: var(--ink);
   font: inherit;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .api-settings-actions {
@@ -1829,7 +1831,7 @@ mark {
   background: var(--forest);
   color: white;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -1865,7 +1867,7 @@ mark {
   border-radius: 7px;
   background: var(--forest-soft);
   color: #607068;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -1902,7 +1904,7 @@ mark {
 .scholar-result-heading small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .scholar-result-heading > span {
@@ -1911,14 +1913,14 @@ mark {
   border-radius: 6px;
   background: var(--forest-soft);
   color: var(--forest);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 700;
 }
 
 .scholar-search-result > p {
   margin: 8px 0 0;
   color: #4d5c54;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -1965,7 +1967,7 @@ mark {
 
 .latest-work-preview small {
   color: var(--coral);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
 }
@@ -1973,14 +1975,14 @@ mark {
 .latest-work-preview strong {
   margin-top: 4px;
   color: #35453d;
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
 .latest-work-preview span {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 .representative-works li {
@@ -1990,7 +1992,7 @@ mark {
   padding: 5px 0;
   border-top: 1px solid #efebe4;
   color: #3f4944;
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -2005,7 +2007,7 @@ mark {
   gap: 6px 14px;
   margin-top: 10px;
   color: var(--muted);
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 .scholar-result-actions {
@@ -2020,7 +2022,7 @@ mark {
   padding: 7px 11px;
   border-radius: 7px;
   cursor: pointer;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -2058,7 +2060,7 @@ mark {
 .manual-scholar > p {
   margin: 5px 0 10px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -2070,7 +2072,7 @@ mark {
   background: var(--forest);
   color: white;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .search-result {
@@ -2112,12 +2114,12 @@ mark {
 .search-result small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .search-result small.research-preview {
   color: #6d7c73;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
   white-space: normal;
 }
@@ -2125,7 +2127,7 @@ mark {
 .search-result em {
   flex: 0 0 auto;
   color: var(--coral);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 700;
 }
@@ -2162,7 +2164,7 @@ mark {
 
 .keyword-family-result small {
   color: var(--ochre);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
 }
@@ -2177,7 +2179,7 @@ mark {
 .keyword-family-result em {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 11px;
   font-style: normal;
 }
 
@@ -2187,14 +2189,14 @@ mark {
   border-radius: 7px;
   background: var(--forest);
   color: white;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .add-modal > footer {
   padding: 13px 27px 16px;
   border-top: 1px solid var(--line);
   color: #8a8f8c;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 @keyframes toast-in {
@@ -2223,18 +2225,37 @@ mark {
     border-radius: 9px;
     background: rgba(255, 254, 250, 0.7);
     color: var(--muted);
-    font-size: 9px;
+    font-size: 11px;
   }
 }
 
 @media (max-width: 820px) {
   .topbar {
-    padding: 0 18px;
+    height: auto;
+    min-height: 76px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 10px;
+    padding: 12px 18px;
   }
 
-  .search,
   .avatar {
     display: none;
+  }
+
+  .topbar-actions {
+    display: contents;
+  }
+
+  .topbar-actions .refresh-button {
+    grid-row: 1;
+  }
+
+  .search {
+    width: 100%;
+    display: flex;
+    grid-row: 2;
+    grid-column: 1 / -1;
   }
 
   .workspace {
@@ -2295,6 +2316,16 @@ mark {
   }
 }
 
+@media (max-width: 520px) {
+  .brand strong {
+    display: none;
+  }
+
+  .refresh-button {
+    padding: 0 10px;
+  }
+}
+
 @media (max-width: 680px) {
   .scholar-card-grid {
     grid-template-columns: 1fr;
@@ -2316,7 +2347,7 @@ mark {
   border-radius: 8px;
   background: #fff3e4;
   color: #785a38;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -2405,6 +2436,11 @@ mark {
   background: #eff6f1;
 }
 
+.reminder-overview.is-dirty {
+  border-color: #d8b28e;
+  background: #fff5e8;
+}
+
 .reminder-overview-icon {
   display: grid;
   flex: 0 0 34px;
@@ -2430,7 +2466,7 @@ mark {
 .reminder-overview p {
   margin: 3px 0 0;
   color: #737a75;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -2449,7 +2485,7 @@ mark {
   align-items: center;
   gap: 7px;
   color: #9a9e9b;
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .reminder-progress li:not(:last-child)::after {
@@ -2469,7 +2505,7 @@ mark {
   border: 1px solid #d5d7d3;
   border-radius: 50%;
   background: #fffefa;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .reminder-progress .is-active {
@@ -2561,7 +2597,7 @@ mark {
 .reminder-step-heading p {
   margin: 0;
   color: #828781;
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.55;
 }
 
@@ -2570,9 +2606,14 @@ mark {
   border-radius: 999px;
   background: #e7f0ea;
   color: var(--forest);
-  font-size: 8.5px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 700;
+}
+
+.reminder-step-heading em.is-dirty {
+  background: #fff0df;
+  color: #8b5c28;
 }
 
 .reminder-form-grid {
@@ -2608,7 +2649,7 @@ mark {
 .reminder-form-grid label span,
 .reminder-secret-field > span {
   color: #626b65;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -2624,7 +2665,7 @@ mark {
   color: inherit;
   padding: 8px 9px;
   font: inherit;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .reminder-form-grid input:focus,
@@ -2645,7 +2686,7 @@ mark {
 
 .reminder-step-action small {
   color: #8b8f8c;
-  font-size: 8.5px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -2659,7 +2700,7 @@ mark {
   background: #fffefa;
   color: var(--forest);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -2688,13 +2729,13 @@ mark {
 
 .reminder-provider-tip strong {
   color: #7a4a37;
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .reminder-provider-tip p {
   margin: 3px 0 0;
   color: #876d61;
-  font-size: 8.5px;
+  font-size: 11px;
   line-height: 1.55;
 }
 
@@ -2720,7 +2761,7 @@ mark {
 
 .reminder-inline-status {
   color: #949895;
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 .reminder-inline-status.is-ready {
@@ -2751,12 +2792,12 @@ mark {
 
 .reminder-enabled-actions strong {
   color: var(--forest);
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .reminder-enabled-actions span {
   color: #718079;
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 .reminder-help-panel {
@@ -2776,7 +2817,7 @@ mark {
 .reminder-help-panel section > p {
   margin: 0 0 11px;
   color: var(--coral);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
 }
@@ -2796,13 +2837,13 @@ mark {
 
 .reminder-help-panel li b {
   color: var(--forest);
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .reminder-help-panel li span,
 .reminder-help-security span {
   color: #7e837f;
-  font-size: 8.5px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -2814,13 +2855,13 @@ mark {
   display: block;
   margin-bottom: 5px;
   color: var(--forest);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .reminder-compact-list {
   gap: 7px !important;
   color: #757d78;
-  font-size: 8.5px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -2851,7 +2892,7 @@ mark {
   border-radius: 9px;
   background: #f3f1eb;
   color: #747a76;
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 .reminder-runtime-status p {
@@ -2865,14 +2906,14 @@ mark {
   justify-content: space-between;
   padding: 13px 30px 16px !important;
   color: #8b8f8c !important;
-  font-size: 8.5px !important;
+  font-size: 11px !important;
 }
 
 .reminder-danger-zone button {
   border: 0;
   background: transparent;
   cursor: pointer;
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 .reminder-danger-zone button:disabled {
@@ -2967,4 +3008,17 @@ mark {
     padding-right: 18px !important;
     padding-left: 18px !important;
   }
+}
+
+/* v1.3.2 core readability floors; icon-only controls keep their designed size. */
+.app-shell.app-shell button:not([aria-label]),
+.app-shell.app-shell input,
+.app-shell.app-shell select,
+.app-shell.app-shell textarea,
+.app-shell.app-shell label > span {
+  font-size: 12px;
+}
+
+.app-shell.app-shell .search input {
+  font-size: 13px;
 }
