@@ -169,6 +169,14 @@ All v1.3.2 implementation slices are complete; merge and trial status remain in
 the active work packet until the milestone is frozen for a separate release task.
 The exact branch, handoff, and next action live in `docs/work/ACTIVE.md`.
 
+A local Windows x64 v1.3.2 trial package has now been built without pushing,
+tagging, or publishing. The package-level update smoke proves exact preservation
+of subscriptions, the complete reminder settings file, the reminder delivery
+ledger, and a real current-user DPAPI ciphertext that remains decryptable after
+import into the new extracted folder. All package probes passed except temporary
+Task Scheduler registration, which this desktop session denied and which remains
+an explicit user/native-candidate check.
+
 Project continuation no longer depends on a permanent Codex conversation.
 `docs/CURRENT.md` is the lightweight entry point, `docs/WORKFLOW.md` defines the
 short planning/implementation/release task model, and `docs/handoffs/` records

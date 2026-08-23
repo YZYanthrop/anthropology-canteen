@@ -39,8 +39,10 @@ document router below.
   `a42e134`.
 - Slice C was reviewed without blockers and is merged into local `main` at
   `2f392c6`. All approved v1.3.2 implementation slices are now merged locally.
-- The merged build is ready for local trial; push, tag, packaging, and release
-  remain a separate explicitly authorized task.
+- A Windows x64 v1.3.2 local-trial ZIP has been built from the short-lived
+  `codex/v1.3.2-windows-local-trial` branch. Its final-package smoke passed
+  with current-user Task Scheduler registration skipped because this desktop
+  session returned `Access is denied`; no push, tag, or publication occurred.
 - Published v1.3.1 artifacts and tags are immutable.
 
 ## Read only what the task needs
