@@ -13,6 +13,7 @@
     "build": "vinext build",
     "start": "vinext start --host 0.0.0.0",
     "test": "pnpm run build && node --test tests/*.test.mjs",
+    "test:ui": "vitest run --config vitest.config.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
@@ -27,6 +28,9 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
     "@tailwindcss/postcss": "4.2.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.6",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
@@ -35,11 +39,13 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.1",
+    "jsdom": "^30.0.1",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vinext": "0.0.50",
     "vite": "8.0.13",
+    "vitest": "^4.1.11",
     "wrangler": "4.92.0"
   },
   "type": "module"
