@@ -1710,7 +1710,7 @@ export default function Home() {
     setReminderSaving(true);
     try {
       await reminderRequest("/api/reminders/enable", "POST");
-      showNotice("邮件提醒已启用；首次检查只建立当前成果基线");
+      showNotice("后台提醒已开启；首次检查已完成，没有新文章时不会发送邮件");
     } catch (error) {
       showError(error instanceof Error ? error.message : "邮件提醒启用失败");
     } finally {
@@ -2922,7 +2922,9 @@ export default function Home() {
   );
   const savedReminderTestReady = Boolean(reminderStatus?.tested);
   const reminderTestReady = savedReminderTestReady && !reminderDirty;
-  const reminderEnabled = Boolean(reminderStatus?.config?.enabled);
+  const reminderEnabled = Boolean(
+    reminderStatus?.config?.enabled && reminderStatus?.scheduler?.installed,
+  );
   const reminderProviderGuidance =
     REMINDER_PROVIDER_GUIDANCE[reminderConfig.provider] ||
     REMINDER_PROVIDER_GUIDANCE.custom;
@@ -3040,7 +3042,7 @@ export default function Home() {
               onClick={openReminderModal}
               title="设置每日、每周或每月邮件提醒"
             >
-              {reminderStatus.config?.enabled ? "邮件提醒已开" : "邮件提醒"}
+              {reminderEnabled ? "邮件提醒已开" : "邮件提醒"}
             </button>
           )}
         </div>

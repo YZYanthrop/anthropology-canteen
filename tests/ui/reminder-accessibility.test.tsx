@@ -90,6 +90,7 @@ function localData(withArticle = false) {
 function installApi(options: {
   reminderStatus?: typeof savedReminderStatus;
   failTest?: boolean;
+  failEnable?: boolean;
   withArticle?: boolean;
 } = {}) {
   let status = structuredClone(options.reminderStatus || savedReminderStatus);
@@ -122,6 +123,19 @@ function installApi(options: {
         return jsonResponse({ message: "测试邮箱暂时不可用" }, 503);
       }
       status = { ...status, tested: true };
+      return jsonResponse(status);
+    }
+    if (url === "/api/reminders/enable" && init?.method === "POST") {
+      if (options.failEnable) {
+        return jsonResponse({
+          message: "Windows 拒绝注册计划任务。请关闭所有 Anthropology Canteen 页面，等待约 10 秒，然后右键 start-local.cmd，选择‘以管理员身份运行’，再重新开启提醒。管理员权限仅用于首次注册或更新后的迁移，日常运行不需要。",
+        }, 500);
+      }
+      status = {
+        ...status,
+        config: { ...status.config, enabled: true },
+        scheduler: { ...status.scheduler, installed: true, stalePath: "" },
+      };
       return jsonResponse(status);
     }
     throw new Error(`Unexpected fetch in Slice C UI test: ${url}`);
@@ -188,6 +202,32 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
         name: "邮件提醒设置",
       })).not.toBeInTheDocument(),
     );
+  });
+
+  test("scheduler permission failure stays visibly disabled and shows the safe administrator hint", async () => {
+    const user = userEvent.setup();
+    const inactiveStatus = structuredClone(savedReminderStatus);
+    inactiveStatus.config.enabled = false;
+    inactiveStatus.scheduler.installed = false;
+    inactiveStatus.scheduler.stalePath = "";
+    installApi({ reminderStatus: inactiveStatus, failEnable: true });
+    render(<Home />);
+
+    const opener = await screen.findByRole("button", { name: "邮件提醒" });
+    await user.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "邮件提醒设置" });
+    expect(within(dialog).queryByText("后台提醒已开启")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("开启提醒").closest("li")).not.toHaveClass("is-complete");
+
+    await user.click(within(dialog).getByRole("button", {
+      name: "开启自动邮件提醒",
+    }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("右键 start-local.cmd");
+    expect(alert).toHaveTextContent("日常运行不需要");
+    expect(alert).not.toHaveTextContent(/Access is denied|PermissionDenied|0x80070005|C:\\Users/i);
+    expect(within(dialog).queryByText("后台提醒已开启")).not.toBeInTheDocument();
+    expect(opener).toHaveAccessibleName("邮件提醒");
   });
 
   test("add and reminder dialogs trap focus, close on Escape, and return focus", async () => {

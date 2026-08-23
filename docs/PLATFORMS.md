@@ -8,6 +8,26 @@
 | macOS Apple Silicon | v1.3.1 released; unsigned native package and reminder smoke passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 | macOS Intel | v1.3.1 released; unsigned native package and reminder smoke passed | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 
+The local v1.3.2 Windows trial package was built on 2026-08-23. Its extracted
+final-package smoke passed archive privacy, checksum, VBS launch, compiled
+assets, neighboring migration, restart persistence, transactional import,
+subscription and complete reminder-file preservation, DPAPI decryptability,
+offline reminder worker, and automatic close. This desktop session could not
+register the temporary current-user smoke task (`Access is denied`), so that
+single scheduler-registration probe remains for the user's local trial or a
+later native candidate run; the package contains the unchanged registration
+and removal tools.
+
+The v1.3.2 Windows registration follow-up changes activation to register the
+task before the first check. Permission failures therefore cannot send a
+one-time message or leave an enabled config/marker. `PermissionDenied`,
+`Access is denied`, and `0x80070005` are reduced to a path-free Chinese hint:
+close all app pages, wait about 10 seconds, then right-click `start-local.cmd`
+and run it once as administrator before retrying registration or migration.
+The task principal remains the current user with `RunLevel Limited`; normal
+launches do not need elevation. The UI is active only when step 3 is green and
+shows “后台提醒已开启”, and a check with no new articles sends no mail.
+
 The macOS v1.3.1 packages require macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
 are not supported by these portable archives.

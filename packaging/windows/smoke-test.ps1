@@ -368,8 +368,17 @@ try {
   $TargetData = Join-Path $ExtractedRoot "data"
   New-Item -ItemType Directory -Path $ImportSource -Force | Out-Null
   $ImportData = [ordered]@{
-    version = 7
-    subscriptions = [ordered]@{ journal = @(); scholar = @(); keyword = @() }
+    version = 8
+    savedAt = "2026-08-23T00:00:00.000Z"
+    subscriptions = [ordered]@{
+      journal = @([ordered]@{ label = "Imported Journal"; issn = "1234-5678" })
+      scholar = @([ordered]@{
+        label = "Imported Scholar"
+        subscriptionId = "manual:imported-scholar"
+        followedAt = "2026-08-01T00:00:00.000Z"
+      })
+      keyword = @([ordered]@{ root = "kinship"; variants = @("kinship", "kin") })
+    }
     states = [ordered]@{ "imported-record" = [ordered]@{ read = $true } }
   }
   $ImportSettings = [ordered]@{
@@ -378,9 +387,25 @@ try {
     semanticScholarApiKey = ""
     reminders = [ordered]@{
       installationId = "windows-smoke-reminder-id"
-      provider = "qq"
+      enabled = $true
+      provider = "custom"
       sender = "sender@example.com"
       recipient = "recipient@example.com"
+      host = "smtp.example.com"
+      port = 587
+      security = "starttls"
+      username = "smtp-user@example.com"
+      format = "detailed"
+      schedule = [ordered]@{
+        cadence = "weekly"
+        time = "07:45"
+        weekday = 4
+        monthDay = 12
+      }
+      credentialRef = "windows-smoke-reminder-id"
+      testedConfigHash = "preserved-test-hash"
+      schedulerPath = "C:\old-package\reminder-worker.mjs"
+      configuredAt = "2026-08-22T12:34:56.000Z"
     }
   }
   $ImportData | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
@@ -390,15 +415,28 @@ try {
     Join-Path $ImportSource "anthropology-canteen-settings.json"
   ) -Encoding UTF8
   [ordered]@{
-    version = 1
-    baselines = [ordered]@{}
-    items = [ordered]@{}
+    version = 2
+    baselineComplete = $true
+    baselines = [ordered]@{
+      "manual:imported-scholar" = [ordered]@{
+        followedAt = "2026-08-01T00:00:00.000Z"
+        itemKeys = @("imported-record")
+        ready = $true
+      }
+    }
+    items = [ordered]@{
+      "imported-record" = [ordered]@{
+        firstSeenAt = "2026-08-20T00:00:00.000Z"
+        baseline = $false
+        sentAt = "2026-08-21T00:00:00.000Z"
+      }
+    }
   } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
     Join-Path $ImportSource "anthropology-canteen-reminder-state.json"
   ) -Encoding UTF8
   [ordered]@{
     version = 1
-    ciphertext = "smoke-dpapi-ciphertext"
+    ciphertext = $ReminderCiphertext
   } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (
     Join-Path $ImportSource "anthropology-canteen-reminder-secret.json"
   ) -Encoding UTF8
@@ -421,11 +459,31 @@ try {
     Join-Path $TargetData "anthropology-canteen-reminder-secret.json"
   ) -Raw | ConvertFrom-Json
   if (-not $ImportedData.states.'imported-record'.read -or
-      $ImportedSettings.openAlexApiKey -ne "smoke-openalex-key" -or
-      $ImportedSettings.reminders.installationId -ne "windows-smoke-reminder-id" -or
-      $ImportedReminderState.version -ne 1 -or
-      $ImportedReminderSecret.ciphertext -ne "smoke-dpapi-ciphertext") {
+      $ImportedSettings.openAlexApiKey -ne "smoke-openalex-key") {
     throw "The packaged data importer did not install validated files."
+  }
+  if ($ImportedData.subscriptions.journal[0].issn -ne "1234-5678" -or
+      $ImportedData.subscriptions.scholar[0].subscriptionId -ne "manual:imported-scholar" -or
+      $ImportedData.subscriptions.keyword[0].root -ne "kinship") {
+    throw "The imported subscription was not preserved."
+  }
+  if ((Get-Content -LiteralPath (
+        Join-Path $ImportSource "anthropology-canteen-settings.json"
+      ) -Raw) -ne (Get-Content -LiteralPath (
+        Join-Path $TargetData "anthropology-canteen-settings.json"
+      ) -Raw) -or
+      (Get-Content -LiteralPath (
+        Join-Path $ImportSource "anthropology-canteen-reminder-state.json"
+      ) -Raw) -ne (Get-Content -LiteralPath (
+        Join-Path $TargetData "anthropology-canteen-reminder-state.json"
+      ) -Raw)) {
+    throw "The imported reminder configuration was not preserved."
+  }
+  if ($ImportedReminderSecret.ciphertext -ne $ReminderCiphertext -or
+      (Invoke-PackagedDpapi -Mode unprotect `
+        -InputText $ImportedReminderSecret.ciphertext `
+        -Helper $DpapiHelper) -ne $ReminderSecret) {
+    throw "The imported Windows email authorization code could not be decrypted."
   }
   if ($null -eq (Get-ChildItem -LiteralPath $TargetData -File | Where-Object {
         $_.Name -like "anthropology-canteen-data.backup-*.json"

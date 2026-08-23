@@ -24,10 +24,27 @@ $principal = New-ScheduledTaskPrincipal `
   -LogonType Interactive `
   -RunLevel Limited
 
-Register-ScheduledTask `
-  -TaskName $TaskName `
-  -Action $action `
-  -Trigger $daily, $logon `
-  -Settings $settings `
-  -Principal $principal `
-  -Force | Out-Null
+try {
+  Register-ScheduledTask `
+    -TaskName $TaskName `
+    -Action $action `
+    -Trigger $daily, $logon `
+    -Settings $settings `
+    -Principal $principal `
+    -Force | Out-Null
+} catch {
+  $detail = @(
+    [string]$_.Exception.Message,
+    [string]$_.FullyQualifiedErrorId,
+    [string]$_.CategoryInfo.Reason,
+    [string]$_.Exception.HResult
+  ) -join " "
+  if ($detail -match '(?i)access is denied|permissiondenied|unauthorized|0x80070005|-2147024891') {
+    [Console]::Error.WriteLine("ANTHROPOLOGY_CANTEEN_SCHEDULER_PERMISSION_DENIED")
+    exit 5
+  }
+  [Console]::Error.WriteLine(
+    "ANTHROPOLOGY_CANTEEN_SCHEDULER_ERROR: " + [string]$_.Exception.Message
+  )
+  exit 1
+}

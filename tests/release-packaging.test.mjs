@@ -6,7 +6,7 @@ test("product version and provider User-Agents stay aligned", async () => {
   const metadata = JSON.parse(
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );
-  assert.equal(metadata.version, "1.3.1");
+  assert.equal(metadata.version, "1.3.2");
 
   for (const file of [
     "../app/lib/scholar-search.ts",
@@ -43,6 +43,14 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
     new URL("../import-data-from-old-version.cmd", import.meta.url),
     "utf8",
   );
+  const registerReminder = await readFile(
+    new URL("../tools/register-windows-reminder.ps1", import.meta.url),
+    "utf8",
+  );
+  const unregisterReminder = await readFile(
+    new URL("../tools/unregister-windows-reminder.ps1", import.meta.url),
+    "utf8",
+  );
 
   assert.match(build, /\$NodeVersion = "24\.14\.0"/);
   assert.match(build, /node-v\$NodeVersion-win-x64\.zip/);
@@ -71,6 +79,9 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(smoke, /process\.arch/);
   assert.match(smoke, /v24\.14\.0/);
   assert.match(smoke, /The packaged data importer failed/);
+  assert.match(smoke, /The imported subscription was not preserved/);
+  assert.match(smoke, /The imported reminder configuration was not preserved/);
+  assert.match(smoke, /The imported Windows email authorization code could not be decrypted/);
   assert.match(smoke, /dpapi-helper\.ps1/);
   assert.match(smoke, /CryptProtectData|Invoke-PackagedDpapi/);
   assert.match(smoke, /RegisterReminder|register-windows-reminder/);
@@ -81,6 +92,11 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(smoke, /\$RejectedImportExitCode -ne 1/);
   assert.match(smoke, /\$global:LASTEXITCODE = 0/);
   assert.match(smoke, /failed packaged import changed existing data/);
+  assert.match(registerReminder, /-LogonType Interactive/);
+  assert.match(registerReminder, /-RunLevel Limited/);
+  assert.match(registerReminder, /ANTHROPOLOGY_CANTEEN_SCHEDULER_PERMISSION_DENIED/);
+  assert.match(unregisterReminder, /-ErrorAction Stop/);
+  assert.doesNotMatch(unregisterReminder, /SilentlyContinue/);
 
   assert.match(importLauncher, /runtime\\node\.exe/);
   assert.match(importLauncher, /tools\\import-data\.mjs/);

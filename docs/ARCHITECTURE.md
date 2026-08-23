@@ -102,6 +102,16 @@ open. Reminder delivery state is separate from article read state, and writes
 use the reminder lock plus atomic replacement so a background run does not
 leave a partial JSON file.
 
+Reminder activation is transactional across the scheduler, saved config, and
+first baseline check. The OS scheduler must register successfully before the
+server persists `enabled=true` or invokes the one-shot worker. If registration
+fails, the worker is never called and no scheduler marker is written. If the
+first check fails after registration, the server restores the previous config
+and reminder ledger and removes the newly registered task and marker; the SMTP
+credential is never part of this transaction and remains untouched. The client
+treats reminders as active only when both saved config and the scheduler marker
+confirm installation.
+
 An empty first run creates a blank version 8 data structure. While that file
 remains empty, automatic neighboring-version migration is retried so an old
 portable folder placed beside the new one after the first launch can still be
