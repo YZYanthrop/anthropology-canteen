@@ -6,16 +6,16 @@ Last updated: 2026-08-23
 - Approved for implementation: yes
 - Target version: `v1.3.2`
 - Plan: [`docs/plans/v1.3.2-usability-and-recovery.md`](../plans/v1.3.2-usability-and-recovery.md)
-- Implementation branch: `codex/v1.3.2-navigation-update-health`
-- Current step: Slice B `Verified`, awaiting review and merge
-- Implementation handoff: [`docs/handoffs/v1.3.2-slice-b.md`](../handoffs/v1.3.2-slice-b.md)
+- Implementation branch: `codex/v1.3.2-reminder-accessibility-narrow`
+- Current step: Slice C `Verified`, awaiting review and merge
+- Implementation handoff: [`docs/handoffs/v1.3.2-slice-c.md`](../handoffs/v1.3.2-slice-c.md)
 - Release task: none
 
 ## Next action
 
-Review and merge `codex/v1.3.2-navigation-update-health`. After merge, open the
-short Slice C task using the ready-to-copy prompt in the approved plan. Do not
-package, push, tag, or publish; Slice C remains sequential.
+Review and merge `codex/v1.3.2-reminder-accessibility-narrow`. After merge,
+start the compiled portable app locally for user trial. Do not push, tag,
+package, publish, or start the separate release task.
 
 ## Repository note
 

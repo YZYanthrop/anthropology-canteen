@@ -35,9 +35,10 @@ document router below.
   `main` baseline.
 - Slice A was reviewed without blockers and is merged into local `main` at
   `531e04e`.
-- Slice B is implemented and verified on the branch and handoff named in
-  `docs/work/ACTIVE.md`; it is awaiting review and merge.
-- Slice C has not started and may begin only after Slice B is merged.
+- Slice B was reviewed without blockers and is merged into local `main` at
+  `a42e134`.
+- Slice C is implemented and verified on the branch and handoff named in
+  `docs/work/ACTIVE.md`; it is awaiting review and merge before local trial.
 - Published v1.3.1 artifacts and tags are immutable.
 
 ## Read only what the task needs
