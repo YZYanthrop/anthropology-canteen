@@ -1533,6 +1533,12 @@ test("feed refresh queries a saved multi-ID scholar as one profile", async () =>
         (item) => item.doi === "10.1017/sas.2026.10058",
       ),
     );
+    assert.equal(
+      payload.items.find(
+        (item) => item.doi === "10.1017/sas.2026.10058",
+      ).publishedPrecision,
+      "day",
+    );
   } finally {
     mockFetch = null;
   }

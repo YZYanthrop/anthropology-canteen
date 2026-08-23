@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  comparePublicationDates,
+  effectivePublicationPrecision,
+  formatPublicationDate,
+  normalizePublicationDate,
+  publicationIsAfterFollow,
+  relativePublicationDate,
+  type PublicationPrecision,
+} from "./lib/publication-date";
 
 type MatchKind = "journal" | "scholar" | "keyword";
 type Match = {
@@ -106,11 +115,13 @@ type Article = {
   venue: string;
   publisher?: string;
   publishedAt: string;
+  publishedPrecision?: PublicationPrecision;
   type: string;
   url: string;
   abstract?: string;
   keywords?: string[];
   matches: Match[];
+  archiveMissing?: boolean;
 };
 
 type ScholarProfile = {
@@ -139,7 +150,11 @@ type FeedResponse = {
 };
 
 type ArticleState = { saved: boolean; read: boolean; ignored: boolean };
-type Filter = "all" | MatchKind | "saved";
+type Notice = {
+  message: string;
+  action?: { label: string; run: () => void };
+};
+type Filter = "all" | MatchKind | "saved" | "ignored";
 type SubscriptionSelection = {
   kind: MatchKind;
   label: string;
@@ -150,6 +165,7 @@ type LocalData = {
   revision: number;
   subscriptions: Subscriptions;
   states: Record<string, ArticleState>;
+  articleArchive: Record<string, Article>;
   feed: FeedResponse | null;
   translations: Record<string, string>;
   scholarProfiles: Record<string, CachedScholarProfile>;
@@ -207,6 +223,7 @@ const FILTERS: { id: Filter; label: string; icon: string }[] = [
   { id: "journal", label: "期刊更新", icon: "▦" },
   { id: "keyword", label: "关键词命中", icon: "#" },
   { id: "saved", label: "已收藏", icon: "♡" },
+  { id: "ignored", label: "已忽略", icon: "↶" },
 ];
 
 const REMINDER_PROVIDER_GUIDANCE: Record<
@@ -260,25 +277,6 @@ const LEGACY_STORAGE_KEYS = [
   LEGACY_TRANSLATION_STORAGE,
 ];
 
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "short",
-    day: "numeric",
-    year: date.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
-  }).format(date);
-}
-
-function relativeDate(value: string) {
-  const date = new Date(value);
-  const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
-  if (days <= 0) return "今天";
-  if (days === 1) return "昨天";
-  if (days < 30) return `${days} 天前`;
-  return formatDate(value);
-}
-
 function safeTimestamp(value: unknown, fallback = new Date().toISOString()) {
   return typeof value === "string" && Number.isFinite(Date.parse(value))
     ? value
@@ -293,18 +291,51 @@ function defaultArticleState(): ArticleState {
   return { saved: false, read: false, ignored: false };
 }
 
+function articlePublication(article: Article) {
+  return {
+    publishedAt: article.publishedAt,
+    publishedPrecision: effectivePublicationPrecision(
+      article.publishedAt,
+      article.publishedPrecision,
+    ),
+  };
+}
+
+function missingArchiveArticle(id: string): Article {
+  return {
+    id,
+    title: "文章信息已不在本地缓存中",
+    authors: [],
+    venue: "仅保留了文章状态",
+    publishedAt: "1900-01-01",
+    publishedPrecision: "year",
+    type: "历史状态",
+    url: "",
+    matches: [],
+    archiveMissing: true,
+  };
+}
+
 function articlePublishedSinceFollow(
   article: Article,
   subscriptions: Subscriptions,
 ) {
-  const publicationDate = article.publishedAt.slice(0, 10);
   return article.matches.some((match) => {
     if (match.kind === "scholar") {
       const scholar = subscriptions.scholar.find(
         (item) => item.label.toLowerCase() === match.label.toLowerCase(),
       );
       return scholar
-        ? publicationDate >= safeTimestamp(scholar.followedAt).slice(0, 10)
+        ? publicationIsAfterFollow(
+            {
+              publishedAt: article.publishedAt,
+              publishedPrecision: effectivePublicationPrecision(
+                article.publishedAt,
+                article.publishedPrecision,
+              ),
+            },
+            safeTimestamp(scholar.followedAt),
+          )
         : false;
     }
     if (match.kind === "journal") {
@@ -312,7 +343,16 @@ function articlePublishedSinceFollow(
         (item) => item.label.toLowerCase() === match.label.toLowerCase(),
       );
       return journal
-        ? publicationDate >= safeTimestamp(journal.followedAt).slice(0, 10)
+        ? publicationIsAfterFollow(
+            {
+              publishedAt: article.publishedAt,
+              publishedPrecision: effectivePublicationPrecision(
+                article.publishedAt,
+                article.publishedPrecision,
+              ),
+            },
+            safeTimestamp(journal.followedAt),
+          )
         : false;
     }
     return false;
@@ -325,6 +365,7 @@ function defaultLocalData(): LocalData {
     revision: 0,
     subscriptions: DEFAULT_SUBSCRIPTIONS,
     states: {},
+    articleArchive: {},
     feed: null,
     translations: {},
     scholarProfiles: {},
@@ -768,30 +809,66 @@ function safeTranslations(value: unknown): Record<string, string> {
   return result;
 }
 
+function safeArticle(value: unknown): Article | null {
+  if (!value || typeof value !== "object") return null;
+  const article = value as Partial<Article>;
+  if (
+    typeof article.id !== "string" ||
+    !article.id.trim() ||
+    typeof article.title !== "string" ||
+    !article.title.trim() ||
+    !Array.isArray(article.matches)
+  ) {
+    return null;
+  }
+  const publication = normalizePublicationDate(
+    article.publishedAt,
+    article.publishedPrecision,
+  );
+  const matches = article.matches.filter(
+    (match): match is Match =>
+      Boolean(
+        match &&
+          (match.kind === "journal" ||
+            match.kind === "scholar" ||
+            match.kind === "keyword") &&
+          typeof match.label === "string",
+      ),
+  );
+  return {
+    id: article.id.trim(),
+    doi: typeof article.doi === "string" ? article.doi : undefined,
+    title: article.title.trim(),
+    authors: Array.isArray(article.authors)
+      ? article.authors
+          .map(safeArticleAuthor)
+          .filter((item): item is ArticleAuthor => Boolean(item))
+      : [],
+    venue: typeof article.venue === "string" ? article.venue : "来源待确认",
+    publisher:
+      typeof article.publisher === "string" ? article.publisher : undefined,
+    ...publication,
+    type: typeof article.type === "string" ? article.type : "学术成果",
+    url: typeof article.url === "string" ? article.url : "",
+    abstract:
+      typeof article.abstract === "string" ? article.abstract : undefined,
+    keywords: Array.isArray(article.keywords)
+      ? article.keywords.filter(
+          (item): item is string => typeof item === "string",
+        )
+      : undefined,
+    matches,
+  };
+}
+
 function safeFeed(value: unknown): FeedResponse | null {
   if (!value || typeof value !== "object") return null;
   const feed = value as Partial<FeedResponse>;
   if (!Array.isArray(feed.items)) return null;
   return {
     items: feed.items
-      .filter(
-        (item): item is Article =>
-          Boolean(
-            item &&
-              typeof item === "object" &&
-              typeof (item as Article).id === "string" &&
-              typeof (item as Article).title === "string" &&
-              Array.isArray((item as Article).matches),
-          ),
-      )
-      .map((article) => ({
-        ...article,
-        authors: Array.isArray(article.authors)
-          ? article.authors
-              .map(safeArticleAuthor)
-              .filter((item): item is ArticleAuthor => Boolean(item))
-          : [],
-      })),
+      .map(safeArticle)
+      .filter((item): item is Article => Boolean(item)),
     updatedAt:
       typeof feed.updatedAt === "string"
         ? feed.updatedAt
@@ -820,6 +897,32 @@ function safeFeed(value: unknown): FeedResponse | null {
         )
       : [],
   };
+}
+
+function safeArticleArchive(value: unknown) {
+  const result: Record<string, Article> = {};
+  if (!value || typeof value !== "object") return result;
+  for (const [storedId, rawArticle] of Object.entries(value)) {
+    const article = safeArticle(rawArticle);
+    if (!article) continue;
+    result[article.id || storedId] = article;
+  }
+  return result;
+}
+
+function reconcileArticleArchive(
+  states: Record<string, ArticleState>,
+  archive: Record<string, Article>,
+  feed: FeedResponse | null,
+) {
+  const liveArticles = new Map((feed?.items || []).map((article) => [article.id, article]));
+  const next: Record<string, Article> = {};
+  for (const [id, state] of Object.entries(states)) {
+    if (!state.saved && !state.ignored) continue;
+    const article = liveArticles.get(id) || archive[id];
+    if (article) next[id] = article;
+  }
+  return next;
 }
 
 function safeScholarWork(value: unknown): ScholarWork | null {
@@ -946,6 +1049,11 @@ function safeLocalData(value: unknown): LocalData {
   if (!value || typeof value !== "object") return defaultLocalData();
   const data = value as Partial<LocalData>;
   const subscriptions = safeSubscriptions(data.subscriptions);
+  const states = safeArticleStates(data.states);
+  const feed = migrateFeedKeywordMatches(
+    safeFeed(data.feed),
+    subscriptions.keyword,
+  );
   return {
     version: 8,
     revision:
@@ -953,11 +1061,13 @@ function safeLocalData(value: unknown): LocalData {
         ? Math.max(0, data.revision)
         : 0,
     subscriptions,
-    states: safeArticleStates(data.states),
-    feed: migrateFeedKeywordMatches(
-      safeFeed(data.feed),
-      subscriptions.keyword,
+    states,
+    articleArchive: reconcileArticleArchive(
+      states,
+      safeArticleArchive(data.articleArchive),
+      feed,
     ),
+    feed,
     translations: safeTranslations(data.translations),
     scholarProfiles: safeScholarProfiles(data.scholarProfiles),
   };
@@ -969,6 +1079,7 @@ function hasStoredLocalData(data: LocalData) {
     data.subscriptions.scholar.length > 0 ||
     data.subscriptions.keyword.length > 0 ||
     Object.keys(data.states).length > 0 ||
+    Object.keys(data.articleArchive).length > 0 ||
     Object.keys(data.translations).length > 0 ||
     Object.keys(data.scholarProfiles).length > 0 ||
     Boolean(data.feed?.items.length)
@@ -993,7 +1104,8 @@ function readLegacyBrowserData(): LocalData | null {
   } catch {
     return null;
   }
-  return hasStoredLocalData(data) ? data : null;
+  const safe = safeLocalData(data);
+  return hasStoredLocalData(safe) ? safe : null;
 }
 
 function clearLegacyBrowserData() {
@@ -1062,8 +1174,9 @@ export default function Home() {
   const [historyScholar, setHistoryScholar] = useState<string>();
   const [query, setQuery] = useState("");
   const [states, setStates] = useState<Record<string, ArticleState>>({});
+  const [articleArchive, setArticleArchive] = useState<Record<string, Article>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [translating, setTranslating] = useState<string | null>(null);
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [addOpen, setAddOpen] = useState(false);
@@ -1114,6 +1227,7 @@ export default function Home() {
   const [profileLoading, setProfileLoading] = useState(false);
   const localDataRef = useRef<LocalData>(defaultLocalData());
   const saveQueueRef = useRef(Promise.resolve());
+  const noticeTimerRef = useRef<number | undefined>(undefined);
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchRequestRef = useRef(0);
   const keywordSuggestion = useMemo(
@@ -1144,6 +1258,7 @@ export default function Home() {
     localDataRef.current = data;
     setSubscriptions(data.subscriptions);
     setStates(data.states);
+    setArticleArchive(data.articleArchive);
     setTranslations(data.translations);
     setFeed(data.feed);
     setScholarProfiles(data.scholarProfiles);
@@ -1566,7 +1681,8 @@ export default function Home() {
         }),
       });
       if (!response.ok) throw new Error("feed unavailable");
-      const data = (await response.json()) as FeedResponse;
+      const data = safeFeed(await response.json());
+      if (!data) throw new Error("feed unavailable");
       const resolvedSubscriptions = Array.isArray(data.scholars)
         ? {
             ...sourceSubscriptions,
@@ -1579,9 +1695,16 @@ export default function Home() {
         : sourceSubscriptions;
       setFeed(data);
       setSubscriptions(resolvedSubscriptions);
+      const nextArchive = reconcileArticleArchive(
+        localDataRef.current.states,
+        localDataRef.current.articleArchive,
+        data,
+      );
+      setArticleArchive(nextArchive);
       void persistLocalData({
         feed: data,
         subscriptions: resolvedSubscriptions,
+        articleArchive: nextArchive,
       });
       if (force) showNotice("已检查最新出版记录");
     } catch {
@@ -1597,9 +1720,10 @@ export default function Home() {
     }
   }
 
-  function showNotice(message: string) {
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 2600);
+  function showNotice(message: string, action?: Notice["action"]) {
+    if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+    setNotice({ message, action });
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 4200);
   }
 
   function saveSubscriptions(next: Subscriptions) {
@@ -1700,16 +1824,42 @@ export default function Home() {
     void persistLocalData({ scholarProfiles: nextProfiles }, true);
   }
 
-  function updateArticle(id: string, patch: Partial<ArticleState>) {
-    const next = {
+  function updateArticle(
+    articleOrId: Article | string,
+    patch: Partial<ArticleState>,
+  ) {
+    const id = typeof articleOrId === "string" ? articleOrId : articleOrId.id;
+    const nextStates = {
       ...localDataRef.current.states,
       [id]: {
         ...(localDataRef.current.states[id] || defaultArticleState()),
         ...patch,
       },
     };
-    setStates(next);
-    void persistLocalData({ states: next });
+    const suppliedArticle =
+      typeof articleOrId === "string" ? null : safeArticle(articleOrId);
+    const archiveSource = suppliedArticle
+      ? { ...localDataRef.current.articleArchive, [id]: suppliedArticle }
+      : localDataRef.current.articleArchive;
+    const nextArchive = reconcileArticleArchive(
+      nextStates,
+      archiveSource,
+      localDataRef.current.feed,
+    );
+    setStates(nextStates);
+    setArticleArchive(nextArchive);
+    void persistLocalData({
+      states: nextStates,
+      articleArchive: nextArchive,
+    });
+  }
+
+  function ignoreArticle(article: Article) {
+    updateArticle(article, { ignored: true });
+    showNotice("已忽略这篇文章", {
+      label: "撤销",
+      run: () => updateArticle(article, { ignored: false }),
+    });
   }
 
   function scholarFromResult(result: SearchResult): Scholar {
@@ -2283,13 +2433,30 @@ export default function Home() {
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return (feed?.items || []).filter((article) => {
+    const liveArticles = new Map(
+      (feed?.items || []).map((article) => [article.id, article]),
+    );
+    const recoveryFilter = filter === "saved" || filter === "ignored";
+    const candidates = recoveryFilter
+      ? Object.entries(states)
+          .filter(([, state]) =>
+            filter === "ignored"
+              ? state.ignored
+              : state.saved && !state.ignored,
+          )
+          .map(([id]) =>
+            liveArticles.get(id) ||
+            articleArchive[id] ||
+            missingArchiveArticle(id),
+          )
+      : feed?.items || [];
+    return candidates.filter((article) => {
       const state = states[article.id] || defaultArticleState();
-      if (state.ignored) return false;
-      if (filter === "saved" && !state.saved) return false;
+      if (!recoveryFilter && state.ignored) return false;
       if (
         filter !== "all" &&
         filter !== "saved" &&
+        filter !== "ignored" &&
         !article.matches.some((match) => match.kind === filter)
       ) {
         return false;
@@ -2307,6 +2474,7 @@ export default function Home() {
       if (!normalized) return true;
       return [
         article.title,
+        article.id,
         article.venue,
         article.authors.map((author) => author.name).join(" "),
         article.abstract || "",
@@ -2316,8 +2484,11 @@ export default function Home() {
         .join(" ")
         .toLowerCase()
         .includes(normalized);
-    });
-  }, [activeSubscription, feed, filter, query, states]);
+    }).sort((a, b) => comparePublicationDates(
+      { ...articlePublication(a), id: a.id },
+      { ...articlePublication(b), id: b.id },
+    ));
+  }, [activeSubscription, articleArchive, feed, filter, query, states]);
 
   const isScholarOverview = !activeSubscription && filter === "all";
   const scholarCards = useMemo(() => {
@@ -2343,6 +2514,7 @@ export default function Home() {
             publishedAt: work.year
               ? `${work.year}-01-01`
               : "1900-01-01",
+            publishedPrecision: "year",
             type: "学术成果",
             url: work.url || (work.doi ? `https://doi.org/${work.doi}` : ""),
             abstract: work.abstract,
@@ -2367,11 +2539,10 @@ export default function Home() {
                   (item.doi && item.doi === article.doi),
               ) === index,
           )
-          .sort(
-            (a, b) =>
-              new Date(b.publishedAt).getTime() -
-              new Date(a.publishedAt).getTime(),
-          );
+          .sort((a, b) => comparePublicationDates(
+            { ...articlePublication(a), id: a.id },
+            { ...articlePublication(b), id: b.id },
+          ));
         return { scholar, articles, latest: articles[0] };
       })
       .filter(({ scholar, articles }) => {
@@ -2392,13 +2563,15 @@ export default function Home() {
           .includes(normalizedQuery);
       })
       .sort((a, b) => {
-        const aTime = a.latest
-          ? new Date(a.latest.publishedAt).getTime()
-          : Number.NEGATIVE_INFINITY;
-        const bTime = b.latest
-          ? new Date(b.latest.publishedAt).getTime()
-          : Number.NEGATIVE_INFINITY;
-        return bTime - aTime || a.scholar.label.localeCompare(b.scholar.label);
+        if (a.latest && b.latest) {
+          return comparePublicationDates(
+            { ...articlePublication(a.latest), id: a.latest.id },
+            { ...articlePublication(b.latest), id: b.latest.id },
+          ) || a.scholar.label.localeCompare(b.scholar.label);
+        }
+        if (a.latest) return -1;
+        if (b.latest) return 1;
+        return a.scholar.label.localeCompare(b.scholar.label);
       });
   }, [feed, query, scholarProfiles, states, subscriptions.scholar]);
 
@@ -2408,7 +2581,12 @@ export default function Home() {
       !states[article.id]?.read &&
       !states[article.id]?.ignored,
   ).length;
-  const savedCount = Object.values(states).filter((state) => state.saved).length;
+  const savedCount = Object.values(states).filter(
+    (state) => state.saved && !state.ignored,
+  ).length;
+  const ignoredCount = Object.values(states).filter(
+    (state) => state.ignored,
+  ).length;
   const currentScholar =
     profile
       ? scholarFromResult(profile.candidate)
@@ -2524,6 +2702,9 @@ export default function Home() {
                 {item.label}
                 {item.id === "all" && <em>{unreadCount}</em>}
                 {item.id === "saved" && savedCount > 0 && <em>{savedCount}</em>}
+                {item.id === "ignored" && ignoredCount > 0 && (
+                  <em>{ignoredCount}</em>
+                )}
               </button>
             ))}
           </nav>
@@ -2619,7 +2800,9 @@ export default function Home() {
                       ? "期刊更新"
                       : filter === "keyword"
                         ? "关键词命中"
-                        : "已收藏")}
+                        : filter === "saved"
+                          ? "已收藏"
+                          : "已忽略")}
               </h1>
               <p>
                 {isScholarOverview
@@ -2632,6 +2815,8 @@ export default function Home() {
                 <strong>
                   {profile
                     ? profile.works.length
+                    : filter === "saved" || filter === "ignored"
+                      ? visibleItems.length
                     : feed
                     ? isScholarOverview
                       ? scholarCards.length
@@ -2911,7 +3096,7 @@ export default function Home() {
                         </div>
                         {latest && (
                           <time dateTime={latest.publishedAt}>
-                            {relativeDate(latest.publishedAt)}
+                            {relativePublicationDate(articlePublication(latest))}
                           </time>
                         )}
                       </header>
@@ -2932,7 +3117,7 @@ export default function Home() {
                             />
                           </h3>
                           <p className="scholar-latest-meta">
-                            {latest.venue} · {formatDate(latest.publishedAt)}
+                            {latest.venue} · {formatPublicationDate(articlePublication(latest))}
                           </p>
                           <p className="scholar-latest-abstract">
                             {latest.abstract
@@ -2969,7 +3154,7 @@ export default function Home() {
                             {articles.slice(1, 4).map((article) => (
                               <li key={article.id}>
                                 <span>{article.title}</span>
-                                <time>{formatDate(article.publishedAt)}</time>
+                                <time>{formatPublicationDate(articlePublication(article))}</time>
                               </li>
                             ))}
                           </ol>
@@ -2997,6 +3182,43 @@ export default function Home() {
             <div className="article-list">
               {visibleItems.map((article) => {
                 const state = states[article.id] || defaultArticleState();
+                if (article.archiveMissing) {
+                  return (
+                    <article
+                      className="article-card recovery-placeholder"
+                      key={article.id}
+                    >
+                      <div className="article-meta">
+                        <span className="venue">历史状态记录</span>
+                      </div>
+                      <h2>{article.title}</h2>
+                      <p>
+                        本地只找到了这条文章状态，原缓存快照已不可用。记录 ID：
+                        <code>{article.id}</code>
+                      </p>
+                      <footer className="article-actions">
+                        {state.ignored && (
+                          <button
+                            onClick={() =>
+                              updateArticle(article.id, { ignored: false })
+                            }
+                          >
+                            恢复文章状态
+                          </button>
+                        )}
+                        {state.saved && (
+                          <button
+                            onClick={() =>
+                              updateArticle(article.id, { saved: false })
+                            }
+                          >
+                            清除收藏状态
+                          </button>
+                        )}
+                      </footer>
+                    </article>
+                  );
+                }
                 const publishedSinceFollow = articlePublishedSinceFollow(
                   article,
                   subscriptions,
@@ -3015,7 +3237,7 @@ export default function Home() {
                     <div className="article-meta">
                       <span className="venue">{article.venue}</span>
                       <span>·</span>
-                      <time>{relativeDate(article.publishedAt)}</time>
+                      <time>{relativePublicationDate(articlePublication(article))}</time>
                       {!publishedSinceFollow && (
                         <span className="before-follow-pill">关注前发表</span>
                       )}
@@ -3027,7 +3249,7 @@ export default function Home() {
                         href={article.url}
                         target="_blank"
                         rel="noreferrer"
-                        onClick={() => updateArticle(article.id, { read: true })}
+                        onClick={() => updateArticle(article, { read: true })}
                       >
                         <HighlightedText
                           text={article.title}
@@ -3153,33 +3375,37 @@ export default function Home() {
                       <button
                         className={state.saved ? "selected" : ""}
                         onClick={() =>
-                          updateArticle(article.id, { saved: !state.saved })
+                          updateArticle(article, { saved: !state.saved })
                         }
                       >
                         {state.saved ? "♥ 已收藏" : "♡ 收藏"}
                       </button>
                       <button
                         onClick={() =>
-                          updateArticle(article.id, { read: !state.read })
+                          updateArticle(article, { read: !state.read })
                         }
                       >
                         {state.read ? "标为未读" : "✓ 标为已读"}
                       </button>
                       <button
                         onClick={() =>
-                          updateArticle(article.id, { ignored: true })
+                          state.ignored
+                            ? updateArticle(article, { ignored: false })
+                            : ignoreArticle(article)
                         }
                       >
-                        × 忽略
+                        {state.ignored ? "↶ 恢复" : "× 忽略"}
                       </button>
-                      <a
-                        href={article.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={() => updateArticle(article.id, { read: true })}
-                      >
-                        阅读原文 →
-                      </a>
+                      {article.url && (
+                        <a
+                          href={article.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={() => updateArticle(article, { read: true })}
+                        >
+                          阅读原文 →
+                        </a>
+                      )}
                     </footer>
                   </article>
                 );
@@ -3863,7 +4089,22 @@ export default function Home() {
         </div>
       )}
 
-      {notice && <div className="toast">{notice}</div>}
+      {notice && (
+        <div className="toast">
+          <span>{notice.message}</span>
+          {notice.action && (
+            <button
+              type="button"
+              onClick={() => {
+                notice.action?.run();
+                setNotice(null);
+              }}
+            >
+              {notice.action.label}
+            </button>
+          )}
+        </div>
+      )}
     </main>
   );
 }

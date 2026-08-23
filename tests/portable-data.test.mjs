@@ -219,7 +219,12 @@ test("portable server upgrades version 2 data without losing saved content", asy
       ),
     );
     assert.equal(saved.feed.items[0].authors[0].name, "Cheryl Mattingly");
+    assert.equal(saved.feed.items[0].publishedPrecision, "day");
     assert.equal(saved.states["10.1234/example"].saved, true);
+    assert.equal(
+      saved.articleArchive["10.1234/example"].title,
+      "An Article",
+    );
     assert.equal(
       saved.translations["10.1234/example"],
       "已保存的中文摘要",
@@ -235,6 +240,42 @@ test("portable server upgrades version 2 data without losing saved content", asy
     assert.equal(
       saved.scholarProfiles["openalex:A123"].complete,
       true,
+    );
+
+    const oldSchema8 = { ...saved };
+    delete oldSchema8.articleArchive;
+    const oldSchema8Saved = await apiFetch("/api/local-data", {
+      method: "PUT",
+      body: JSON.stringify(oldSchema8),
+    }).then((response) => response.json());
+    assert.equal(oldSchema8Saved.version, 8);
+    assert.equal(
+      oldSchema8Saved.articleArchive["10.1234/example"].title,
+      "An Article",
+    );
+
+    const refreshedArchive = await apiFetch("/api/local-data", {
+      method: "PUT",
+      body: JSON.stringify({
+        ...oldSchema8Saved,
+        articleArchive: {
+          "10.1234/example": {
+            ...oldSchema8Saved.feed.items[0],
+            title: "Stale archived title",
+          },
+        },
+        feed: {
+          ...oldSchema8Saved.feed,
+          items: [{
+            ...oldSchema8Saved.feed.items[0],
+            title: "Fresh feed title",
+          }],
+        },
+      }),
+    }).then((response) => response.json());
+    assert.equal(
+      refreshedArchive.articleArchive["10.1234/example"].title,
+      "Fresh feed title",
     );
 
     const expandedSubscriptions = {
@@ -271,7 +312,29 @@ test("portable server upgrades version 2 data without losing saved content", asy
       body: JSON.stringify({ patch: { states: manyStates } }),
     }).then((response) => response.json());
     assert.equal(Object.keys(patchedStates.states).length, 2105);
-    assert.equal(patchedStates.feed.items[0].title, "An Article");
+    assert.equal(patchedStates.feed.items[0].title, "Fresh feed title");
+
+    const manyArchivedArticles = Object.fromEntries(
+      Array.from({ length: 300 }, (_, index) => {
+        const id = `state-${index * 2}`;
+        return [id, {
+          id,
+          title: `Archived article ${index}`,
+          authors: [{ name: "Archived Author" }],
+          venue: "Archive Journal",
+          publishedAt: "2024-01-01",
+          publishedPrecision: "year",
+          type: "期刊论文",
+          url: `https://example.test/${id}`,
+          matches: [{ kind: "journal", label: "Archive Journal" }],
+        }];
+      }),
+    );
+    const patchedArchive = await apiFetch("/api/local-data", {
+      method: "PATCH",
+      body: JSON.stringify({ patch: { articleArchive: manyArchivedArticles } }),
+    }).then((response) => response.json());
+    assert.equal(Object.keys(patchedArchive.articleArchive).length, 300);
 
     const patchedTranslations = await apiFetch("/api/local-data", {
       method: "PATCH",

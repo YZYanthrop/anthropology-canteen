@@ -84,6 +84,21 @@ test("digest is scholar-first, static, escaped, and keeps abstracts optional", (
   assert.doesNotMatch(result.html, /javascript:/i);
 });
 
+test("digest does not invent month or day for imprecise publication dates", () => {
+  const result = renderDigest({
+    items: [{
+      title: "Year-only work",
+      authors: ["Author"],
+      venue: "Archive",
+      publishedAt: "2024-01-01",
+      publishedPrecision: "year",
+      matches: [{ kind: "journal", label: "Archive" }],
+    }],
+  });
+  assert.match(result.text, /Archive · 2024年/);
+  assert.doesNotMatch(result.text, /1月|1日/);
+});
+
 test("reminder baselines use stable subscriptions and keep late-indexed works", () => {
   const state = emptyReminderState();
   const subscriptions = {

@@ -69,11 +69,26 @@ function shortAbstract(value) {
   return text.length > 400 ? `${text.slice(0, 397)}…` : text;
 }
 
-function formatDate(value) {
+function formatDate(value, explicitPrecision) {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?/.exec(raw);
+  const precision = ["day", "month", "year"].includes(explicitPrecision)
+    ? explicitPrecision
+    : /^\d{4}-01-01(?:T|$)/.test(raw)
+      ? "year"
+      : match?.[3]
+        ? "day"
+        : match?.[2]
+          ? "month"
+          : "year";
+  if (match && precision === "year") return `${Number(match[1])}年`;
+  if (match && precision === "month") {
+    return `${Number(match[1])}年${Number(match[2] || 1)}月`;
+  }
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value || "日期未知"
-    : new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "short", day: "numeric" }).format(date);
+    : new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }).format(date);
 }
 
 function safeLink(value) {
@@ -106,7 +121,7 @@ function renderItemText(item, detailed) {
   const lines = [
     `- ${item.title}`,
     `  作者：${authors}`,
-    `  来源：${item.venue || "未知"} · ${formatDate(item.publishedAt)}`,
+    `  来源：${item.venue || "未知"} · ${formatDate(item.publishedAt, item.publishedPrecision)}`,
     reason ? `  收录原因：${reason}` : "",
     keywords.length ? `  关键词：${[...new Set(keywords)].join("、")}` : "",
     safeLink(item.url) ? `  链接：${safeLink(item.url)}` : "",
@@ -140,7 +155,7 @@ export function renderDigest({ items, format = "concise", warnings = [], omitted
     const reason = (item.matches || []).map((match) => match.label).filter(Boolean).join("；");
     const keywords = [...new Set((item.matches || []).flatMap((match) => match.terms || []).filter(Boolean))];
     const link = safeLink(item.url);
-    return `<article><h3>${link ? `<a href="${escapeHtml(link)}">${escapeHtml(item.title)}</a>` : escapeHtml(item.title)}</h3><p>${escapeHtml(authors)}<br>${escapeHtml(item.venue || "未知")} · ${escapeHtml(formatDate(item.publishedAt))}</p>${reason ? `<p>收录原因：${escapeHtml(reason)}</p>` : ""}${keywords.length ? `<p>关键词：${keywords.map((keyword) => `<mark>${escapeHtml(keyword)}</mark>`).join("、")}</p>` : ""}${detailed && item.abstract ? `<p>${escapeHtml(shortAbstract(item.abstract))}</p>` : ""}</article>`;
+    return `<article><h3>${link ? `<a href="${escapeHtml(link)}">${escapeHtml(item.title)}</a>` : escapeHtml(item.title)}</h3><p>${escapeHtml(authors)}<br>${escapeHtml(item.venue || "未知")} · ${escapeHtml(formatDate(item.publishedAt, item.publishedPrecision))}</p>${reason ? `<p>收录原因：${escapeHtml(reason)}</p>` : ""}${keywords.length ? `<p>关键词：${keywords.map((keyword) => `<mark>${escapeHtml(keyword)}</mark>`).join("、")}</p>` : ""}${detailed && item.abstract ? `<p>${escapeHtml(shortAbstract(item.abstract))}</p>` : ""}</article>`;
   }).join("")}</section>`).join("");
   const html = `<!doctype html><html><body style="font-family:Arial,'Microsoft YaHei',sans-serif;color:#28231d;line-height:1.55"><h1>Anthropology Canteen</h1><p>${escapeHtml(test ? "这是一封测试邮件，说明邮件提醒配置可以正常发信。" : `本次发现 ${items.length} 项新发表。`)}</p>${htmlGroups}${omitted ? `<p>另有 ${omitted} 项更新未完整展开，请打开 Anthropology Canteen 查看。</p>` : ""}${warnings.length ? `<p>部分数据源暂不可用：${escapeHtml(warnings.join("；"))}</p>` : ""}</body></html>`;
   return { subject: title, text, html };

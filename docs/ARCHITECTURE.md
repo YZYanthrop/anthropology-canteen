@@ -25,6 +25,8 @@ data root, import old data, and assemble an archive.
 - `app/api/` owns feed, search (including journal and scholar discovery),
   scholar-profile, and translation routes.
 - `app/lib/scholar-search.ts` normalizes scholar identities and publications.
+- `app/lib/publication-date.ts` normalizes year/month/day precision, stable
+  ordering, display, duplicate-date selection, and follow-date comparisons.
 - The production build creates `dist/client` and `dist/server`, which are shared
   by every desktop package.
 
@@ -56,7 +58,8 @@ must remain inside the user-selected portable folder.
 ## Local persistence contract
 
 - `data/anthropology-canteen-data.json`: subscriptions, read/saved/ignored
-  state, article and scholar caches, and translations.
+  state, article and scholar caches, retained article snapshots, and
+  translations.
 - `data/anthropology-canteen-settings.json`: optional provider API keys.
 - `data/anthropology-canteen-reminder-state.json`: reminder baselines,
   pending outbox and delivery ledger (version 2).
@@ -71,6 +74,22 @@ simultaneous subscription, article-state, translation, or profile change.
 Data, settings, and reminder state have separate owner-token locks; writes use
 temporary files, fsync, atomic replacement, and a last-known-good backup. User
 records are never silently removed to satisfy an in-memory item cap.
+
+Schema version 8 has an additive, optional `articleArchive` map keyed by article
+ID. It keeps an uncapped, sanitized display snapshot only while the matching
+state is saved or ignored. A current feed record refreshes the snapshot, and an
+older version-8 file without the field is backfilled from its feed cache during
+sanitization. State records whose metadata no longer exists remain intact so
+the client can show an honest placeholder and let the user restore or clear the
+state. Clearing both saved and ignored removes the corresponding snapshot;
+read and translation state remain independent.
+
+Feed and archived articles may carry `publishedPrecision` as `day`, `month`, or
+`year`. Providers record only the components they supplied, duplicate merging
+prefers the more precise valid value, and legacy `YYYY-01-01` values without an
+explicit precision are treated as year-only. Display, ordering, and
+post-follow checks use the precision rather than claiming an unknown month or
+day. Article ID is the final stable ordering tie-breaker.
 
 The same JSON formats must work on Windows and macOS so a user can migrate by
 copying or importing the `data/` directory.

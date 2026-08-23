@@ -864,6 +864,19 @@ i.keyword {
   opacity: 0.72;
 }
 
+.recovery-placeholder > p {
+  color: #686d69;
+  line-height: 1.65;
+}
+
+.recovery-placeholder code {
+  display: inline-block;
+  margin-left: 4px;
+  color: var(--forest);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
 .article-meta {
   display: flex;
   align-items: center;
@@ -1461,6 +1474,18 @@ mark {
   box-shadow: 0 10px 30px rgba(24, 61, 50, 0.22);
   font-size: 11px;
   animation: toast-in 180ms ease-out;
+}
+
+.toast button {
+  margin-left: 14px;
+  padding: 2px 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
 }
 
 .modal-backdrop {

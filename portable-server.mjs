@@ -127,6 +127,44 @@ function cleanTimestamp(value, fallback = new Date().toISOString()) {
   return Number.isFinite(Date.parse(timestamp)) ? timestamp : fallback;
 }
 
+function cleanPublicationDate(value, explicitPrecision) {
+  const raw = clean(value, 80);
+  const match = /^(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?/.exec(raw);
+  const fallback = { publishedAt: "1900-01-01", publishedPrecision: "year" };
+  if (!match) return fallback;
+  const year = Number(match[1]);
+  const month = match[2] ? Number(match[2]) : 1;
+  const day = match[3] ? Number(match[3]) : 1;
+  const maxDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (
+    !Number.isInteger(year) ||
+    year < 1000 ||
+    year > 9999 ||
+    !Number.isInteger(month) ||
+    month < 1 ||
+    month > 12 ||
+    !Number.isInteger(day) ||
+    day < 1 ||
+    day > maxDay
+  ) {
+    return fallback;
+  }
+  const storedPrecision = ["day", "month", "year"].includes(explicitPrecision)
+    ? explicitPrecision
+    : null;
+  const inferredPrecision = /^\d{4}-01-01(?:T|$)/.test(raw)
+    ? "year"
+    : match[3]
+      ? "day"
+      : match[2]
+        ? "month"
+        : "year";
+  return {
+    publishedAt: `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+    publishedPrecision: storedPrecision || inferredPrecision,
+  };
+}
+
 function emptyLocalData() {
   return {
     version: LOCAL_DATA_VERSION,
@@ -134,6 +172,7 @@ function emptyLocalData() {
     savedAt: new Date().toISOString(),
     subscriptions: { journal: [], scholar: [], keyword: [] },
     states: {},
+    articleArchive: {},
     feed: null,
     translations: {},
     scholarProfiles: {},
@@ -478,6 +517,10 @@ function cleanArticle(value) {
   const title = clean(value?.title, 1000);
   const matches = cleanMatches(value?.matches);
   if (!id || !title || matches.length === 0) return null;
+  const publication = cleanPublicationDate(
+    value?.publishedAt,
+    value?.publishedPrecision,
+  );
   return {
     id,
     doi: clean(value?.doi, 300) || undefined,
@@ -502,7 +545,7 @@ function cleanArticle(value) {
       : [],
     venue: clean(value?.venue, 400),
     publisher: clean(value?.publisher, 400) || undefined,
-    publishedAt: clean(value?.publishedAt, 40) || "1900-01-01",
+    ...publication,
     type: clean(value?.type, 120) || "学术成果",
     url: clean(value?.url, 1000) || "https://openalex.org",
     abstract: clean(value?.abstract, 12000) || undefined,
@@ -542,6 +585,26 @@ function cleanFeed(value) {
         })).filter((item) => item.subscriptionId && item.label)
       : [],
   };
+}
+
+function cleanArticleArchive(value, states, feed) {
+  const stored = {};
+  if (value && typeof value === "object") {
+    for (const rawArticle of Object.values(value)) {
+      const article = cleanArticle(rawArticle);
+      if (article) stored[article.id] = article;
+    }
+  }
+  const live = Object.fromEntries(
+    (feed?.items || []).map((article) => [article.id, article]),
+  );
+  const archive = {};
+  for (const [id, state] of Object.entries(states)) {
+    if (!state.saved && !state.ignored) continue;
+    const article = live[id] || stored[id];
+    if (article) archive[id] = article;
+  }
+  return archive;
 }
 
 function emptyLocalSettings() {
@@ -721,6 +784,8 @@ function cleanLocalData(value = {}, refreshSavedAt = false) {
     }
   }
 
+  const feed = quarantineLegacyIdentity ? null : cleanFeed(value.feed);
+
   return {
     version: LOCAL_DATA_VERSION,
     revision:
@@ -734,7 +799,12 @@ function cleanLocalData(value = {}, refreshSavedAt = false) {
       quarantineLegacyIdentity,
     ),
     states,
-    feed: quarantineLegacyIdentity ? null : cleanFeed(value.feed),
+    articleArchive: cleanArticleArchive(
+      quarantineLegacyIdentity ? null : value.articleArchive,
+      states,
+      feed,
+    ),
+    feed,
     translations,
     scholarProfiles: quarantineLegacyIdentity
       ? {}
@@ -748,6 +818,7 @@ function hasLocalDataContent(data) {
       data.subscriptions.scholar.length ||
       data.subscriptions.keyword.length ||
       Object.keys(data.states).length ||
+      Object.keys(data.articleArchive).length ||
       Object.keys(data.translations).length ||
       Object.keys(data.scholarProfiles).length ||
       data.feed?.items.length,
@@ -859,6 +930,7 @@ async function patchLocalDataFile(patch) {
     for (const key of [
       "subscriptions",
       "states",
+      "articleArchive",
       "feed",
       "translations",
       "scholarProfiles",

@@ -8,6 +8,7 @@ const emptyLocalData = {
   revision: 0,
   subscriptions: { journal: [], scholar: [], keyword: [] },
   states: {},
+  articleArchive: {},
   feed: {
     items: [],
     updatedAt: new Date().toISOString(),

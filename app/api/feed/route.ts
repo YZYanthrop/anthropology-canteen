@@ -3,6 +3,14 @@ import {
   searchScholars,
   type ScholarCandidate,
 } from "../../lib/scholar-search";
+import {
+  comparePublicationDates,
+  morePrecisePublicationDate,
+  normalizePublicationDate,
+  publicationDateFromParts,
+  publicationDateFromValue,
+  type PublicationPrecision,
+} from "../../lib/publication-date";
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +112,7 @@ type Article = {
   venue: string;
   publisher?: string;
   publishedAt: string;
+  publishedPrecision?: PublicationPrecision;
   type: string;
   url: string;
   abstract?: string;
@@ -547,6 +556,10 @@ function toArticle(work: OpenAlexWork, match: Match): Article | null {
     .filter(Boolean)
     .filter((item, index, all) => all.indexOf(item) === index)
     .slice(0, 18);
+  const publication = publicationDateFromValue(
+    work.publication_date,
+    work.publication_year,
+  );
   return {
     id: doi || work.id || title.toLowerCase(),
     doi,
@@ -562,9 +575,7 @@ function toArticle(work: OpenAlexWork, match: Match): Article | null {
       }),
     venue:
       normalizeText(work.primary_location?.source?.display_name) || match.label,
-    publishedAt:
-      work.publication_date ||
-      (work.publication_year ? `${work.publication_year}-01-01` : "1900-01-01"),
+    ...publication,
     type: typeLabel(work.type_crossref || work.type),
     url,
     abstract: abstractFromIndex(work.abstract_inverted_index),
@@ -636,9 +647,10 @@ function semanticScholarArticle(
     .replace(/^https?:\/\/doi\.org\//i, "")
     .toLowerCase() || undefined;
   const paperId = clean(paper.paperId, 220);
-  const publishedAt =
-    clean(paper.publicationDate, 40) ||
-    (paper.year ? `${paper.year}-01-01` : "1900-01-01");
+  const publication = publicationDateFromValue(
+    clean(paper.publicationDate, 40),
+    paper.year,
+  );
   return {
     id: doi || paperId || title.toLowerCase(),
     doi,
@@ -653,7 +665,7 @@ function semanticScholarArticle(
         }];
       }),
     venue: normalizeText(paper.venue) || match.label,
-    publishedAt,
+    ...publication,
     type: typeLabel(paper.publicationTypes?.[0]?.toLowerCase()),
     url:
       clean(paper.url, 1000) ||
@@ -715,14 +727,8 @@ function crossrefDate(work: CrossrefWork) {
   const parts =
     work.published?.["date-parts"]?.[0] ||
     work.issued?.["date-parts"]?.[0];
-  if (parts?.length) {
-    const [year, month = 1, day = 1] = parts;
-    if (Number.isFinite(year)) {
-      return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    }
-  }
   const created = clean(work.created?.["date-time"], 40);
-  return created ? created.slice(0, 10) : "1900-01-01";
+  return publicationDateFromParts(parts, created);
 }
 
 function crossrefArticle(work: CrossrefWork, match: Match): Article | null {
@@ -746,7 +752,7 @@ function crossrefArticle(work: CrossrefWork, match: Match): Article | null {
     authors,
     venue: normalizeText(work["container-title"]?.[0]) || match.label,
     publisher: normalizeText(work.publisher) || undefined,
-    publishedAt: crossrefDate(work),
+    ...crossrefDate(work),
     type: typeLabel(work.type),
     url: doi ? `https://doi.org/${doi}` : clean(work.URL, 1000),
     abstract: normalizeText(work.abstract).slice(0, 6000) || undefined,
@@ -1460,8 +1466,19 @@ function mergeArticles(
           matches.push(match);
         }
       }
+      const publication = morePrecisePublicationDate(
+        normalizePublicationDate(
+          current.publishedAt,
+          current.publishedPrecision,
+        ),
+        normalizePublicationDate(
+          article.publishedAt,
+          article.publishedPrecision,
+        ),
+      );
       merged.set(identityKey, {
         ...current,
+        ...publication,
         abstract: current.abstract || article.abstract,
         authors: [...current.authors, ...article.authors].filter(
           (author, index, all) =>
@@ -1516,10 +1533,10 @@ function mergeArticles(
       }
       return { ...article, matches };
     })
-    .sort(
-      (a, b) =>
-        new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
-    )
+    .sort((a, b) => comparePublicationDates(
+      { ...normalizePublicationDate(a.publishedAt, a.publishedPrecision), id: a.id },
+      { ...normalizePublicationDate(b.publishedAt, b.publishedPrecision), id: b.id },
+    ))
     .slice(0, limit);
 }
 

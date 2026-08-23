@@ -164,6 +164,18 @@ function cleanReminderState(value) {
 export function sanitizeArticle(value) {
   const title = cleanString(value.title, 1000);
   const id = cleanString(value.id, 800) || title.toLowerCase();
+  const publishedAt = cleanString(value.publishedAt, 80);
+  const publishedPrecision = ["day", "month", "year"].includes(
+    value.publishedPrecision,
+  )
+    ? value.publishedPrecision
+    : /^\d{4}-01-01(?:T|$)/.test(publishedAt)
+      ? "year"
+      : /^\d{4}-\d{1,2}$/.test(publishedAt)
+        ? "month"
+        : /^\d{4}/.test(publishedAt)
+          ? "day"
+          : "year";
   return {
     id,
     doi: cleanString(value.doi, 320).replace(/^https?:\/\/doi\.org\//i, "").toLowerCase(),
@@ -172,7 +184,8 @@ export function sanitizeArticle(value) {
       ? value.authors.slice(0, 30).map((author) => cleanString(author?.name || author, 240)).filter(Boolean)
       : [],
     venue: cleanString(value.venue, 500),
-    publishedAt: cleanString(value.publishedAt, 80),
+    publishedAt,
+    publishedPrecision,
     url: cleanString(value.url, 1000),
     abstract: cleanString(value.abstract, 12000),
     keywords: Array.isArray(value.keywords)

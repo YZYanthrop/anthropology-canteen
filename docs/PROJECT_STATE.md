@@ -155,10 +155,12 @@ complete:
 3. Existing v1.3.0 tags and public artifacts remain immutable.
 4. Signing and notarization remain optional and separately authorized; current macOS packages are unsigned and unnotarized.
 
-No new product implementation is currently approved. The next candidate is a
-proposed v1.3.2 usability and recoverability plan. Its status and exact link
-live in `docs/work/ACTIVE.md`; implementation must not begin until that packet
-and the plan both say `Approved`.
+The approved v1.3.2 usability and recoverability milestone is in progress. Its
+UI interaction-test prerequisite is merged, and Slice A implements reversible
+ignored-state recovery, uncapped version-8 article snapshots, and explicit
+publication-date precision without changing the schema number. Slice B may
+begin only after Slice A is reviewed and merged; Slice C remains sequential.
+The exact branch, handoff, and next action live in `docs/work/ACTIVE.md`.
 
 Project continuation no longer depends on a permanent Codex conversation.
 `docs/CURRENT.md` is the lightweight entry point, `docs/WORKFLOW.md` defines the
