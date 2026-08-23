@@ -33,10 +33,11 @@ document router below.
 
 - The approved v1.3.2 UI interaction-test prerequisite is merged into the local
   `main` baseline.
-- Slice A is implemented and verified on the branch and handoff named in
+- Slice A was reviewed without blockers and is merged into local `main` at
+  `531e04e`.
+- Slice B is implemented and verified on the branch and handoff named in
   `docs/work/ACTIVE.md`; it is awaiting review and merge.
-- Slices B and C have not started. Slice B may begin only after Slice A is
-  merged, and the remaining work stays sequential.
+- Slice C has not started and may begin only after Slice B is merged.
 - Published v1.3.1 artifacts and tags are immutable.
 
 ## Read only what the task needs
