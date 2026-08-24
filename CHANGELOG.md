@@ -39,6 +39,20 @@
 - 发布前只对冻结后的最终 `main` 完整提交运行一次 `candidate_sha` 原生预检；候选运行同时构建并 smoke Windows x64、macOS Apple Silicon arm64 和 macOS Intel x64，但候选产物仅用于验证，不能作为正式 Release 附件。
 - 正式附件仍须由同一 SHA 上不可移动的 `v1.3.2` 标签重新生成。每个平台 ZIP 在构建时生成一个同名 `.sha256` sidecar；公开发布后再下载附件完成第二次完整性核对，不为重复取得相同摘要重新构建。
 
+### 正式发布
+
+- `v1.3.2` 标签提交为 `f89936b8e4854928142fb028de869794639fed3d`。预标签候选运行
+  [#32683536380](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32683536380)
+  与正式标签运行
+  [#32687638516](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32687638516)
+  均通过；正式运行的标签校验、共享应用验证、Windows x64、原生 macOS arm64、原生 macOS x64 和源码归档六项任务全部成功。
+- Windows x64（43,294,718 bytes）：`9F51687B1B750614FB3547A4F5C5626DAD263ED43DD6D200F980FCD4D9D08D95`。
+- macOS Apple Silicon arm64（46,512,921 bytes）：`0BF239A5871E5CFDE15B56546362F27D5110D94AB8AA24EFEAC6E3AFF87AC960`。
+- macOS Intel x64（47,717,149 bytes）：`7E54A8EE4652A00F8E0A21C9A4175E645F90CC9CB36FCBA1628E3A670AE472A6`。
+- 三个平台 ZIP 与同名 `.sha256` 文件已发布在
+  [v1.3.2 GitHub Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2)，并在公开发布后重新下载；三项 SHA-256 均与 sidecar 匹配。
+- Windows 首次注册提醒或更新迁移时，部分系统需以管理员身份运行一次 `start-local.cmd`；注册后的计划任务仍以当前用户 `RunLevel Limited` 运行，日常启动无需管理员权限。macOS 两个架构的便携包均未签名、未公证。
+
 ## [1.3.1] - 2026-08-20
 
 ### 安全与数据可靠性

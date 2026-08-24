@@ -4,9 +4,9 @@
 
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
-| Windows x64 | v1.3.1 released; native package and reminder smoke passed | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | v1.3.1 released; unsigned native package and reminder smoke passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
-| macOS Intel | v1.3.1 released; unsigned native package and reminder smoke passed | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| Windows x64 | v1.3.2 released; native package and reminder smoke passed | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
+| macOS Apple Silicon | v1.3.2 released; unsigned native package and reminder smoke passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | v1.3.2 released; unsigned native package and reminder smoke passed | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 
 The local v1.3.2 Windows trial package was built on 2026-08-23. Its extracted
 final-package smoke passed archive privacy, checksum, VBS launch, compiled
@@ -29,14 +29,15 @@ The task principal remains the current user with `RunLevel Limited`; normal
 launches do not need elevation. The UI is active only when step 3 is green and
 shows “后台提醒已开启”, and a check with no new articles sends no mail.
 
-The v1.3.2 pre-tag candidate must come from one frozen full `main` SHA through
-the build-only portable-release workflow. Windows x64 and the native macOS
-arm64/x64 runners each build their own ZIP once, generate one SHA-256 sidecar,
-and run the platform smoke described below. Existing local Windows trial ZIPs
-are excluded. The support matrix continues to describe v1.3.1 as public until
-the candidate passes and a later tag/Release is explicitly authorized.
+The v1.3.2 pre-tag candidate and formal immutable-tag run came from frozen
+commit `f89936b8e4854928142fb028de869794639fed3d`. Candidate run
+[#32683536380](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32683536380)
+and tag run
+[#32687638516](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32687638516)
+passed Windows x64 and both native macOS architectures. Only the formal tag
+artifacts were published; existing local trial and candidate ZIPs were excluded.
 
-The macOS v1.3.1 packages require macOS 13.5 or newer, matching the minimum
+The macOS v1.3.2 packages require macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
 are not supported by these portable archives.
 
@@ -203,6 +204,16 @@ system-wide security.
   The formal native run [#32341349020](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32341349020)
   passed all six jobs; the public Release lists the three platform ZIP sizes
   and SHA-256 values.
+- v1.3.2 is published from tag commit `f89936b8e4854928142fb028de869794639fed3d`.
+  The formal native run [#32687638516](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32687638516)
+  passed all six jobs. Public downloads from the
+  [v1.3.2 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2)
+  matched their sidecars: Windows x64 43,294,718 bytes
+  (`9F51687B1B750614FB3547A4F5C5626DAD263ED43DD6D200F980FCD4D9D08D95`),
+  macOS arm64 46,512,921 bytes
+  (`0BF239A5871E5CFDE15B56546362F27D5110D94AB8AA24EFEAC6E3AFF87AC960`),
+  and macOS x64 47,717,149 bytes
+  (`7E54A8EE4652A00F8E0A21C9A4175E645F90CC9CB36FCBA1628E3A670AE472A6`).
 
 ## Validation limits
 

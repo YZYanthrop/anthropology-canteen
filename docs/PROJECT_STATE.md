@@ -4,8 +4,8 @@ Last updated: 2026-08-24
 
 ## Stable baseline
 
-- Current public product version: `v1.3.1`.
-- Stable Git tag: `v1.3.1`; Windows x64, macOS arm64, and macOS x64 artifacts
+- Current public product version: `v1.3.2`.
+- Stable Git tag: `v1.3.2`; Windows x64, macOS arm64, and macOS x64 artifacts
   are built from that one immutable tag.
 - Local data schema: version 8; v1.3.0 public packages used version 7.
 - Local API-key and reminder settings schema: version 3; the main research data
@@ -14,7 +14,7 @@ Last updated: 2026-08-24
   IDs are quarantined while subscriptions and user states are preserved.
 - Current published distributions: Windows x64 plus unsigned macOS Apple
   Silicon arm64 and Intel x64 portable ZIPs in one
-  [v1.3.1 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.1).
+  [v1.3.2 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2).
 - macOS bootstrap tag: `macos-v1.1.1-beta.1` at the validated build commit
   `c2ec6d1`; its GitHub Pre-release is
   [published here](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/macos-v1.1.1-beta.1).
@@ -23,7 +23,8 @@ Last updated: 2026-08-24
 - Source development requires Node.js 22.13 or newer and pnpm 11.9. The current
   Windows share package pins Node.js 24.14.0.
 
-The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, and `v1.3.1` tags are immutable.
+The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, `v1.3.1`, and
+`v1.3.2` tags are immutable.
 
 ## v1.2.0 release baseline
 
@@ -94,22 +95,35 @@ The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, and `v1.3.1` tags are i
   native macOS x64, and the source archive. Public ZIP sizes and SHA-256 values
   are recorded in `CHANGELOG.md` and the GitHub Release.
 
-## v1.3.2 release preparation
+## v1.3.2 release baseline
 
 - The formal release date is 2026-08-24. Product metadata and every OpenAlex,
   Semantic Scholar, and Crossref product User-Agent are aligned at `1.3.2`.
 - The UI-test prerequisite, Slice A, Slice B, Slice C, and the Windows
   reminder-registration correction are reviewed and merged. Version 8 research
   data, reminder state version 2, and settings version 3 remain compatible.
-- Release preparation freezes one final `main` commit and runs exactly one
-  pre-tag `candidate_sha` native gate. Existing local Windows trial ZIPs are not
-  candidate or release inputs.
-- A passing gate must cover Windows x64 Task Scheduler registration, VBS
-  startup, persistence, migration, DPAPI, the offline reminder worker and blank
-  archive privacy, plus native macOS arm64/x64 LaunchAgent, Keychain, startup,
-  persistence, migration, worker and privacy smoke.
-- No `v1.3.2` tag or GitHub Release is created until the user separately
-  authorizes publication after the candidate report.
+- The immutable tag points to
+  `f89936b8e4854928142fb028de869794639fed3d`. Pre-tag candidate run
+  [#32683536380](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32683536380)
+  and formal tag run
+  [#32687638516](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32687638516)
+  passed shared verification, Windows x64, native macOS arm64, native macOS
+  x64, and the source-archive job.
+- Windows smoke covers Task Scheduler registration, VBS startup, persistence,
+  migration, DPAPI, the reminder worker, and blank-archive privacy. The task
+  remains current-user `RunLevel Limited`; only first registration or update
+  migration may require one administrator-assisted `start-local.cmd` launch.
+- Both macOS architectures passed native LaunchAgent, Keychain, startup,
+  persistence, migration, worker, and privacy smoke. Their public archives are
+  unsigned and unnotarized.
+- The three platform ZIPs and sidecars are published in the
+  [v1.3.2 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2).
+  Post-publication downloads matched every sidecar: Windows x64
+  `9F51687B1B750614FB3547A4F5C5626DAD263ED43DD6D200F980FCD4D9D08D95`,
+  macOS arm64
+  `0BF239A5871E5CFDE15B56546362F27D5110D94AB8AA24EFEAC6E3AFF87AC960`,
+  and macOS x64
+  `7E54A8EE4652A00F8E0A21C9A4175E645F90CC9CB36FCBA1628E3A670AE472A6`.
 
 ## Current product contract
 
@@ -164,12 +178,12 @@ See `docs/ARCHITECTURE.md` and `docs/PLATFORMS.md` for boundaries.
 
 ## Active milestone
 
-The v1.3.0 local-reminder milestone and v1.3.1 stabilization milestone are
-complete:
+The v1.3.0 local-reminder, v1.3.1 stabilization, and v1.3.2 usability and
+recoverability milestones are complete:
 
 1. Security, persistence, provider-degradation, identity and reminder-ledger regressions are covered by deterministic tests.
-2. All three v1.3.1 packages are built from one immutable tag and pass native package smoke tests.
-3. Existing v1.3.0 tags and public artifacts remain immutable.
+2. All three v1.3.2 packages are built from one immutable tag and pass native package smoke tests.
+3. Existing release tags and public artifacts remain immutable.
 4. Signing and notarization remain optional and separately authorized; current macOS packages are unsigned and unnotarized.
 
 The approved v1.3.2 usability and recoverability implementation is complete. Its
@@ -183,9 +197,9 @@ failure. Slice C adds explicit saved-versus-edited reminder state, discard
 confirmation, keyboard-safe dialogs and feedback semantics, a persistent
 narrow-screen search row, and minimum text sizes for core metadata and controls.
 All v1.3.2 implementation slices and the Windows reminder-registration follow-up
-are merged. The milestone is now in the separately authorized release-candidate
-gate described by `docs/work/ACTIVE.md`; the public version remains v1.3.1 until
-an immutable tag and Release are separately authorized.
+are merged and published from the frozen `f89936b8e4854928142fb028de869794639fed3d`
+commit. Candidate and immutable-tag native runs passed, and the three public ZIP
+downloads matched their SHA-256 sidecars.
 
 A local Windows x64 v1.3.2 trial package has now been built without pushing,
 tagging, or publishing. The package-level update smoke proves exact preservation
@@ -194,7 +208,7 @@ ledger, and a real current-user DPAPI ciphertext that remains decryptable after
 import into the new extracted folder. Its automated package probes passed except
 temporary Task Scheduler registration, which this desktop session denied. The
 user has since passed the administrator-assisted Windows registration trial;
-formal native candidate smoke remains part of the separate release task.
+the later native candidate and formal tag smoke also passed.
 
 The Windows reminder-registration follow-up was reviewed without blockers and
 merged into local `main` at `6718d6a`. It makes enablement transactional: Task

@@ -8,7 +8,8 @@ document router below.
 
 ## Stable product
 
-- Public version and immutable tag: `v1.3.1`.
+- Public version and immutable tag: `v1.3.2` at
+  `f89936b8e4854928142fb028de869794639fed3d`.
 - Targets: Windows x64, macOS arm64, and macOS x64 from one source tag.
 - Main local-data schema: version 8.
 - Reminder-state schema: version 2.
@@ -31,16 +32,18 @@ document router below.
 
 ## Active work
 
-- All approved v1.3.2 implementation slices and the Windows reminder-registration
-  follow-up are reviewed and merged locally. The user accepted the
-  administrator-assisted Windows registration trial.
-- Release preparation is in progress. `package.json` and every product
-  User-Agent are `1.3.2`, and the changelog date is 2026-08-24.
-- The next gate is one `candidate_sha` run against the single frozen final
-  `main` commit. It must pass Windows x64 and both native macOS architectures
-  before any `v1.3.2` tag may be created.
-- Existing local Windows ZIPs are trial artifacts and are not release files.
-- Published v1.3.1 artifacts and tags are immutable.
+- v1.3.2 implementation, Windows reminder-registration correction, candidate
+  gate, immutable tag build, and public release are complete.
+- Candidate run
+  [#32683536380](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32683536380)
+  and formal tag run
+  [#32687638516](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32687638516)
+  passed Windows x64 and both native macOS architectures.
+- The three public ZIPs and their sidecars are available from the
+  [v1.3.2 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2);
+  post-publication SHA-256 verification passed for every platform.
+- Existing local trial and candidate ZIPs are not release files. Published tags
+  and Release attachments are immutable.
 
 ## Read only what the task needs
 
