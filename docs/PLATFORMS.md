@@ -13,10 +13,11 @@ final-package smoke passed archive privacy, checksum, VBS launch, compiled
 assets, neighboring migration, restart persistence, transactional import,
 subscription and complete reminder-file preservation, DPAPI decryptability,
 offline reminder worker, and automatic close. This desktop session could not
-register the temporary current-user smoke task (`Access is denied`), so that
-single scheduler-registration probe remains for the user's local trial or a
-later native candidate run; the package contains the unchanged registration
-and removal tools.
+register the temporary current-user smoke task (`Access is denied`). The user
+later completed the native manual check on Windows by running `start-local.cmd`
+once as administrator: the task registered, step 3 turned green, and the
+immediate check email arrived. The earlier ZIP remains a local trial artifact,
+not a final release package.
 
 The v1.3.2 Windows registration follow-up changes activation to register the
 task before the first check. Permission failures therefore cannot send a

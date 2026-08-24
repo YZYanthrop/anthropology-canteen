@@ -40,15 +40,17 @@ document router below.
 - Slice C was reviewed without blockers and is merged into local `main` at
   `2f392c6`. All approved v1.3.2 implementation slices are now merged locally.
 - A Windows x64 v1.3.2 local-trial ZIP has been built from the short-lived
-  `codex/v1.3.2-windows-local-trial` branch. Its final-package smoke passed
+  `codex/v1.3.2-windows-local-trial` branch. It is a local trial artifact, not
+  a final release package. Its final-package smoke passed
   with current-user Task Scheduler registration skipped because this desktop
   session returned `Access is denied`; no push, tag, or publication occurred.
-- The follow-up `codex/v1.3.2-windows-reminder-registration` branch fixes that
-  failure path: registration now precedes enablement and the first check,
-  permission errors return a safe Chinese administrator hint, and first-check
-  failure rolls back the new task, config, and ledger without touching SMTP
-  credentials. Deterministic tests pass; native registration is still blocked
-  by this desktop session and is not recorded as passed.
+- The Windows reminder-registration follow-up was reviewed without blockers and
+  merged into local `main` at `6718d6a`. Registration now precedes enablement
+  and the first check; permission and first-check failures roll back without
+  touching SMTP credentials. The user confirmed on Windows that one
+  administrator launch of `start-local.cmd` registered the task, turned step 3
+  green, and completed the immediate check email. The task remains current-user
+  `RunLevel Limited`; routine launches do not require elevation.
 - Published v1.3.1 artifacts and tags are immutable.
 
 ## Read only what the task needs

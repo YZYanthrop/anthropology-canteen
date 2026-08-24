@@ -1,6 +1,6 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 ## Stable baseline
 
@@ -173,18 +173,22 @@ A local Windows x64 v1.3.2 trial package has now been built without pushing,
 tagging, or publishing. The package-level update smoke proves exact preservation
 of subscriptions, the complete reminder settings file, the reminder delivery
 ledger, and a real current-user DPAPI ciphertext that remains decryptable after
-import into the new extracted folder. All package probes passed except temporary
-Task Scheduler registration, which this desktop session denied and which remains
-an explicit user/native-candidate check.
+import into the new extracted folder. Its automated package probes passed except
+temporary Task Scheduler registration, which this desktop session denied. The
+user has since passed the administrator-assisted Windows registration trial;
+formal native candidate smoke remains part of the separate release task.
 
-The Windows reminder-registration follow-up is isolated on
-`codex/v1.3.2-windows-reminder-registration`. It makes enablement transactional:
-Task Scheduler registration precedes both `enabled=true` and the first worker
-run, while a first-check failure restores the previous disabled config and
-ledger and removes the new task. Windows permission errors are translated to a
-short administrator-launch instruction without PowerShell stacks or personal
-paths. The task definition continues to use the current user and `RunLevel
-Limited`; schemas, DPAPI, imports, and other v1.3.2 behavior are unchanged.
+The Windows reminder-registration follow-up was reviewed without blockers and
+merged into local `main` at `6718d6a`. It makes enablement transactional: Task
+Scheduler registration precedes both `enabled=true` and the first worker run,
+while a first-check failure restores the previous disabled config and ledger
+and removes the new task. Windows permission errors are translated to a short
+administrator-launch instruction without PowerShell stacks or personal paths.
+The user confirmed on Windows that the one-time administrator launch registered
+the task, turned step 3 green, and completed the immediate check email. The task
+continues to use the current user and `RunLevel Limited`; schemas, DPAPI,
+imports, and other v1.3.2 behavior are unchanged. Existing Windows ZIPs remain
+local trial artifacts rather than final release packages.
 
 Project continuation no longer depends on a permanent Codex conversation.
 `docs/CURRENT.md` is the lightweight entry point, `docs/WORKFLOW.md` defines the
