@@ -31,26 +31,15 @@ document router below.
 
 ## Active work
 
-- The approved v1.3.2 UI interaction-test prerequisite is merged into the local
-  `main` baseline.
-- Slice A was reviewed without blockers and is merged into local `main` at
-  `531e04e`.
-- Slice B was reviewed without blockers and is merged into local `main` at
-  `a42e134`.
-- Slice C was reviewed without blockers and is merged into local `main` at
-  `2f392c6`. All approved v1.3.2 implementation slices are now merged locally.
-- A Windows x64 v1.3.2 local-trial ZIP has been built from the short-lived
-  `codex/v1.3.2-windows-local-trial` branch. It is a local trial artifact, not
-  a final release package. Its final-package smoke passed
-  with current-user Task Scheduler registration skipped because this desktop
-  session returned `Access is denied`; no push, tag, or publication occurred.
-- The Windows reminder-registration follow-up was reviewed without blockers and
-  merged into local `main` at `6718d6a`. Registration now precedes enablement
-  and the first check; permission and first-check failures roll back without
-  touching SMTP credentials. The user confirmed on Windows that one
-  administrator launch of `start-local.cmd` registered the task, turned step 3
-  green, and completed the immediate check email. The task remains current-user
-  `RunLevel Limited`; routine launches do not require elevation.
+- All approved v1.3.2 implementation slices and the Windows reminder-registration
+  follow-up are reviewed and merged locally. The user accepted the
+  administrator-assisted Windows registration trial.
+- Release preparation is in progress. `package.json` and every product
+  User-Agent are `1.3.2`, and the changelog date is 2026-08-24.
+- The next gate is one `candidate_sha` run against the single frozen final
+  `main` commit. It must pass Windows x64 and both native macOS architectures
+  before any `v1.3.2` tag may be created.
+- Existing local Windows ZIPs are trial artifacts and are not release files.
 - Published v1.3.1 artifacts and tags are immutable.
 
 ## Read only what the task needs

@@ -29,6 +29,13 @@ The task principal remains the current user with `RunLevel Limited`; normal
 launches do not need elevation. The UI is active only when step 3 is green and
 shows “后台提醒已开启”, and a check with no new articles sends no mail.
 
+The v1.3.2 pre-tag candidate must come from one frozen full `main` SHA through
+the build-only portable-release workflow. Windows x64 and the native macOS
+arm64/x64 runners each build their own ZIP once, generate one SHA-256 sidecar,
+and run the platform smoke described below. Existing local Windows trial ZIPs
+are excluded. The support matrix continues to describe v1.3.1 as public until
+the candidate passes and a later tag/Release is explicitly authorized.
+
 The macOS v1.3.1 packages require macOS 13.5 or newer, matching the minimum
 supported version of the bundled Node.js 24.14.0 runtime. Older macOS releases
 are not supported by these portable archives.

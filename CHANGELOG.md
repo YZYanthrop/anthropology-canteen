@@ -2,7 +2,7 @@
 
 本项目从 `v1.0.0` 起采用[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [1.3.2] - 未发布
+## [1.3.2] - 2026-08-24
 
 ### 文章状态、恢复与日期准确性
 
@@ -32,6 +32,12 @@
 - 新增 dirty 状态、待保存授权码、放弃确认、键盘弹窗、live feedback、匹配标签和窄屏样式契约的确定性 DOM 回归测试。
 - Windows 开启提醒改为先注册计划任务，再写入启用状态并执行首次检查；注册失败不会先发出一次性邮件，也不会留下 `enabled=true` 或 scheduler marker。首次检查失败会卸载刚注册的任务，并回滚提醒配置与发送账本，同时保留 SMTP 授权码。
 - Windows 的 `PermissionDenied`、`Access is denied` 和 `0x80070005` 现在显示无路径、无堆栈的中文操作提示。部分系统首次注册或更新后迁移时需要右键以管理员身份运行一次 `start-local.cmd`；注册后的任务仍以当前用户 `RunLevel Limited` 运行，日常启动不需要管理员权限。只有第三步变绿并显示“后台提醒已开启”才表示真正生效，没有新文章时不会发邮件。
+
+### 发布准备
+
+- 产品元数据及 OpenAlex、Semantic Scholar、Crossref 请求使用的产品 User-Agent 统一为 `1.3.2`。
+- 发布前只对冻结后的最终 `main` 完整提交运行一次 `candidate_sha` 原生预检；候选运行同时构建并 smoke Windows x64、macOS Apple Silicon arm64 和 macOS Intel x64，但候选产物仅用于验证，不能作为正式 Release 附件。
+- 正式附件仍须由同一 SHA 上不可移动的 `v1.3.2` 标签重新生成。每个平台 ZIP 在构建时生成一个同名 `.sha256` sidecar；公开发布后再下载附件完成第二次完整性核对，不为重复取得相同摘要重新构建。
 
 ## [1.3.1] - 2026-08-20
 
