@@ -1,186 +1,245 @@
-# Anthropology Canteen 便携版
+# Anthropology Canteen
 
-这是一个本地运行的版本，自带运行环境。使用者不需要安装 Node.js，也不需要账号。
+Anthropology Canteen 是在自己电脑上运行的人类学研究追踪工具。它不需要账号、云数据库，也不需要单独安装 Node.js（便携包自带的运行环境）；关注记录和设置保存在解压后的程序文件夹内。Windows 64 位、macOS Apple Silicon 和 macOS Intel 均有便携包。
 
-当前正式版本：[v1.3.1](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.1)。
+当前正式版本是 [Anthropology Canteen v1.3.2 Release（正式下载页）](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2)。
 
-v1.3.1 是兼容性稳定更新：重点修复本地接口安全、并发保存、数据源全部失败时的缓存保护、稳定提醒基线与错误作者合并。
+## 第一次使用：4 步开始
 
-## v1.3.0 本机邮件提醒（可选）
+1. 打开 [v1.3.2 正式下载页](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2)。
+2. 根据电脑类型下载下方三个 ZIP（压缩包）之一。
+3. 在文件管理器中把 ZIP 完整解压到一个独立文件夹。
+4. 运行对应系统的推荐启动器：
+   - Windows：双击 `Anthropology Canteen.vbs`。
+   - macOS：双击 `Anthropology Canteen.command`。
 
-- 不需要托管服务器，也不需要网页持续打开。Windows 使用当前用户的任务计划程序，macOS 使用用户级 LaunchAgent；到点启动一次性检查进程，完成后自动退出。
-- 支持 QQ、163、126、Yeah、Gmail 应用专用密码、iCloud App 专用密码和自定义 SMTP。Outlook/Hotmail/Live 在本版可作为收件地址；暂不作为发件地址（OAuth2 发件会在后续版本考虑）。
-- 只能填写授权码或应用专用密码，不能填写邮箱主密码。465 必须 TLS，587 必须 STARTTLS；禁止 25 端口和忽略证书错误。
-- 第一次启用只建立当前成果基线；新增关注项也只从关注时起算。邮件提醒账本与网页未读状态独立，不会把历史发表变成几百条未读。
-- 电脑关机、用户未登录或断网时不能准点发信；登录或唤醒后会补跑。程序使用固定摘要 ID 降低重复投递，但在 SMTP 已接收后电脑立即崩溃等极少数情况下仍可能重发；没有新内容时不发邮件。
-- 凭据不会写入浏览器、普通设置响应、日志或分享包：Windows 使用 DPAPI，macOS 使用登录钥匙串。分享前不要把运行过的 `data/` 文件夹一起发送。
+不要在 ZIP 预览窗口内双击启动文件。不要只复制其中一个启动文件；运行时需要保留完整的解压文件夹。
 
-本版本已在 Windows x64、macOS Apple Silicon arm64 和 macOS Intel x64 原生环境完成
-便携包验证。macOS 版本是未签名、未公证的普通文件夹便携版，不提供 `.app`；首次打开时
-请只对下载的项目使用 Finder“打开”或“隐私与安全性”批准，不要降低系统整体安全设置。
+## 选择正确的 v1.3.2 下载包
 
-## v1.3.0 三平台发布
+### Windows 64 位电脑
 
-- Windows x64、macOS arm64 与 macOS x64 来自同一个不可变 `v1.3.0` 标签和同一源码提交。
-- 邮件提醒使用当前用户的 Windows 任务计划程序或 macOS LaunchAgent；凭据分别保存在
-  Windows DPAPI 和 macOS 登录钥匙串中。
-- 正式附件与 SHA-256 sidecar 位于同一个
-  [v1.3.0 GitHub Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.0)。
+下载：`Anthropology-Canteen-Windows-x64-v1.3.2.zip`
 
-## v1.2.0 三平台发布
+这是面向 64 位 Windows 的便携包。
 
-- 本次版本用于把此前分别发布的 Windows 1.1.1 与 macOS 1.1.1 beta 整理为共同的
-  三平台发布基线，不改变账号、存储、学者身份或信息流架构。
-- 唯一的页面内容调整是移除右侧栏中的人类学家引文；其余产品功能保持不变。
-- Windows x64、macOS arm64 与 macOS x64 必须从同一提交读取同一个 `package.json`
-  版本并分别在原生 runner 构建、测试。
-- 三个平台从同一个 `v1.2.0` 标签分别在原生 runner 构建和测试，并发布在同一个
-  GitHub Release 中。
-- 本地数据仍为 version 7，API-key settings 仍为 version 2；从 1.1.1 更新不需要新的
-  数据迁移。
-- Windows 与 macOS 使用同一个事务式导入器：导入前验证 data/settings schema、检查
-  正在运行的服务并备份目标；失败导入不会覆盖原有数据。
+### M1、M2、M3、M4 等 Apple 芯片 Mac
 
-## macOS 便携版说明
+下载：`Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.3.2.zip`
 
-- v1.2.0 未签名便携包分别为
-  `Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.2.0.zip` 与
-  `Anthropology-Canteen-macOS-Intel-x64-v1.2.0.zip`，都自带 Node.js 24.14.0。
-- 最低系统要求是 macOS 13.5；更早版本的 macOS 不在随包
-  Node.js 24.14.0 的支持范围内。
-- 完整解压后，Finder 双击 `Anthropology Canteen.command` 是推荐主入口；它会短暂显示
-  Terminal，服务器就绪并打开浏览器后脚本退出，服务器继续在后台运行。
-  `start-local.command` 是需要保留 Terminal 窗口的诊断入口。本版本不提供 `.app`，
-  以避免未签名下载应用发生 App Translocation 后找不到同目录运行文件。
-- 首次打开未签名版本时，只通过 Finder 的“打开”或“隐私与安全性”批准这个具体项目；
-  不要关闭 Gatekeeper，也不要降低系统整体安全设置。
-- 数据仍写在当前解压文件夹的 `data/`。旧版导入工具只接受
-  `anthropology-canteen-data.json`（或直接包含它的 `data` 文件夹），验证支持的数据/
-  设置 schema、检查正在运行的服务器、备份目标文件，并只在同目录存在时迁移设置文件。
-- 原生 Actions 会检查双架构启动、持久化、导入、SSE 自动关闭、ZIP 隐私和执行权限；
-  Finder、Gatekeeper、默认浏览器和字体显示仍需真人 Mac 测试。Apple Silicon 已有
-  v1.1.1 beta 的 M2 真人验证记录；Intel 真人测试仍强烈建议完成。
+这类 Mac 在“关于本机”中会显示 Apple M 系列“芯片”。
 
-## 学者发现与作者档案
+### Intel 处理器 Mac
 
-- “按姓名”输入至少两个字符便会自动推荐，不区分大小写。完整姓名、部分姓名及常见错拼都可以检索；中文姓名会同时尝试常见拼音顺序。
-- 配置免费的 OpenAlex API Key 后，会使用最接近 1.0.0 的 OpenAlex 作者主档案搜索，错拼容错、单位、研究方向和最新发表最完整。未配置时使用 Semantic Scholar，并由 Crossref 补充经过身份筛选的新成果。
-- 每条学者搜索结果会突出显示“最可能的主档案”、成果总数和最近一项发表；同名的少量成果碎片会排在后面，方便甄别。
-- 可填写单位、研究方向及机构个人主页来甄别同名学者；结果中会展示别名、机构、方向和代表作。
-- “按代表作”支持论文或书籍题目、DOI、ISBN、ORCID、OpenAlex 或 Semantic Scholar 链接；图书会同时查询 Open Library。
-- 文献卡片中的作者姓名可以点击；有稳定作者 ID 时直接打开内部档案，只有姓名时会结合当前文献让使用者确认。
-- 姓名模式始终坚持“一条稳定作者 ID 对应一张候选卡”。姓名、单位、宽泛主题或共同作者不会再把不同 ID 自动拼成一个档案。
-- Semantic Scholar 被限流时，Crossref 只生成一张按完整姓名和人类学证据筛选的临时候选卡，不会把每篇论文分别列成一位学者；临时候选会明确标注自动追踪可能不完整。
-- Crossref 补充成果必须通过 DOI、ORCID、单位或明确的人类学证据；同名医学、肿瘤学或化学论文不会进入人类学家档案。
-- 学者姓名优先采用索引的规范写法。即使输入 `cheryl mattingly`、`veena das` 或 `jason throop`，关注列表也不会保存成全小写。
-- 点击“查看档案”后，OpenAlex 会分页读取历史发表，Semantic Scholar 最多读取 1,000 项，随后按 DOI 或题名年份去重并按年份倒序。
-- 关注过或打开过的学者档案会连同历史发表保存在本地数据文件中。24 小时内再次打开会立即显示缓存；过期后先显示旧内容再刷新，成功刷新会替换曾经误收的旧成果。
-- 学者总览卡片保持等高；档案中的发表若带有公开摘要，可以点击“展开摘要”，摘要也会随档案一起缓存。
-- 信息流六小时内优先使用本地缓存；OpenAlex 为空或失败时会继续尝试已确认的 Semantic Scholar ID。
-- 内置的人类学期刊（包括 Ethos、HAU、Ethnos、Current Anthropology 等）搜索会立即返回；其他期刊再查询 OpenAlex 与 Crossref。
-- 邮件提醒在“设置 → 邮件提醒”中启用；必须先发送测试邮件，成功后才能安装系统计划任务。
+下载：`Anthropology-Canteen-macOS-Intel-x64-v1.3.2.zip`
 
-## 启动
+如果不确定 Mac 类型，请打开“ → 关于本机”。看到“芯片：Apple M…”时选择 Apple Silicon arm64；看到“处理器：Intel…”时选择 Intel x64。
 
-1. 完整解压整个 ZIP 文件。
+在 Release 页的“Assets”区域下载上述 ZIP。普通使用不需要下载同名 `.sha256` 文件；它只用于后文的可选完整性校验。不要选择 GitHub 自动生成的“Source code (zip)”或“Source code (tar.gz)”，它们是给开发者看的源码，不是可直接启动的便携包。
+
+## Windows：启动与诊断
+
+Windows 便携包支持 64 位 Windows 10 或更新版本。
+
+### 正常启动
+
+1. 打开完整解压后的文件夹。
 2. 双击 `Anthropology Canteen.vbs`。
-3. 程序会在后台运行，不会出现需要一直保留的黑色窗口。
-4. 网页准备好后会自动打开。默认使用
-   `http://anthropology-canteen.localhost:3000`；如果另一个解压副本仍在运行，
-   当前版本会自动选择后续本地端口，避免误打开旧文件夹。
+3. 等待默认浏览器自动打开 Anthropology Canteen。
 
-备用地址：
+推荐始终使用 `Anthropology Canteen.vbs`。它会在后台启动程序，不需要一直保留黑色命令窗口。
 
-- `http://localhost:3000`
-- `http://127.0.0.1:3000`
+正常启动不需要管理员权限。如果双击后没有打开网页，请双击同一文件夹中的 `start-local.cmd`，并保留窗口以查看诊断信息。
 
-关闭最后一个 Anthropology Canteen 网页后，后台程序会在约 8 秒内自动停止。
-刷新网页不会误关程序；如果同时打开了多个页面，需要全部关闭。
-下次使用时只需再次双击 `Anthropology Canteen.vbs`。
+### 邮件提醒可能需要的一次管理员操作
 
-如果无窗口启动失败，可以双击 `start-local.cmd` 查看具体错误提示。
+只有在以下两种情况中，部分 Windows 系统才需要管理员权限：首次开启邮件提醒，或更新后迁移邮件提醒计划任务。
 
-## 更新版本
+1. 关闭所有 Anthropology Canteen 页面。
+2. 等待约 10 秒。
+3. 右键 `start-local.cmd`。
+4. 选择“以管理员身份运行”。
+5. 重新尝试开启或迁移邮件提醒。
 
-推荐使用并排更新，不要把新版覆盖解压到旧程序文件夹：
+管理员权限只用于这一次任务注册或迁移。注册后的任务仍以当前用户和 `RunLevel Limited`（有限权限）运行；日常启动仍应双击 `Anthropology Canteen.vbs`，不需要管理员权限。
 
-1. 关闭旧版的所有 Anthropology Canteen 网页并等待约 10 秒；更早版本则关闭黑色窗口或使用旧版关闭脚本。
-2. 将新版 ZIP 解压成独立文件夹，并放在旧版文件夹旁边。
-3. 启动新版；只要新版数据仍为空，它会继续寻找旁边保存时间最新的旧版数据。
-4. 如果自动迁移没有发生，双击新版中的 `import-data-from-old-version.cmd`，把旧版的
-   `data` 文件夹拖入窗口并回车。
-5. 确认关注项、收藏和提醒设置无误后再删除旧版文件夹。
+## macOS：启动与诊断
 
-## 数据保存
+v1.3.2 的 macOS 便携包最低支持 macOS 13.5。Apple Silicon 和 Intel 包都未签名、未公证。
 
-- 这个分享版第一次打开是空白的，不预置任何个人关注项。
-- 每位使用者添加的期刊、学者、关键词、收藏、已读状态、最近一次成功读取的文章列表、已经加载过的学者档案，以及点击生成过的中文摘要，会保存在解压文件夹里的 `data/anthropology-canteen-data.json`。
-- 可选的 OpenAlex 与 Semantic Scholar API Key 单独保存在 `data/anthropology-canteen-settings.json`。网页只显示是否已配置及末四位，不会把完整 Key 返回到页面。
-- 邮件提醒配置保存在同一 settings 文件；提醒基线与待发送账本保存在 `data/anthropology-canteen-reminder-state.json`。Windows 的 DPAPI 密文在 `data/anthropology-canteen-reminder-secret.json`，macOS 凭据只在登录钥匙串中。停用提醒会移除系统任务；“停用并删除授权码”还会清除凭据。
-- 这些数据不会写回原始 ZIP 文件，也不会同步给其他人。
-- 想把空白版发给别人时，请发送原始 ZIP；不要发送自己已经运行过、带有 `data` 文件夹的使用中副本，因为其中可能同时包含关注数据和 API Key。
-- 如果想把自己的全部配置带到另一台电脑，可以复制整个解压后的文件夹或整个 `data` 文件夹；只复制 `anthropology-canteen-data.json` 不会带走 API Key。
-- 如果想恢复空白状态，先关闭所有 Anthropology Canteen 网页并等待约 10 秒，再删除 `data/anthropology-canteen-data.json`。
-- 如果把整个使用中文件夹复制到新位置，设置中的提醒会显示仍绑定旧路径；在“邮件提醒”窗口点击“迁移到当前文件夹”会覆盖同一个系统任务，避免重复发信。
-- 新版第一次打开时，如果发现浏览器里有旧版保存的数据，会自动迁移到上面的 `data` 文件中，并清除 Anthropology Canteen 自己的旧浏览器记录。
-- 学术数据检索和中文翻译仍然需要联网。
-- 关注学者或期刊之前发表的历史成果会保留在档案中供查阅，但不会计入“未读”；未读从实际关注日期开始计算。
-- v1.3.1 的研究数据升级为 version 8、提醒状态升级为 version 2，settings 保持 version 3；旧版关注项、关注日期、收藏、已读、忽略、中文翻译、API Key 和提醒基线都会保留。
+### 正常启动
 
-## 更新版本时保留自己的数据
+1. 在 Finder 中打开完整解压后的文件夹。
+2. 双击 `Anthropology Canteen.command`。
+3. 等待默认浏览器自动打开 Anthropology Canteen。
 
-推荐做法：
+Terminal 可能短暂出现；浏览器打开后不需要一直保留它。如果程序没有启动，请双击 `start-local.command`，并保留 Terminal 窗口以查看诊断信息。
 
-1. 不要删除旧版文件夹。
-2. 把新版 ZIP 解压到旧版文件夹旁边，例如两个文件夹都放在桌面或同一个资料夹里。
-3. 双击新版里的 `Anthropology Canteen.vbs`。
-4. 如果新版自己的 `data` 文件还不存在，它会自动寻找旁边旧版文件夹里的关注数据和接口设置，并把保存时间最新的那份复制到新版。
+### 首次批准当前下载项目
 
-如果自动迁移没有发生，优先使用事务式导入工具；不要在任一版本仍在运行时手动覆盖
-`data` 文件。
+如果 macOS 提示无法验证开发者：
 
-## 注意
+1. 在 Finder 中右键或按住 Control 键点击 `Anthropology Canteen.command`。
+2. 从菜单中选择“打开”。
+3. 在确认窗口中再次选择“打开”。
 
-- 不要在 ZIP 压缩包预览窗口中直接运行，必须先完整解压。
-- 不要单独复制启动文件；必须保留整个文件夹。
-- 不需要账号或数据库。
+如果仍被阻止，请前往“系统设置 → 隐私与安全性”，只批准这次下载的 Anthropology Canteen 项目。不要关闭 Gatekeeper（macOS 的下载安全检查），也不要降低系统整体安全设置。
 
-## 可选：配置免费 API Key
+## 关闭应用
 
-1. 打开“添加关注 → 学者 → 接口设置”。
-2. OpenAlex Key 用于稳定的作者主档案搜索、单位、主题、错拼和最新成果；点击页面中的链接申请并复制 Key。
-3. Semantic Scholar Key 不是必需项，但可减少连续姓名查询时的限流；也可通过页面中的链接申请。
-4. 将需要的 Key 分别粘贴回 Anthropology Canteen，点击“保存到本地”。
+关闭所有 Anthropology Canteen 浏览器页面后，后台程序通常会在约 8 秒内停止。下次使用时，重新运行所属平台的推荐启动器即可。
 
-两种 Key 都只保存在当前解压文件夹。发送空白原始 ZIP 不会泄露它们；不要把已经运行过且带有 `data` 文件夹的副本直接发给别人。
+## v1.3.2 有什么新变化
 
-## 运行环境说明
+- 已忽略文章现在可以筛选、即时撤销和恢复；日期会按照来源真正提供的年、月或日来显示，不再把未知日期写得过于精确。
+- 返回“学者动态”的路径更一致，学者级新文章数量、批量已读和更新健康信息更清楚。
+- 邮件提醒可以区分已经保存的配置和仍未保存的修改，避免把旧配置误认为当前表单已生效。
+- 改善了键盘操作、弹窗焦点、状态与错误反馈语义，以及窄屏设备上的常驻搜索框。
 
-本便携版内含 Node.js 24.14.0 可执行程序，仅用于启动本地网页。Node.js 依其开源许可分发：
-https://github.com/nodejs/node/blob/v24.14.0/LICENSE
+完整版本记录见 [`CHANGELOG.md`](CHANGELOG.md)。
 
-## 源码开发
+## 更新旧版本且保留数据
 
-需要 Node.js 22.13.0 或更高版本，以及 pnpm 11.9.0。
+1. 关闭旧版的全部 Anthropology Canteen 页面。
+2. 等待约 10 秒，让旧版后台程序退出。
+3. 把 v1.3.2 ZIP 解压到新的独立文件夹，不要覆盖旧版文件夹。
+4. 启动新版，让它优先尝试从旁边的旧版文件夹自动迁移数据。
+5. 核对关注项、收藏、忽略状态、翻译、API Key 和邮件提醒设置。
+6. 确认新版数据完整后，再决定是否删除旧版文件夹。
+
+请保留旧版文件夹，直到核对完成。迁移不要求手工编辑 JSON 数据文件。
+
+### Windows 自动迁移没有发生
+
+1. 关闭新旧两个版本的全部页面。
+2. 双击新版中的 `import-data-from-old-version.cmd`。
+3. 把旧版的 `data` 文件夹拖入窗口并按 Enter。
+
+### macOS 自动迁移没有发生
+
+1. 关闭新旧两个版本的全部页面。
+2. 双击新版中的 `import-data-from-old-version.command`。
+3. 按窗口提示选择旧版数据。
+
+两个平台使用同一套事务式导入逻辑：导入前会验证格式并备份目标文件，失败时不会留下部分替换的数据。
+
+## 重要：保护自己的数据
+
+> 从 v1.3.2 Release 下载的三个正式便携包 ZIP 都是空白分享包，不含个人关注记录、API Key、邮件地址、提醒状态或授权码。分享给别人时，请发送原始便携包 ZIP，不要发送自己已经运行过的文件夹。
+
+- 第一次运行后，解压文件夹中会出现 `data/`。它可能包含关注记录、收藏、忽略状态、翻译、API Key、邮件提醒设置和提醒历史。
+- Windows 的 `data/` 还可能包含由 DPAPI 加密的邮件授权码。DPAPI 是 Windows 自带的、与用户账户绑定的加密方式；其密文不能当作可在任意 Windows 账户或电脑上直接使用的密码备份。
+- macOS 的邮件授权码保存在当前用户的登录钥匙串中，不写入空白 Release ZIP。
+- 数据不会写回原始 ZIP，也不会自动同步到云数据库。
+- 学术数据检索、中文翻译和可选邮件发送需要联网，并会访问相应的外部服务。
+
+## 常见问题
+
+### 双击后没有打开网页
+
+先等待片刻，再使用诊断启动器。
+
+- Windows：双击 `start-local.cmd`，并保留窗口查看提示。
+- macOS：双击 `start-local.command`，并保留 Terminal 窗口查看提示。
+
+### 在 ZIP 预览窗口中无法运行
+
+返回下载目录，把整个 ZIP 完整解压到新文件夹，再从解压后的文件夹启动。不要把单个启动文件拖出 ZIP 单独运行。
+
+### 浏览器打开了旧版本
+
+关闭所有 Anthropology Canteen 页面，等待约 10 秒，然后从 v1.3.2 的新文件夹重新启动。启动器会核对程序文件夹，并在旧副本仍占用端口时尝试其他本地端口；若仍不正确，请运行所属平台的诊断启动器。
+
+### macOS 提示无法验证开发者
+
+在 Finder 中对 `Anthropology Canteen.command` 使用“打开”。如果仍被阻止，只在“系统设置 → 隐私与安全性”中批准当前下载项目。不要关闭 Gatekeeper。
+
+### Windows 邮件提醒第三步无法变绿
+
+关闭全部页面并等待约 10 秒。右键 `start-local.cmd`，以管理员身份运行一次，再重新开启或迁移提醒。只有第三步变绿并显示“后台提醒已开启”才表示任务已注册；日常启动不需要管理员权限。
+
+### 自动迁移没有发生
+
+确认新版解压在新的独立文件夹，并尽量与旧版文件夹放在同一位置。关闭两个版本后再启动新版；仍未迁移时，使用上方对应平台的事务式导入工具。不要手工修改 JSON。
+
+## 可选功能：API Key 与邮件提醒
+
+首次启动不要求配置任何 Key，也不要求开启邮件提醒。这两类功能都可以以后再设置。
+
+### API Key
+
+API Key 是学术数据服务提供的访问凭证。可选的 OpenAlex 和 Semantic Scholar API Key 能改善部分学者检索或减少限流，但不是使用基本功能的前提。
+
+可在应用的“添加关注 → 学者 → 接口设置”中配置。Key 只保存在当前解压文件夹的设置文件中；不要分享已经运行过的文件夹。
+
+### 邮件提醒与 SMTP
+
+SMTP 是邮箱的发信服务器设置。邮件提醒是可选的本机功能：Windows 使用当前用户的任务计划程序，macOS 使用当前用户的 LaunchAgent（定时启动任务）。网页关闭后，系统任务仍可按设置尝试检查更新。
+
+- 只使用邮箱授权码或应用专用密码，不要填写邮箱主密码。
+- 电脑需要开机、用户需要登录，并且网络可用；提醒不能保证在关机或断网时准点送达。
+- 没有新文章时不会发送邮件。
+- Windows 使用用户账户绑定的 DPAPI 加密授权码；macOS 使用登录钥匙串。
+
+更完整的平台限制见 [`docs/PLATFORMS.md`](docs/PLATFORMS.md)。
+
+## 数据文件与兼容版本
+
+普通使用者不需要直接打开或编辑这些文件。它们位于解压文件夹的 `data/` 中；下方的 schema 指数据文件的格式版本：
+
+- `anthropology-canteen-data.json`：关注、文章状态、翻译和缓存；v1.3.2 使用主数据 schema 8。
+- `anthropology-canteen-settings.json`：API Key 和提醒配置；v1.3.2 使用 settings schema 3。
+- `anthropology-canteen-reminder-state.json`：提醒基线、待发送记录和发送历史；v1.3.2 使用 reminder schema 2。
+- `anthropology-canteen-reminder-secret.json`：仅 Windows 使用的 DPAPI 加密授权码文件。
+
+自动迁移和事务式导入会验证受支持的数据格式，并尽量保留关注日期、收藏、已读、忽略、翻译、API Key、提醒设置和提醒状态。请在确认新版内容无误之前保留旧版文件夹。
+
+## 可选：用 SHA-256 核对下载
+
+SHA-256 是文件的数字摘要，可用于检查下载是否完整。每个正式 ZIP 在 Release 中都有一个同名 `.sha256` 小文件。普通使用者可以直接下载并使用 ZIP；这项校验是可选的，不应阻挡首次使用。
+
+Windows PowerShell 示例：
+
+```powershell
+Get-FileHash ".\Anthropology-Canteen-Windows-x64-v1.3.2.zip" -Algorithm SHA256
+```
+
+macOS Terminal 示例：
+
+```bash
+shasum -a 256 "Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.3.2.zip"
+shasum -a 256 "Anthropology-Canteen-macOS-Intel-x64-v1.3.2.zip"
+```
+
+把命令显示的 64 位摘要与相应 `.sha256` 文件中的摘要比较即可。
+
+## 运行环境与源码开发
+
+便携包已包含 Node.js 24.14.0，仅用于运行本地应用。其许可见 [Node.js 24.14.0 LICENSE](https://github.com/nodejs/node/blob/v24.14.0/LICENSE)。
+
+只有参与源码开发时，才需要另行安装 Node.js 22.13.0 或更高版本，以及 pnpm 11.9.0。
 
 ```powershell
 pnpm install
 pnpm dev
 ```
 
-发布前检查：
+开发验证命令：
 
 ```powershell
 pnpm lint
 pnpm build
+pnpm test:ui
 node --test tests/*.test.mjs
 ```
 
-版本编号和发布流程见 [`docs/RELEASING.md`](docs/RELEASING.md)，版本变更见
-[`CHANGELOG.md`](CHANGELOG.md)。
+## 详细文档
+
+- [版本变化记录](CHANGELOG.md)
+- [平台支持、启动器和打包边界](docs/PLATFORMS.md)
+- [版本编号与发布流程](docs/RELEASING.md)
+- [应用架构与数据边界](docs/ARCHITECTURE.md)
 
 ## 许可证
 
-创作者：[YZYanthrop](https://github.com/YZYanthrop)
-
-本项目由 YZYanthrop 创作，并采用 [MIT License](LICENSE) 开放使用。
+Anthropology Canteen 由 [YZYanthrop](https://github.com/YZYanthrop) 创作，并采用 [MIT License](LICENSE) 开放使用。
