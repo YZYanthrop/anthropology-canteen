@@ -2,24 +2,26 @@
 
 Last updated: 2026-08-24
 
-- Status: `Merged`
+- Status: `In progress`
 - Approved for implementation: yes
 - Target version: `v1.3.2`
 - Plan: [`docs/plans/v1.3.2-usability-and-recovery.md`](../plans/v1.3.2-usability-and-recovery.md)
 - Implementation branch: local `main`
 - Merged at: `6718d6a`
-- Current step: v1.3.2 implementation and Windows registration fix merged;
-  Windows administrator-assisted registration trial accepted
+- Release preparation branch: `codex/v1.3.2-release-candidate`
+- Current step: freeze one final v1.3.2 commit and run the authorized
+  `candidate_sha` native gate
 - Implementation handoff: [`docs/handoffs/v1.3.2-windows-reminder-registration.md`](../handoffs/v1.3.2-windows-reminder-registration.md)
-- Release task: none
+- Release task: candidate preparation and verification only; tag and Release
+  are not authorized
 
 ## Next action
 
-The source is ready to enter a separate v1.3.2 release-candidate task. That task
-must freeze one final commit and prepare and natively verify Windows x64, macOS
-arm64, and macOS x64 candidates from it. Existing local Windows trial ZIPs are
-not final release packages. Do not push, tag, publish, or start release work
-without new explicit authorization.
+Complete one local base-verification pass on the frozen commit, push that commit
+to `main`, and dispatch exactly one `candidate_sha` workflow. Stop immediately
+if any platform fails. If every native job passes, report the final SHA, Actions
+run, platform results, and expected release files, then pause before creating or
+pushing `v1.3.2` or creating a GitHub Release.
 
 ## Repository note
 

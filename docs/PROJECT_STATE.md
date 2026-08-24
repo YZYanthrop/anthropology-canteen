@@ -94,6 +94,23 @@ The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, and `v1.3.1` tags are i
   native macOS x64, and the source archive. Public ZIP sizes and SHA-256 values
   are recorded in `CHANGELOG.md` and the GitHub Release.
 
+## v1.3.2 release preparation
+
+- The formal release date is 2026-08-24. Product metadata and every OpenAlex,
+  Semantic Scholar, and Crossref product User-Agent are aligned at `1.3.2`.
+- The UI-test prerequisite, Slice A, Slice B, Slice C, and the Windows
+  reminder-registration correction are reviewed and merged. Version 8 research
+  data, reminder state version 2, and settings version 3 remain compatible.
+- Release preparation freezes one final `main` commit and runs exactly one
+  pre-tag `candidate_sha` native gate. Existing local Windows trial ZIPs are not
+  candidate or release inputs.
+- A passing gate must cover Windows x64 Task Scheduler registration, VBS
+  startup, persistence, migration, DPAPI, the offline reminder worker and blank
+  archive privacy, plus native macOS arm64/x64 LaunchAgent, Keychain, startup,
+  persistence, migration, worker and privacy smoke.
+- No `v1.3.2` tag or GitHub Release is created until the user separately
+  authorizes publication after the candidate report.
+
 ## Current product contract
 
 - The app follows scholars first, journals second, and keyword families third.
@@ -155,7 +172,7 @@ complete:
 3. Existing v1.3.0 tags and public artifacts remain immutable.
 4. Signing and notarization remain optional and separately authorized; current macOS packages are unsigned and unnotarized.
 
-The approved v1.3.2 usability and recoverability milestone is in progress. Its
+The approved v1.3.2 usability and recoverability implementation is complete. Its
 UI interaction-test prerequisite and Slice A are merged into the local `main`
 baseline. Slice A provides reversible ignored-state recovery, uncapped
 version-8 article snapshots, and explicit publication-date precision without
@@ -165,9 +182,10 @@ provider update health while preserving the last successful feed after total
 failure. Slice C adds explicit saved-versus-edited reminder state, discard
 confirmation, keyboard-safe dialogs and feedback semantics, a persistent
 narrow-screen search row, and minimum text sizes for core metadata and controls.
-All v1.3.2 implementation slices are complete; merge and trial status remain in
-the active work packet until the milestone is frozen for a separate release task.
-The exact branch, handoff, and next action live in `docs/work/ACTIVE.md`.
+All v1.3.2 implementation slices and the Windows reminder-registration follow-up
+are merged. The milestone is now in the separately authorized release-candidate
+gate described by `docs/work/ACTIVE.md`; the public version remains v1.3.1 until
+an immutable tag and Release are separately authorized.
 
 A local Windows x64 v1.3.2 trial package has now been built without pushing,
 tagging, or publishing. The package-level update smoke proves exact preservation
