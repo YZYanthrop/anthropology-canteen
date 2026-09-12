@@ -27,6 +27,10 @@ data root, import old data, and assemble an archive.
 - `app/lib/scholar-search.ts` normalizes scholar identities and publications.
 - `app/lib/publication-date.ts` normalizes year/month/day precision, stable
   ordering, display, duplicate-date selection, and follow-date comparisons.
+- `app/lib/update-summary.ts` only derives user-facing update descriptions;
+  current-attempt state stays in memory and does not change stored formats.
+- `tests/browser/` serves synthetic in-memory APIs for real-browser UI tests;
+  it never uses personal local-data handlers or live academic providers.
 - The production build creates `dist/client` and `dist/server`, which are shared
   by every desktop package.
 

@@ -2,19 +2,21 @@
 
 Last updated: 2026-09-12
 
-- Status: `In progress`
+- Status: `Merged`
 - Approved for implementation: yes
 - Target version: `v1.3.3`
 - Plan: [普通中文与左栏可用性](../plans/v1.3.3-language-and-sidebar-usability.md)
-- Implementation branch: `codex/v1.3.3-c-touch-actions`
-- Current step: A（92e5473）和 B（c2cb801）已在本地合并，当前执行 C
+- Implementation branch: local `main`；三个短期实现分支保留作已合并记录
+- Current step: A（92e5473）、B（c2cb801）、C（666524e）源码已完成并本地合并，真人验收有未完成项
+- Handoff: [最终交接与验证限制](../handoffs/v1.3.3-slice-c.md)
 - Stable public version: `v1.3.2`
 - Immutable release commit: `f89936b8e4854928142fb028de869794639fed3d`
 
 ## 下一步
 
-依次实施 Slice A（中文与更新说明）、B（左栏滚动）、C（触摸操作及回归）。
-每阶段完成验证、交接和本地提交合并，再开始下一阶段。不打包、不推送、不发布。
+审阅实现结果，补充实际触摸/混合设备、macOS 浏览器、屏幕阅读器及真实高倍缩放验收。
+源码验证包括 lint、构建、22 项界面、46 项离线及 12 个 Edge 浏览器场景；不等于真人验收。
+版本冻结、三平台原生包验证、推送、标签及发布是后续单独授权任务。
 
 ## 范围
 
