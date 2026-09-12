@@ -27,7 +27,7 @@ async function openFixture(viewport, hasTouch = false, small = false) {
       value = data;
     } else if (path === "/api/local-settings") value = { version: 3, openAlexConfigured: false };
     else if (path === "/api/reminders/status") value = { config: { enabled: false }, credentialConfigured: false, tested: false };
-    else if (path === "/api/feed") value = { ...data.feed, scholars: data.subscriptions.scholar };
+    else if (path === "/api/feed") value = { ...data.feed, scholars: request.postDataJSON().subscriptions.scholar };
     else throw new Error(`Unexpected browser-test API: ${path}`);
     await route.fulfill({ json: value });
   });
@@ -90,6 +90,53 @@ try {
   assert.equal(await small.page.locator(".subscription-group").count(), 3);
   await small.context.close();
   results.push({ scenario: "one item and empty groups", result: "passed" });
+
+  for (const [width, height] of [[1024,600], [390,844]]) {
+    const fixture = await openFixture({ width, height }, true);
+    const { page, context, errors } = fixture;
+    const saved = structuredClone(fixture.data());
+    const cancel = page.locator(".subscription-remove").first();
+    await cancel.scrollIntoViewIfNeeded();
+    // No mouse movement: visibility must come from touch capability alone.
+    assert.equal(await page.evaluate(() => matchMedia("(any-pointer: coarse)").matches), true);
+    const style = await cancel.evaluate((el) => ({
+      color: getComputedStyle(el).color,
+      label: getComputedStyle(el.querySelector(".subscription-remove-label")).display,
+      width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height,
+    }));
+    assert.notEqual(style.color, "rgba(0, 0, 0, 0)");
+    assert.notEqual(style.label, "none");
+    assert.ok(style.width >= 44 && style.height >= 44);
+    const adjacent = await page.locator(".subscription-name").first().boundingBox();
+    const action = await cancel.boundingBox();
+    assert.ok(adjacent.x + adjacent.width <= action.x, "touch targets must not overlap");
+    await page.screenshot({ path: `outputs/v1.3.3-browser/touch-${width}x${height}.png` });
+    await cancel.tap();
+    await page.waitForFunction(() => document.querySelectorAll(".subscription-name").length === 99);
+    assert.equal(fixture.data().subscriptions.scholar[0].subscriptionId, "openalex:A2");
+    assert.equal(await page.locator(".subscription-name").first().evaluate((el) => el === document.activeElement), true);
+    assert.deepEqual(fixture.data().states, saved.states);
+    assert.deepEqual(fixture.data().translations, saved.translations);
+    const lastCancel = page.locator(".subscription-remove").last();
+    await lastCancel.scrollIntoViewIfNeeded();
+    await lastCancel.tap();
+    await page.waitForFunction(() => document.querySelectorAll(".subscription-name").length === 98);
+    assert.equal(fixture.data().subscriptions.keyword.length, 19);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    assert.deepEqual(errors, []);
+    results.push({ scenario: "touch simulation", width, height, target: style, result: "passed" });
+    await context.close();
+  }
+
+  const keyboard = await openFixture({ width: 1024, height: 600 });
+  const firstCancel = keyboard.page.locator(".subscription-remove").first();
+  await firstCancel.focus();
+  assert.notEqual(await firstCancel.evaluate((el) => getComputedStyle(el).color), "rgba(0, 0, 0, 0)");
+  await keyboard.page.keyboard.press("Enter");
+  await keyboard.page.waitForFunction(() => document.querySelectorAll(".subscription-name").length === 99);
+  assert.equal(await keyboard.page.locator(".subscription-name").first().evaluate((el) => el === document.activeElement), true);
+  await keyboard.context.close();
+  results.push({ scenario: "keyboard cancel and visible focus", result: "passed" });
   console.log(JSON.stringify({ browser: browser.version(), results }, null, 2));
 } finally {
   await browser.close();

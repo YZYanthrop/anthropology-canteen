@@ -2779,8 +2779,7 @@ export default function Home() {
         const scholar =
           feed?.scholars?.find(
             (item) =>
-              item.subscriptionId === savedScholar.subscriptionId ||
-              item.label.toLowerCase() === savedScholar.label.toLowerCase(),
+              item.subscriptionId === savedScholar.subscriptionId,
           ) || savedScholar;
         const cachedProfile = Object.values(scholarProfiles).find(
           (item) => cachedProfileMatches(item.candidate, scholar),
@@ -4552,7 +4551,7 @@ function UpdateDetails({ update, failedProviders, lastSuccessfulUpdate }: {
         <ul>
           <li>已完成检查：{update.counts.success} 项</li>
           <li>部分来源暂时无法查询：{update.counts.partial} 项</li>
-          <li>本次未能检查：{update.counts.failed} 项</li>
+          <li>{update.failedLabel}：{update.counts.failed} 项</li>
         </ul>
         {failedProviders.length > 0 && <p>暂时无法查询的数据来源：{failedProviders.join("、")}</p>}
         <p className="update-explanation">完成检查不代表有新文章，也不保证数据来源已收录全部成果。关键词组只用于匹配文章。</p>
@@ -4594,11 +4593,21 @@ function SubscriptionGroup({
             </button>
             <button
               className="subscription-remove"
-              aria-label={`移除 ${item.label}`}
-              title="移除"
-              onClick={() => onRemove(item)}
+              aria-label={`取消关注 ${item.label}`}
+              title="取消关注"
+              onClick={(event) => {
+                const row = event.currentTarget.closest("li");
+                const target = row?.nextElementSibling?.querySelector<HTMLButtonElement>(".subscription-name")
+                  || row?.previousElementSibling?.querySelector<HTMLButtonElement>(".subscription-name")
+                  || row?.closest("details")?.querySelector<HTMLElement>("summary");
+                // Move focus while both rows still exist; React preserves the
+                // neighbouring keyed control when it removes the current row.
+                target?.focus();
+                onRemove(item);
+              }}
             >
-              ×
+              <span className="subscription-remove-icon" aria-hidden="true">×</span>
+              <span className="subscription-remove-label">取消关注</span>
             </button>
           </li>
         ))}

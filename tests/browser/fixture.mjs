@@ -16,7 +16,7 @@ export function browserFixture() {
   return {
     version: 8, revision: 0, subscriptions: { scholar, journal, keyword },
     states: { protected: { saved: true, read: true, ignored: true } }, articleArchive: {},
-    translations: {}, scholarProfiles: {},
+    translations: { protected: "应保留的合成译文" }, scholarProfiles: {},
     feed: { items: [], scholars: scholar, updatedAt: new Date().toISOString(), source: "live", warnings: [],
       coverage: scholar.map((s) => ({ kind: "scholar", subscriptionId: s.subscriptionId, label: s.label,
         status: "success", providers: [{ provider: "openalex", status: "success" }],

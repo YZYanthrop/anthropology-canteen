@@ -25,7 +25,11 @@ const server = createServer(async (req, res) => {
         value = data;
       } else if (url.pathname === "/api/local-settings") value = { version: 3, openAlexConfigured: false };
       else if (url.pathname === "/api/reminders/status") value = { config: { enabled: false }, credentialConfigured: false, tested: false };
-      else if (url.pathname === "/api/feed") value = { ...data.feed, scholars: data.subscriptions.scholar };
+      else if (url.pathname === "/api/feed") {
+        let body = "";
+        for await (const chunk of req) body += chunk;
+        value = { ...data.feed, scholars: JSON.parse(body).subscriptions.scholar };
+      }
       else { res.writeHead(404); res.end("Unmocked API"); return; }
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
       res.end(JSON.stringify(value));

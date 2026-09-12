@@ -261,6 +261,7 @@ describe("Slice B navigation and update health", () => {
     expect(within(health).getByText("以下是上次保存的检查结果。")).toBeVisible();
     expect(within(health).getByText("已完成检查：1 项")).toBeVisible();
     expect(within(health).getByText("部分来源暂时无法查询：1 项")).toBeVisible();
+    expect(within(health).getByText("上次未能检查：1 项")).toBeVisible();
     expect(within(health).getByText(/暂时无法查询的数据来源：Crossref、Semantic Scholar/)).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "检查更新" }));

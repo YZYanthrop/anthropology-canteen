@@ -6,8 +6,8 @@ Last updated: 2026-09-12
 - Approved for implementation: yes
 - Target version: `v1.3.3`
 - Plan: [普通中文与左栏可用性](../plans/v1.3.3-language-and-sidebar-usability.md)
-- Implementation branch: `codex/v1.3.3-b-sidebar-scroll`
-- Current step: Slice A 已在本地合并（92e5473），当前执行 Slice B
+- Implementation branch: `codex/v1.3.3-c-touch-actions`
+- Current step: A（92e5473）和 B（c2cb801）已在本地合并，当前执行 C
 - Stable public version: `v1.3.2`
 - Immutable release commit: `f89936b8e4854928142fb028de869794639fed3d`
 

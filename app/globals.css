@@ -409,12 +409,45 @@ i.keyword {
 }
 
 .subscription-group li:hover .subscription-remove,
+.subscription-group li:focus-within .subscription-remove,
 .subscription-remove:focus-visible {
   color: #9a6c5e;
 }
 
 .subscription-remove:hover {
   background: var(--coral-soft);
+}
+
+.subscription-remove-label {
+  display: none;
+}
+
+@media (any-pointer: coarse), (hover: none) {
+  .subscription-group ul {
+    display: grid;
+    gap: 4px;
+  }
+
+  .subscription-group li {
+    gap: 6px;
+  }
+
+  .subscription-group li .subscription-name {
+    min-height: 44px;
+  }
+
+  .subscription-group li .subscription-remove {
+    width: auto;
+    min-width: 44px;
+    min-height: 44px;
+    flex: 0 0 auto;
+    padding: 6px;
+    color: #895849;
+    background: var(--coral-soft);
+  }
+
+  .subscription-remove-icon { display: none; }
+  .subscription-remove-label { display: inline; }
 }
 
 .sidebar-note {

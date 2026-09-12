@@ -34,6 +34,7 @@ export function updateSummary(
   return {
     counts,
     title,
+    failedLabel: attempt === "idle" ? "上次未能检查" : "本次未能检查",
     showResults: hasSubscriptions && hasResults && attempt !== "checking",
     incomplete,
   };
