@@ -1,6 +1,6 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-08-24
+Last updated: 2026-09-12
 
 ## Stable baseline
 
@@ -177,6 +177,10 @@ launch and use. Intel has native CI coverage but no recorded human test.
 See `docs/ARCHITECTURE.md` and `docs/PLATFORMS.md` for boundaries.
 
 ## Active milestone
+
+当前实施 [v1.3.3 普通中文与左栏可用性](plans/v1.3.3-language-and-sidebar-usability.md)，
+状态为 `In progress`，用户已批准顺序实施 A、B、C。[v1.4.0 路线图](plans/v1.4.0-roadmap.md) 保持 `Proposed`。
+稳定公开版本仍是 v1.3.2；主数据格式 8、提醒状态 2、设置 3 及三平台支持均不变。
 
 The v1.3.0 local-reminder, v1.3.1 stabilization, and v1.3.2 usability and
 recoverability milestones are complete:

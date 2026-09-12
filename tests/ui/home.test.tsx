@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import Home from "../../app/page";
@@ -70,6 +70,9 @@ describe("home page test harness", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "信息流筛选" })).toBeVisible();
     expect(screen.getByRole("button", { name: "搜索并添加学者" })).toBeVisible();
+    const summary = screen.getByRole("region", { name: "更新情况摘要" });
+    expect(within(summary).getByText("添加学者或期刊关注后，即可检查更新。")).toBeVisible();
+    expect(within(summary).queryByText(/已完成检查：|暂时无法查询的数据来源/)).toBeNull();
     expect(fetch).toHaveBeenCalledWith(
       "/api/local-data",
       expect.objectContaining({ cache: "no-store" }),

@@ -82,7 +82,7 @@ function createLocalData(overrides: Record<string, unknown> = {}) {
 function installApi(
   initialData: Record<string, unknown>,
   options: {
-    refresh?: () => Response;
+    refresh?: () => Response | Promise<Response>;
   } = {},
 ) {
   let localData = structuredClone(initialData);
@@ -257,20 +257,66 @@ describe("Slice B navigation and update health", () => {
     });
     render(<Home />);
 
-    const health = await screen.findByRole("region", { name: "更新健康摘要" });
-    expect(within(health).getByText(/订阅：1 成功 · 1 部分失败 · 1 失败/)).toBeVisible();
-    expect(within(health).getByText(/失败来源：Crossref、Semantic Scholar/)).toBeVisible();
+    const health = await screen.findByRole("region", { name: "更新情况摘要" });
+    expect(within(health).getByText("以下是上次保存的检查结果。")).toBeVisible();
+    expect(within(health).getByText("已完成检查：1 项")).toBeVisible();
+    expect(within(health).getByText("部分来源暂时无法查询：1 项")).toBeVisible();
+    expect(within(health).getByText(/暂时无法查询的数据来源：Crossref、Semantic Scholar/)).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "检查更新" }));
     await waitFor(() =>
       expect(screen.getByText("暂时无法更新，正在显示上次保存的内容。")).toBeVisible(),
     );
-    expect(within(health).getByText(/订阅：0 成功 · 0 部分失败 · 1 失败/)).toBeVisible();
-    expect(within(health).getByText(/失败来源：OpenAlex、Crossref/)).toBeVisible();
+    expect(within(health).getByText("本次未能检查：1 项")).toBeVisible();
+    expect(within(health).getByText(/暂时无法查询的数据来源：OpenAlex、Crossref/)).toBeVisible();
     expect(api.getLocalData().feed).toMatchObject({
       updatedAt: successfulAt,
       items: [{ id: "cached" }],
     });
     expect(screen.queryByText("已检查最新出版记录")).toBeNull();
+  });
+
+  test.each(["success", "partial"] as const)("refresh with %s and no new works explains the actual outcome", async (status) => {
+    const user = userEvent.setup();
+    let finish!: (response: Response) => void;
+    const initial = createLocalData();
+    installApi(initial, { refresh: () => new Promise((resolve) => { finish = resolve; }) });
+    render(<Home />);
+    const summary = await screen.findByRole("region", { name: "更新情况摘要" });
+    await waitFor(() => expect(within(summary).getByText("尚无可用的检查结果。")).toBeVisible());
+    expect(within(summary).queryByText(/暂时无法查询的数据来源/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "检查更新" }));
+    expect(within(summary).getByText("正在检查关注的学者和期刊…")).toBeVisible();
+    finish(jsonResponse({
+      ...initial.feed,
+      items: [],
+      coverage: [{ kind: "scholar", subscriptionId: scholars[0].subscriptionId, label: scholars[0].label,
+        status, providers: status === "partial"
+          ? [{ provider: "openalex", status: "success" }, { provider: "crossref", status: "failed" }]
+          : [{ provider: "openalex", status: "success" }],
+      }],
+    }));
+    const message = status === "partial"
+      ? "本次仅完成部分检查，部分数据来源暂时无法查询，请稍后重试。"
+      : "本次已完成检查；没有新文章也是正常结果。";
+    await waitFor(() => expect(within(summary).getByText(message)).toBeVisible());
+    expect(within(screen.getByRole("status")).getByText(message)).toBeVisible();
+    expect(document.querySelector(".signal-card .update-details")?.textContent).toBe(
+      summary.querySelector(".update-details")?.textContent,
+    );
+    expect(within(summary).queryByText(/Semantic Scholar/)).toBeNull();
+  });
+
+  test("network failure clears previous provider outcomes but preserves saved data", async () => {
+    const initial = createLocalData();
+    const api = installApi(initial, { refresh: () => { throw new Error("offline"); } });
+    const user = userEvent.setup();
+    render(<Home />);
+    await screen.findByRole("button", { name: "查看 Test Scholar 的全部发表" });
+    await user.click(screen.getByRole("button", { name: "检查更新" }));
+    const summary = screen.getByRole("region", { name: "更新情况摘要" });
+    expect(within(summary).getByText("本次未能完成检查，请稍后重试。")).toBeVisible();
+    expect(within(summary).queryByText(/已完成检查：/)).toBeNull();
+    expect(api.getLocalData().feed).toEqual(initial.feed);
   });
 });

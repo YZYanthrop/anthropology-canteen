@@ -1,29 +1,30 @@
 # Active work packet
 
-Last updated: 2026-08-24
+Last updated: 2026-09-12
 
-- Status: `Complete`
+- Status: `In progress`
 - Approved for implementation: yes
-- Target version: `v1.3.2`
-- Plan: [`docs/plans/v1.3.2-usability-and-recovery.md`](../plans/v1.3.2-usability-and-recovery.md)
-- Implementation branch: local `main`
-- Frozen release commit: `f89936b8e4854928142fb028de869794639fed3d`
-- Immutable tag: `v1.3.2`
-- Current step: released and post-publication integrity verified
-- Implementation handoff: [`docs/handoffs/v1.3.2-windows-reminder-registration.md`](../handoffs/v1.3.2-windows-reminder-registration.md)
-- Candidate run: [#32683536380](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32683536380)
-- Formal tag run: [#32687638516](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32687638516)
-- Release: [v1.3.2](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2)
+- Target version: `v1.3.3`
+- Plan: [普通中文与左栏可用性](../plans/v1.3.3-language-and-sidebar-usability.md)
+- Implementation branch: `codex/v1.3.3-a-update-language`
+- Current step: 用户已批准实施完整方案，当前执行 Slice A
+- Stable public version: `v1.3.2`
+- Immutable release commit: `f89936b8e4854928142fb028de869794639fed3d`
 
-## Next action
+## 下一步
 
-No v1.3.2 implementation or release work remains. Start a new approved packet
-before planning v1.4.0 or changing product behavior.
+依次实施 Slice A（中文与更新说明）、B（左栏滚动）、C（触摸操作及回归）。
+每阶段完成验证、交接和本地提交合并，再开始下一阶段。不打包、不推送、不发布。
 
-## Repository note
+## 范围
 
-v1.3.2 is the current immutable public release. Its public Windows x64, macOS
-Apple Silicon arm64, and macOS Intel x64 ZIPs were downloaded after publication
-and matched their SHA-256 sidecars. Older local worktrees may still contain
-unrelated uncommitted release or macOS-test notes; a new task must inspect Git
-status before touching them.
+主数据格式保持 8、提醒状态 2、设置 3。不修改包装、启动器、导入格式或平台支持。
+如必须扩大范围，停止相关实施并说明原因。v1.4.0 仅为
+[Proposed 路线图](../plans/v1.4.0-roadmap.md)，不授权实施。
+
+## 基线提醒
+
+v1.3.2 实现、三平台发布与公开附件校验已完成，详见 CHANGELOG。
+2026-09-11 核验时本地和远端实际 main 均为 `c20a6be43e9421d1d0d6a738bb8540a6a669c0cf`。
+本地 origin/main 缓存过期，当时的 ahead 18 不代表尚未推送；未刷新引用或推送。
+未来实施前重新检查工作区和实际远端，不依赖旧任务记录。

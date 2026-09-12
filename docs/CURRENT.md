@@ -1,6 +1,6 @@
 # Current project snapshot
 
-Last updated: 2026-08-24
+Last updated: 2026-09-12
 
 This is the lightweight entry point for a new Codex task. Chat history is not
 required. Read this file and `docs/work/ACTIVE.md` first, then follow the
@@ -32,18 +32,12 @@ document router below.
 
 ## Active work
 
-- v1.3.2 implementation, Windows reminder-registration correction, candidate
-  gate, immutable tag build, and public release are complete.
-- Candidate run
-  [#32683536380](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32683536380)
-  and formal tag run
-  [#32687638516](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/32687638516)
-  passed Windows x64 and both native macOS architectures.
-- The three public ZIPs and their sidecars are available from the
-  [v1.3.2 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2);
-  post-publication SHA-256 verification passed for every platform.
-- Existing local trial and candidate ZIPs are not release files. Published tags
-  and Release attachments are immutable.
+- v1.3.2 已完成实现和三平台发布；原生验证与发布后下载摘要核对通过。
+  稳定公开版本仍为 [v1.3.2](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2)。
+- v1.3.3 正在实施：[普通中文与左栏可用性](plans/v1.3.3-language-and-sidebar-usability.md)。
+  状态 `In progress`，批准实施为 yes；依次完成 A、B、C，当前为中文与更新说明。
+- [v1.4.0 路线图](plans/v1.4.0-roadmap.md) 保持 `Proposed`，不与 v1.3.3 并行实施。
+- 已发布标签和附件不可改写；本地试用包及候选包不是正式发布文件。
 
 ## Read only what the task needs
 

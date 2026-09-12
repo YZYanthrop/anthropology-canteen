@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { updateSummary, type UpdateAttempt } from "./lib/update-summary";
 import {
   comparePublicationDates,
   effectivePublicationPrecision,
@@ -1401,6 +1402,7 @@ export default function Home() {
   const [subscriptions, setSubscriptions] =
     useState<Subscriptions>(DEFAULT_SUBSCRIPTIONS);
   const [loading, setLoading] = useState(true);
+  const [updateAttempt, setUpdateAttempt] = useState<UpdateAttempt>("idle");
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [activeSubscription, setActiveSubscription] =
@@ -1510,6 +1512,7 @@ export default function Home() {
     setFeed(data.feed);
     if (!data.feed?.historyScholar) overviewFeedRef.current = data.feed;
     setAttemptCoverage(null);
+    setUpdateAttempt("idle");
     setScholarProfiles(data.scholarProfiles);
   }
 
@@ -1904,6 +1907,8 @@ export default function Home() {
     cachedFeed: FeedResponse | null | undefined = undefined,
   ) {
     setLoading(true);
+    setUpdateAttempt("checking");
+    setAttemptCoverage([]);
     setError("");
     try {
       const response = await fetch(`/api/feed${force ? "?refresh=1" : ""}`, {
@@ -1934,6 +1939,7 @@ export default function Home() {
       setFeed(data);
       if (!scholar) overviewFeedRef.current = data;
       setAttemptCoverage(data.coverage || []);
+      setUpdateAttempt("complete");
       setSubscriptions(resolvedSubscriptions);
       const nextArchive = reconcileArticleArchive(
         localDataRef.current.states,
@@ -1946,8 +1952,15 @@ export default function Home() {
         subscriptions: resolvedSubscriptions,
         articleArchive: nextArchive,
       });
-      if (force) showNotice("已检查最新出版记录");
+      if (force) {
+        showNotice(updateSummary(
+          data.coverage || [],
+          "complete",
+          sourceSubscriptions.scholar.length + sourceSubscriptions.journal.length > 0,
+        ).title);
+      }
     } catch {
+      setUpdateAttempt("failed");
       const cached =
         cachedFeed === undefined ? localDataRef.current.feed : cachedFeed;
       if (cached) {
@@ -2866,11 +2879,11 @@ export default function Home() {
     (state) => state.ignored,
   ).length;
   const healthCoverage = attemptCoverage ?? feed?.coverage ?? [];
-  const healthCounts = {
-    success: healthCoverage.filter((entry) => entry.status === "success").length,
-    partial: healthCoverage.filter((entry) => entry.status === "partial").length,
-    failed: healthCoverage.filter((entry) => entry.status === "failed").length,
-  };
+  const update = updateSummary(
+    healthCoverage,
+    updateAttempt,
+    subscriptions.scholar.length + subscriptions.journal.length > 0,
+  );
   const failedProviders = [...new Set(
     healthCoverage.flatMap((entry) =>
       entry.providers
@@ -3191,15 +3204,8 @@ export default function Home() {
             </div>
           </div>
 
-          <section className="update-health-compact" aria-label="更新健康摘要">
-            <span>上次成功：{lastSuccessfulUpdate}</span>
-            <span>
-              订阅：{healthCounts.success} 成功 · {healthCounts.partial} 部分失败 ·{" "}
-              {healthCounts.failed} 失败
-            </span>
-            {failedProviders.length > 0 && (
-              <span>失败来源：{failedProviders.join("、")}</span>
-            )}
+          <section className="update-health-compact" aria-label="更新情况摘要">
+            <UpdateDetails update={update} failedProviders={failedProviders} lastSuccessfulUpdate={lastSuccessfulUpdate} />
           </section>
 
           {currentScholar && (
@@ -3817,30 +3823,13 @@ export default function Home() {
         <aside className="right-rail">
           <section className="signal-card">
             <div className="section-heading">
-              <span>更新健康</span>
-              <small>真实数据源</small>
+              <span>更新情况</span>
             </div>
             <div className="signal-stat">
               <strong>{feed?.items.length || 0}</strong>
               <span>条出版记录</span>
             </div>
-            <div className="health-last-success">
-              <span>上次成功取得数据</span>
-              <strong>{lastSuccessfulUpdate}</strong>
-            </div>
-            <dl className="health-counts">
-              <div><dt>成功</dt><dd>{healthCounts.success}</dd></div>
-              <div><dt>部分失败</dt><dd>{healthCounts.partial}</dd></div>
-              <div><dt>失败</dt><dd>{healthCounts.failed}</dd></div>
-            </dl>
-            <div className="health-providers">
-              <span>失败来源</span>
-              <strong>
-                {failedProviders.length > 0
-                  ? failedProviders.join("、")
-                  : "无"}
-              </strong>
-            </div>
+            <UpdateDetails update={update} failedProviders={failedProviders} lastSuccessfulUpdate={lastSuccessfulUpdate} />
           </section>
         </aside>
       </div>
@@ -4546,6 +4535,29 @@ export default function Home() {
         </div>
       )}
     </main>
+  );
+}
+
+function UpdateDetails({ update, failedProviders, lastSuccessfulUpdate }: {
+  update: ReturnType<typeof updateSummary>;
+  failedProviders: string[];
+  lastSuccessfulUpdate: string;
+}) {
+  return (
+    <div className="update-details">
+      <p>{update.title}</p>
+      <p>上次成功取得数据：{lastSuccessfulUpdate}</p>
+      {update.showResults && <>
+        <p>检查对象：关注的学者和期刊</p>
+        <ul>
+          <li>已完成检查：{update.counts.success} 项</li>
+          <li>部分来源暂时无法查询：{update.counts.partial} 项</li>
+          <li>本次未能检查：{update.counts.failed} 项</li>
+        </ul>
+        {failedProviders.length > 0 && <p>暂时无法查询的数据来源：{failedProviders.join("、")}</p>}
+        <p className="update-explanation">完成检查不代表有新文章，也不保证数据来源已收录全部成果。关键词组只用于匹配文章。</p>
+      </>}
+    </div>
   );
 }
 
