@@ -3062,7 +3062,7 @@ export default function Home() {
       </header>
 
       <div className="workspace">
-        <aside className="sidebar">
+        <aside className="sidebar" aria-label="关注与筛选" tabIndex={0}>
           <nav className="filter-nav" aria-label="信息流筛选">
             {FILTERS.map((item) => (
               <button

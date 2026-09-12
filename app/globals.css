@@ -203,6 +203,29 @@ button {
   align-self: start;
 }
 
+.sidebar {
+  max-height: calc(100vh - 124px);
+  max-height: calc(100dvh - 124px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  padding: 3px;
+  scroll-padding-block: 8px;
+}
+
+.sidebar:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
+}
+
+@media (min-width: 821px) and (max-height: 280px) {
+  .sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 .filter-nav {
   display: grid;
   gap: 4px;
@@ -2277,6 +2300,9 @@ mark {
 
   .sidebar {
     position: static;
+    max-height: none;
+    overflow: visible;
+    scrollbar-gutter: auto;
     margin-bottom: 24px;
   }
 
