@@ -2,13 +2,13 @@
 
 Last updated: 2026-09-17
 
-- Status: `In progress`
+- Status: `Merged`
 - Approved for implementation: yes
 - Target version: `v1.3.3`
 - Plan: [普通中文与左栏可用性](../plans/v1.3.3-language-and-sidebar-usability.md)
-- Implementation branch: `codex/v1.3.3-reminder-migration`
-- Current step: A（92e5473）、B（c2cb801）、C（666524e）已本地合并；Slice D 已实现，lint、构建、24 项界面、52 项离线及 12 个 Edge 合成场景通过，等待审阅
-- Handoff: [最终交接与验证限制](../handoffs/v1.3.3-slice-c.md)
+- Implementation branch: local `main`；Slice D 短期分支 `codex/v1.3.3-reminder-migration` 保留作已合并记录
+- Current step: A（92e5473）、B（c2cb801）、C（666524e）、D（9e2878a）已本地合并；lint、构建、24 项界面、52 项离线及 12 个 Edge 合成场景通过
+- Handoff: [Slice D 交接与验证限制](../handoffs/v1.3.3-slice-d.md)
 - Stable public version: `v1.3.2`
 - Immutable release commit: `f89936b8e4854928142fb028de869794639fed3d`
 

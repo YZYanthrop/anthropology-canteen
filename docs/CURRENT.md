@@ -34,10 +34,11 @@ document router below.
 
 - v1.3.2 已完成实现和三平台发布；原生验证与发布后下载摘要核对通过。
   稳定公开版本仍为 [v1.3.2](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2)。
-- v1.3.3 A–C 已在本地合并；补充 Slice D 已在短期分支实现：自动升级从同一个旧版文件夹
+- v1.3.3 A–D 已在本地合并；Slice D 让自动升级从同一个旧版文件夹
   保留邮件设置、发送记录和 Windows 加密授权码，并区分授权码缺失与无法读取。
   lint、构建、24 项界面、52 项离线及 12 个 Edge 合成场景通过；计划见
-  [普通中文与左栏可用性](plans/v1.3.3-language-and-sidebar-usability.md)。
+  [普通中文与左栏可用性](plans/v1.3.3-language-and-sidebar-usability.md)，交接见
+  [升级时保留邮件提醒](handoffs/v1.3.3-slice-d.md)。
 - 实际触摸/混合设备、macOS 浏览器、屏幕阅读器、真实高倍缩放及 macOS 钥匙串迁移
   仍待原生验收。尚未冻结版本号、打包、推送或发布。
 - [v1.4.0 路线图](plans/v1.4.0-roadmap.md) 保持 `Proposed`，不与 v1.3.3 并行实施。

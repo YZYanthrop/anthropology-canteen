@@ -178,8 +178,8 @@ See `docs/ARCHITECTURE.md` and `docs/PLATFORMS.md` for boundaries.
 
 ## Active milestone
 
-[v1.3.3 普通中文与左栏可用性](plans/v1.3.3-language-and-sidebar-usability.md) A–C
-已在本地合并；Slice D 在短期分支实现同源提醒资料自动迁移、事务恢复和准确授权码状态。
+[v1.3.3 普通中文与左栏可用性](plans/v1.3.3-language-and-sidebar-usability.md) A–D
+已在本地合并；Slice D 实现同源提醒资料自动迁移、事务恢复和准确授权码状态。
 lint、构建、24 项界面、52 项离线及 12 个 Edge 合成场景通过。主数据格式 8、提醒状态 2、
 设置 3 不变；实际设备与 macOS 钥匙串仍需后续原生验收，
 尚未打包或发布。
