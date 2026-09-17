@@ -212,8 +212,19 @@ type ReminderStatus = {
     };
   };
   credentialConfigured?: boolean;
+  credentialStatus?: "configured" | "missing" | "unreadable" | "unsupported";
   tested?: boolean;
-  scheduler?: { installed?: boolean; path?: string; stalePath?: string; taskName?: string };
+  scheduler?: {
+    installed?: boolean;
+    needsMigration?: boolean;
+    path?: string;
+    stalePath?: string;
+    taskName?: string;
+  };
+  reminderMigration?: {
+    outcome?: "restored" | "manual-import-required";
+    reason?: string;
+  };
   state?: {
     baselineComplete?: boolean;
     lastAttemptAt?: string;
@@ -1465,6 +1476,7 @@ export default function Home() {
   const reminderDialogRef = useRef<HTMLElement | null>(null);
   const reminderInitialFocusRef = useRef<HTMLSelectElement | null>(null);
   const reminderReturnFocusRef = useRef<HTMLElement | null>(null);
+  const reminderMigrationNoticeRef = useRef(false);
 
   function showNotice(
     message: string,
@@ -1611,6 +1623,26 @@ export default function Home() {
   function applyReminderStatus(status: ReminderStatus, syncForm = false) {
     setReminderStatus(status);
     if (status.sessionToken) setReminderSessionToken(status.sessionToken);
+    if (!reminderMigrationNoticeRef.current && status.reminderMigration?.outcome) {
+      reminderMigrationNoticeRef.current = true;
+      if (status.reminderMigration.outcome === "restored") {
+        showNotice("邮件设置和授权码已保留");
+      } else {
+        const reason = status.reminderMigration.reason;
+        const message = reason === "source-invalid"
+          ? "旧版提醒资料有文件无法验证，当前资料未被替换。请使用“从旧版本导入数据”工具检查。"
+          : reason === "write-failed"
+            ? "提醒资料未能安全写入，当前资料已恢复。请关闭应用后使用“从旧版本导入数据”工具。"
+            : reason === "target-settings-present"
+              ? "当前邮件设置已保留，旧版提醒资料没有自动覆盖。需要时请使用“从旧版本导入数据”工具。"
+              : reason === "credential-unreadable"
+                ? "已找到原授权码，但当前账户无法读取。原文件仍保留。"
+                : reason === "credential-missing"
+                  ? "未找到原授权码。可使用“从旧版本导入数据”工具补齐。"
+                  : "无法唯一确认完整的旧版提醒资料，请使用“从旧版本导入数据”工具。";
+        showError(message);
+      }
+    }
     const config = status.config;
     if (!config) return;
     const saved = normalizeReminderFormConfig(config);
@@ -2932,10 +2964,20 @@ export default function Home() {
   const reminderCredentialReady = Boolean(
     reminderStatus?.credentialConfigured,
   );
+  const reminderCredentialStatus = reminderStatus?.credentialStatus || (
+    reminderCredentialReady ? "configured" : "missing"
+  );
+  const reminderCredentialWasExpected = Boolean(
+    reminderCredentialStatus === "missing" &&
+    reminderStatus?.reminderMigration?.outcome === "manual-import-required",
+  );
   const savedReminderTestReady = Boolean(reminderStatus?.tested);
   const reminderTestReady = savedReminderTestReady && !reminderDirty;
   const reminderEnabled = Boolean(
     reminderStatus?.config?.enabled && reminderStatus?.scheduler?.installed,
+  );
+  const reminderNeedsMigration = Boolean(
+    reminderStatus?.scheduler?.needsMigration || reminderStatus?.scheduler?.stalePath,
   );
   const reminderProviderGuidance =
     REMINDER_PROVIDER_GUIDANCE[reminderConfig.provider] ||
@@ -4447,7 +4489,13 @@ export default function Home() {
                           ? "新授权码尚未保存"
                           : reminderCredentialReady
                             ? "✓ 授权码已安全保存"
-                            : "请保存授权码"}
+                            : reminderCredentialStatus === "unreadable"
+                              ? "已找到，但当前账户无法读取"
+                              : reminderCredentialStatus === "unsupported"
+                                ? "当前环境不支持安全保存"
+                                : reminderCredentialWasExpected
+                                  ? "未找到原授权码"
+                                  : "请保存授权码"}
                     </span>
                     <div>
                       <button type="button" disabled={reminderSaving || !reminderFormSaved || !reminderSecretInput.trim()} onClick={() => void saveReminderCredential()}>{reminderCredentialReady ? "更换授权码" : "保存授权码"}</button>
@@ -4475,8 +4523,8 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="reminder-step-action">
-                      <small>{reminderTestReady ? "测试成功，现在可以安全开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
-                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>开启自动邮件提醒</button>
+                      <small>{reminderNeedsMigration ? "设置已保留，请将后台提醒迁移到当前文件夹" : reminderTestReady ? "测试成功，现在可以安全开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
+                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>{reminderNeedsMigration ? "迁移到当前文件夹" : "开启自动邮件提醒"}</button>
                     </div>
                   )}
                 </section>
@@ -4499,10 +4547,12 @@ export default function Home() {
               </aside>
             </div>
 
-            {(reminderStatus.state?.lastError || reminderStatus.scheduler?.stalePath || reminderStatus.state?.lastCheckAt) && (
+            {(reminderStatus.state?.lastError || reminderNeedsMigration || reminderStatus.state?.lastCheckAt || reminderCredentialWasExpected || reminderCredentialStatus === "unreadable") && (
               <div className="reminder-runtime-status">
                 {reminderStatus.state?.lastError && <p className="search-warning" role="alert">上次运行：{reminderStatus.state.lastError}</p>}
-                {reminderStatus.scheduler?.stalePath && <p className="search-warning">提醒仍绑定旧版文件夹：{reminderStatus.scheduler.stalePath}</p>}
+                {reminderNeedsMigration && <p className="search-warning">设置已保留，请将后台提醒迁移到当前文件夹。</p>}
+                {reminderCredentialWasExpected && <p className="search-warning">未找到原授权码。可使用“从旧版本导入数据”工具补齐，或重新填写已有授权码。</p>}
+                {reminderCredentialStatus === "unreadable" && <p className="search-warning" role="alert">已找到原授权码，但当前账户无法读取。原文件仍保留，请切换到原账户或使用“从旧版本导入数据”工具。</p>}
                 {reminderStatus.state?.lastCheckAt && <span>上次检查：{new Date(reminderStatus.state.lastCheckAt).toLocaleString("zh-CN")}</span>}
                 {reminderStatus.state?.lastSuccessfulSendAt && <span>上次发信：{new Date(reminderStatus.state.lastSuccessfulSendAt).toLocaleString("zh-CN")}</span>}
               </div>

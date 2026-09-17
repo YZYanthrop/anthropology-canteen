@@ -2,8 +2,11 @@ import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
+  open,
   readFile,
   readdir,
+  rename,
+  rm,
   stat,
   unlink,
   writeFile,
@@ -14,7 +17,7 @@ import worker from "./dist/server/index.js";
 import {
   cleanReminderConfig,
   deleteReminderSecret,
-  readReminderSecret,
+  inspectReminderSecret,
   readReminderState,
   saveReminderSecret,
   withDirectoryLock,
@@ -34,11 +37,23 @@ const clientRoot = resolve(root, "dist", "client");
 const dataRoot = resolve(root, "data");
 const dataFile = resolve(dataRoot, "anthropology-canteen-data.json");
 const settingsFile = resolve(dataRoot, "anthropology-canteen-settings.json");
+const reminderStateFile = resolve(dataRoot, "anthropology-canteen-reminder-state.json");
+const reminderSecretFile = resolve(dataRoot, "anthropology-canteen-reminder-secret.json");
 const pidFile = resolve(dataRoot, "anthropology-canteen-server.pid");
 const runtimeSessionToken = randomUUID();
 const LOCAL_DATA_VERSION = 8;
+const LOCAL_SETTINGS_VERSION = 3;
+const REMINDER_STATE_VERSION = 2;
+const REMINDER_SECRET_VERSION = 1;
+const MIGRATION_SETTINGS_FIELDS = new Set([
+  "version",
+  "openAlexApiKey",
+  "semanticScholarApiKey",
+  "reminders",
+]);
 const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
 let activeReminderJobs = 0;
+let reminderMigration;
 const reminderRequestTimes = new Map();
 
 const contentTypes = {
@@ -863,7 +878,135 @@ async function readJsonWithBackup(file) {
   }
 }
 
-async function findSiblingLocalData() {
+function migrationLockPath() {
+  return resolve(dataRoot, ".anthropology-canteen-migration.lock");
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function validateMigrationData(value) {
+  if (!Number.isInteger(value?.version) || value.version < 2 || value.version > LOCAL_DATA_VERSION) {
+    throw new Error("unsupported-data");
+  }
+  if (!isPlainObject(value.subscriptions) || !isPlainObject(value.states)) {
+    throw new Error("invalid-data");
+  }
+  for (const kind of ["journal", "scholar", "keyword"]) {
+    if (!Array.isArray(value.subscriptions[kind])) throw new Error("invalid-data");
+  }
+}
+
+function validateMigrationSettings(value) {
+  if (![2, LOCAL_SETTINGS_VERSION].includes(value?.version)) {
+    throw new Error("unsupported-settings");
+  }
+  if (Object.keys(value).some((key) => !MIGRATION_SETTINGS_FIELDS.has(key))) {
+    throw new Error("invalid-settings");
+  }
+  for (const key of ["openAlexApiKey", "semanticScholarApiKey"]) {
+    if (key in value && typeof value[key] !== "string") throw new Error("invalid-settings");
+  }
+  if ("reminders" in value && !isPlainObject(value.reminders)) {
+    throw new Error("invalid-settings");
+  }
+}
+
+function validateMigrationReminderState(value) {
+  if (
+    ![1, REMINDER_STATE_VERSION].includes(value?.version) ||
+    !isPlainObject(value.items) ||
+    !isPlainObject(value.baselines)
+  ) {
+    throw new Error("invalid-reminder-state");
+  }
+}
+
+function validateMigrationReminderSecret(value) {
+  if (
+    value?.version !== REMINDER_SECRET_VERSION ||
+    typeof value.ciphertext !== "string" ||
+    !value.ciphertext.trim()
+  ) {
+    throw new Error("invalid-reminder-secret");
+  }
+}
+
+async function readMigrationJson(file, validate) {
+  try {
+    const bytes = await readFile(file);
+    const value = parseJson(bytes.toString("utf8"));
+    if (!isPlainObject(value)) throw new Error("invalid-json-object");
+    validate(value);
+    return { exists: true, bytes, value };
+  } catch (error) {
+    if (error?.code === "ENOENT") return { exists: false };
+    throw error;
+  }
+}
+
+async function readMigrationTarget(file, validate) {
+  try {
+    return await readMigrationJson(file, validate);
+  } catch (error) {
+    return { exists: true, error };
+  }
+}
+
+function isBlankLocalSettings(value) {
+  const settings = cleanLocalSettings(value);
+  const reminders = settings.reminders;
+  return Boolean(
+    !settings.openAlexApiKey &&
+      !settings.semanticScholarApiKey &&
+      !reminders.enabled &&
+      !reminders.sender &&
+      !reminders.recipient &&
+      !reminders.host &&
+      reminders.port === 465 &&
+      reminders.security === "tls" &&
+      !reminders.username &&
+      reminders.format === "concise" &&
+      reminders.schedule.cadence === "daily" &&
+      reminders.schedule.time === "08:00" &&
+      reminders.schedule.weekday === 1 &&
+      reminders.schedule.monthDay === 1 &&
+      !reminders.testedConfigHash &&
+      !reminders.schedulerPath &&
+      !reminders.configuredAt
+  );
+}
+
+function isBlankReminderState(value) {
+  return Boolean(
+    !value.baselineComplete &&
+      !Object.keys(value.baselines || {}).length &&
+      !Object.keys(value.items || {}).length &&
+      !value.pendingDigest &&
+      !value.enabledAt &&
+      !value.lastAttemptAt &&
+      !value.lastCheckAt &&
+      !value.lastSuccessfulCheckAt &&
+      !value.lastSuccessfulSendAt &&
+      !value.nextDueAt &&
+      !value.lastError &&
+      !value.lastResult
+  );
+}
+
+function reminderIdentity(settings) {
+  const reminders = cleanLocalSettings(settings).reminders;
+  if (!reminders.installationId || !reminders.credentialRef || !reminders.sender) return "";
+  return JSON.stringify({
+    installationId: reminders.installationId,
+    credentialRef: reminders.credentialRef,
+    sender: reminders.sender,
+    username: reminders.username,
+  });
+}
+
+async function findSiblingMigrationCandidates() {
   const parentRoot = dirname(root);
   let entries = [];
   try {
@@ -887,10 +1030,13 @@ async function findSiblingLocalData() {
     try {
       const info = await stat(candidate);
       if (!info.isFile()) continue;
-      const data = cleanLocalData(parseJson(await readFile(candidate, "utf8")));
+      const source = await readMigrationJson(candidate, validateMigrationData);
+      const data = cleanLocalData(source.value);
       if (hasLocalDataContent(data)) {
         const savedAtMs = Date.parse(data.savedAt || "");
         candidates.push({
+          root: siblingRoot,
+          dataFile: candidate,
           data,
           mtimeMs: Number.isFinite(savedAtMs) ? savedAtMs : info.mtimeMs,
         });
@@ -900,27 +1046,249 @@ async function findSiblingLocalData() {
     }
   }
 
-  return candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)[0]?.data || null;
+  return candidates.sort((a, b) =>
+    b.mtimeMs - a.mtimeMs || a.root.localeCompare(b.root),
+  );
+}
+
+function migrationBackupPath(destination) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "");
+  return destination.replace(/\.json$/i, `.backup-migration-${stamp}-${randomUUID()}.json`);
+}
+
+async function pathExists(file) {
+  try {
+    await stat(file);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+export async function installMigrationFiles(files, options = {}) {
+  const renameFile = options.renameFile || rename;
+  const prepared = [];
+  for (const file of files) await mkdir(dirname(file.destination), { recursive: true });
+  try {
+    for (const [index, file] of files.entries()) {
+      const temporary = `${file.destination}.migration-${process.pid}-${randomUUID()}`;
+      const handle = await open(temporary, "w");
+      try {
+        await handle.writeFile(file.bytes);
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      prepared.push({
+        ...file,
+        temporary,
+        backup: (await pathExists(file.destination))
+          ? migrationBackupPath(file.destination)
+          : "",
+        backedUp: false,
+        installed: false,
+        index,
+      });
+    }
+
+    for (const file of prepared) {
+      if (file.backup) {
+        await renameFile(file.destination, file.backup);
+        file.backedUp = true;
+      }
+      await renameFile(file.temporary, file.destination);
+      file.installed = true;
+    }
+  } catch (error) {
+    for (const file of prepared.reverse()) {
+      if (file.installed) await rm(file.destination, { force: true }).catch(() => undefined);
+      if (file.backedUp && await pathExists(file.backup)) {
+        await rename(file.backup, file.destination).catch(() => undefined);
+      }
+      await rm(file.temporary, { force: true }).catch(() => undefined);
+    }
+    throw error;
+  }
+  return prepared.filter((file) => file.backup).map((file) => file.backup);
+}
+
+function recordReminderMigration(outcome, reason = "") {
+  reminderMigration = { outcome };
+  if (reason) reminderMigration.reason = reason;
+}
+
+async function loadSourceReminderFiles(candidate) {
+  const sourceDataRoot = resolve(candidate.root, "data");
+  const settings = await readMigrationJson(
+    resolve(sourceDataRoot, "anthropology-canteen-settings.json"),
+    validateMigrationSettings,
+  );
+  const state = await readMigrationJson(
+    resolve(sourceDataRoot, "anthropology-canteen-reminder-state.json"),
+    validateMigrationReminderState,
+  );
+  const secret = await readMigrationJson(
+    resolve(sourceDataRoot, "anthropology-canteen-reminder-secret.json"),
+    validateMigrationReminderSecret,
+  );
+  return { settings, state, secret };
+}
+
+async function ensureSiblingMigration() {
+  if (reminderMigration?.outcome === "restored") return;
+  await ensureDataRoot();
+  await withDirectoryLock(migrationLockPath(), async () => {
+    if (reminderMigration?.outcome === "restored") return;
+    const [targetData, targetSettings, targetState, targetSecret, candidates] = await Promise.all([
+      readMigrationTarget(dataFile, validateMigrationData),
+      readMigrationTarget(settingsFile, validateMigrationSettings),
+      readMigrationTarget(reminderStateFile, validateMigrationReminderState),
+      readMigrationTarget(reminderSecretFile, validateMigrationReminderSecret),
+      findSiblingMigrationCandidates(),
+    ]);
+    if (!candidates.length) return;
+
+    const targetDataIsEmpty = !targetData.exists || (
+      targetData.value && !hasLocalDataContent(cleanLocalData(targetData.value))
+    );
+    const targetSettingsAreBlank = !targetSettings.exists || (
+      targetSettings.value && isBlankLocalSettings(targetSettings.value)
+    );
+    const targetStateIsBlank = !targetState.exists || (
+      targetState.value && isBlankReminderState(targetState.value)
+    );
+    const targetSecretIsMissing = !targetSecret.exists;
+
+    let candidate;
+    let backfill = false;
+    if (targetDataIsEmpty) {
+      candidate = candidates[0];
+    } else {
+      if (
+        !targetSettings.value ||
+        isBlankLocalSettings(targetSettings.value) ||
+        (!targetStateIsBlank && !targetSecretIsMissing)
+      ) {
+        return;
+      }
+      const identity = reminderIdentity(targetSettings.value);
+      if (!identity) return;
+      const matches = [];
+      for (const possible of candidates) {
+        try {
+          const sourceSettings = await readMigrationJson(
+            resolve(possible.root, "data", "anthropology-canteen-settings.json"),
+            validateMigrationSettings,
+          );
+          if (sourceSettings.exists && reminderIdentity(sourceSettings.value) === identity) {
+            matches.push(possible);
+          }
+        } catch {
+          // A damaged candidate cannot establish a unique identity.
+        }
+      }
+      if (matches.length !== 1) {
+        recordReminderMigration("manual-import-required", matches.length > 1 ? "ambiguous-source" : "source-not-found");
+        return;
+      }
+      [candidate] = matches;
+      backfill = true;
+    }
+
+    let source;
+    try {
+      source = await loadSourceReminderFiles(candidate);
+    } catch {
+      recordReminderMigration("manual-import-required", "source-invalid");
+      return;
+    }
+
+    const sourceSettings = source.settings.exists
+      ? cleanLocalSettings(source.settings.value)
+      : null;
+    let sourceCredential = { status: "missing", secret: "" };
+    if (source.secret.exists && process.platform === "win32") {
+      sourceCredential = await inspectReminderSecret(root, sourceSettings?.reminders || cleanReminderConfig({}), {
+        platform: "win32",
+        secretRoot: candidate.root,
+        helperRoot: root,
+      });
+      if (sourceCredential.status !== "configured") {
+        recordReminderMigration("manual-import-required", "credential-unreadable");
+        return;
+      }
+    }
+
+    const sourceIdentity = sourceSettings ? reminderIdentity(sourceSettings) : "";
+    const targetIdentity = targetSettings.value ? reminderIdentity(targetSettings.value) : "";
+    const canUseSourceReminder = Boolean(
+      sourceSettings &&
+      (targetSettingsAreBlank || sourceIdentity === targetIdentity),
+    );
+    const files = [];
+    if (!backfill && targetDataIsEmpty) {
+      files.push({
+        destination: dataFile,
+        bytes: Buffer.from(`${JSON.stringify(candidate.data, null, 2)}\n`, "utf8"),
+      });
+    }
+    if (sourceSettings && targetSettingsAreBlank) {
+      files.push({
+        destination: settingsFile,
+        bytes: Buffer.from(`${JSON.stringify(sourceSettings, null, 2)}\n`, "utf8"),
+      });
+    }
+    if (source.state.exists && targetStateIsBlank && canUseSourceReminder) {
+      files.push({ destination: reminderStateFile, bytes: source.state.bytes });
+    }
+    if (
+      process.platform === "win32" &&
+      source.secret.exists &&
+      targetSecretIsMissing &&
+      canUseSourceReminder
+    ) {
+      files.push({ destination: reminderSecretFile, bytes: source.secret.bytes });
+    }
+
+    if (!files.length) {
+      if (sourceSettings?.reminders?.sender && !canUseSourceReminder) {
+        recordReminderMigration("manual-import-required", "target-settings-present");
+      }
+      return;
+    }
+
+    try {
+      await installMigrationFiles(files);
+    } catch {
+      recordReminderMigration("manual-import-required", "write-failed");
+      return;
+    }
+
+    if (sourceSettings?.reminders?.sender) {
+      const finalSettings = targetSettingsAreBlank
+        ? sourceSettings
+        : cleanLocalSettings(targetSettings.value);
+      const credential = await inspectReminderSecret(root, finalSettings.reminders);
+      if (credential.status === "configured") {
+        recordReminderMigration("restored");
+      } else {
+        recordReminderMigration(
+          "manual-import-required",
+          credential.status === "unreadable" ? "credential-unreadable" : "credential-missing",
+        );
+      }
+    }
+  });
 }
 
 async function readLocalDataFile() {
-  await ensureDataRoot();
+  await ensureSiblingMigration();
   try {
-    const data = cleanLocalData(await readJsonWithBackup(dataFile));
-    // A first launch may have created an empty file before the user places the
-    // new portable folder beside the old version. Keep retrying neighboring
-    // migration while the current file is still genuinely empty.
-    if (!hasLocalDataContent(data)) {
-      const siblingData = await findSiblingLocalData();
-      if (siblingData) {
-        await writeJsonAtomic(dataFile, siblingData);
-        return siblingData;
-      }
-    }
-    return data;
+    return cleanLocalData(await readJsonWithBackup(dataFile));
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
-    const data = (await findSiblingLocalData()) || emptyLocalData();
+    const data = emptyLocalData();
     await writeJsonAtomic(dataFile, data);
     return data;
   }
@@ -962,70 +1330,15 @@ async function patchLocalDataFile(patch) {
   });
 }
 
-async function findSiblingLocalSettings() {
-  const parentRoot = dirname(root);
-  let entries = [];
-  try {
-    entries = await readdir(parentRoot, { withFileTypes: true });
-  } catch {
-    return null;
-  }
-  const candidates = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const siblingRoot = resolve(parentRoot, entry.name);
-    if (siblingRoot === root || !siblingRoot.startsWith(`${parentRoot}${sep}`)) {
-      continue;
-    }
-    const candidate = resolve(
-      siblingRoot,
-      "data",
-      "anthropology-canteen-settings.json",
-    );
-    try {
-      const info = await stat(candidate);
-      if (!info.isFile()) continue;
-      const raw = parseJson(await readFile(candidate, "utf8"));
-      const settings = cleanLocalSettings(raw);
-      const rawReminders = raw?.reminders;
-      if (
-        settings.openAlexApiKey ||
-        settings.semanticScholarApiKey ||
-        rawReminders?.sender ||
-        rawReminders?.enabled ||
-        rawReminders?.installationId
-      ) {
-        candidates.push({ settings, mtimeMs: info.mtimeMs });
-      }
-    } catch {
-      // Ignore unreadable or unrelated sibling settings.
-    }
-  }
-  return (
-    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)[0]?.settings || null
-  );
-}
-
 async function readLocalSettingsFile() {
-  await ensureDataRoot();
+  await ensureSiblingMigration();
   try {
     return cleanLocalSettings(
       await readJsonWithBackup(settingsFile),
     );
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
-    const settings =
-      (await findSiblingLocalSettings()) || emptyLocalSettings();
-    if (
-      settings.openAlexApiKey ||
-      settings.semanticScholarApiKey ||
-      settings.reminders?.sender ||
-      settings.reminders?.enabled ||
-      settings.reminders?.installationId
-    ) {
-      await writeJsonAtomic(settingsFile, settings);
-    }
-    return settings;
+    return emptyLocalSettings();
   }
 }
 
@@ -1177,14 +1490,19 @@ async function readReminderStatus() {
   const config = cleanReminderConfig(settings.reminders);
   const state = await readReminderState(root);
   const scheduler = await getSchedulerStatus(root, config);
-  const secret = await readReminderSecret(root, config);
+  const credential = await inspectReminderSecret(root, config);
+  const publicScheduler = {
+    ...scheduler,
+    needsMigration: Boolean(config.enabled && !scheduler.installed),
+  };
   return {
     version: 1,
     platform: process.platform,
     config: reminderPublicConfig(config),
-    credentialConfigured: Boolean(secret),
+    credentialConfigured: credential.status === "configured",
+    credentialStatus: credential.status,
     tested: Boolean(config.testedConfigHash && config.testedConfigHash === reminderConfigHash(config)),
-    scheduler,
+    scheduler: publicScheduler,
     state: {
       baselineComplete: state.baselineComplete,
       lastAttemptAt: state.lastAttemptAt,
@@ -1195,6 +1513,7 @@ async function readReminderStatus() {
       lastError: state.lastError,
       lastResult: state.lastResult,
     },
+    ...(reminderMigration ? { reminderMigration } : {}),
     sessionToken: runtimeSessionToken,
   };
 }

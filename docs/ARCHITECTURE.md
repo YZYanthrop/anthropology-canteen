@@ -119,10 +119,14 @@ confirm installation.
 An empty first run creates a blank version 8 data structure. While that file
 remains empty, automatic neighboring-version migration is retried so an old
 portable folder placed beside the new one after the first launch can still be
-found. Manual import must
-validate the JSON, back up an existing destination, and bring the neighboring
-settings file only when present. Automatic neighboring-version migration keeps
-the newest data by `savedAt` and chooses settings independently by file time.
+found. The selected main-data folder is also the only automatic source for
+settings, reminder delivery state, and the Windows DPAPI ciphertext. Present
+files are validated before a migration-wide temporary-write, backup, replace,
+and rollback transaction. Existing nonblank settings, credentials, and reminder
+history are not overwritten. A later repair of previously omitted reminder
+files requires exactly one sibling whose installation ID, credential reference,
+sender, and authentication address match the current settings. Manual import
+remains the fallback when that source cannot be identified uniquely.
 
 Because every version opens on the same friendly localhost origin, launchers
 add a per-launch query value and the portable server marks HTML as `no-store`.

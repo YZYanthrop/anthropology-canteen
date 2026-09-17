@@ -1,26 +1,27 @@
 # Active work packet
 
-Last updated: 2026-09-12
+Last updated: 2026-09-17
 
-- Status: `Merged`
+- Status: `In progress`
 - Approved for implementation: yes
 - Target version: `v1.3.3`
 - Plan: [普通中文与左栏可用性](../plans/v1.3.3-language-and-sidebar-usability.md)
-- Implementation branch: local `main`；三个短期实现分支保留作已合并记录
-- Current step: A（92e5473）、B（c2cb801）、C（666524e）源码已完成并本地合并，真人验收有未完成项
+- Implementation branch: `codex/v1.3.3-reminder-migration`
+- Current step: A（92e5473）、B（c2cb801）、C（666524e）已本地合并；Slice D 已实现，lint、构建、24 项界面、52 项离线及 12 个 Edge 合成场景通过，等待审阅
 - Handoff: [最终交接与验证限制](../handoffs/v1.3.3-slice-c.md)
 - Stable public version: `v1.3.2`
 - Immutable release commit: `f89936b8e4854928142fb028de869794639fed3d`
 
 ## 下一步
 
-审阅实现结果，补充实际触摸/混合设备、macOS 浏览器、屏幕阅读器及真实高倍缩放验收。
-源码验证包括 lint、构建、22 项界面、46 项离线及 12 个 Edge 浏览器场景；不等于真人验收。
+审阅 Slice D 实现结果，并在 macOS 原生环境确认钥匙串关联仍可读取；补充实际触摸／混合设备、
+macOS 浏览器、屏幕阅读器及真实高倍缩放验收。自动测试不等于真人或原生平台验收。
 版本冻结、三平台原生包验证、推送、标签及发布是后续单独授权任务。
 
 ## 范围
 
-主数据格式保持 8、提醒状态 2、设置 3。不修改包装、启动器、导入格式或平台支持。
+主数据格式保持 8、提醒状态 2、设置 3。Slice D 只扩展自动迁移和提醒状态提示，
+不修改包装、启动器、导入格式、邮箱接入方式或平台支持。
 如必须扩大范围，停止相关实施并说明原因。v1.4.0 仅为
 [Proposed 路线图](../plans/v1.4.0-roadmap.md)，不授权实施。
 

@@ -35,10 +35,16 @@ const savedReminderStatus = {
     },
   },
   credentialConfigured: true,
+  credentialStatus: "configured" as const,
   tested: true,
   scheduler: {
     installed: true,
+    needsMigration: false,
     stalePath: "C:\\Old Anthropology Canteen",
+  },
+  reminderMigration: undefined as undefined | {
+    outcome: "restored" | "manual-import-required";
+    reason?: string;
   },
   state: {},
 };
@@ -134,7 +140,7 @@ function installApi(options: {
       status = {
         ...status,
         config: { ...status.config, enabled: true },
-        scheduler: { ...status.scheduler, installed: true, stalePath: "" },
+        scheduler: { ...status.scheduler, installed: true, needsMigration: false, stalePath: "" },
       };
       return jsonResponse(status);
     }
@@ -291,6 +297,86 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     await user.click(testButton);
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "测试邮箱暂时不可用",
+    );
+  });
+
+  test("restored, missing, unreadable, and ambiguous reminder migration states use clear guidance", async () => {
+    const restored = structuredClone(savedReminderStatus);
+    restored.reminderMigration = { outcome: "restored" };
+    installApi({ reminderStatus: restored });
+    const first = render(<Home />);
+    expect(await screen.findByRole("status")).toHaveTextContent("邮件设置和授权码已保留");
+    first.unmount();
+    vi.unstubAllGlobals();
+
+    const unreadable = structuredClone(savedReminderStatus);
+    unreadable.config.enabled = false;
+    unreadable.scheduler.installed = false;
+    unreadable.scheduler.stalePath = "";
+    unreadable.credentialConfigured = false;
+    unreadable.credentialStatus = "unreadable";
+    unreadable.tested = false;
+    installApi({ reminderStatus: unreadable });
+    const second = render(<Home />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "邮件提醒" }));
+    const dialog = await screen.findByRole("dialog", { name: "邮件提醒设置" });
+    expect(within(dialog).getByText("已找到，但当前账户无法读取")).toBeVisible();
+    expect(within(dialog).getByText(/原文件仍保留/)).toBeVisible();
+    expect(within(dialog).queryByText(/重新申请/)).not.toBeInTheDocument();
+    second.unmount();
+    vi.unstubAllGlobals();
+
+    const missing = structuredClone(savedReminderStatus);
+    missing.config.enabled = false;
+    missing.scheduler.installed = false;
+    missing.scheduler.stalePath = "";
+    missing.credentialConfigured = false;
+    missing.credentialStatus = "missing";
+    missing.tested = false;
+    missing.reminderMigration = {
+      outcome: "manual-import-required",
+      reason: "credential-missing",
+    };
+    installApi({ reminderStatus: missing });
+    const third = render(<Home />);
+    await user.click(await screen.findByRole("button", { name: "邮件提醒" }));
+    const missingDialog = await screen.findByRole("dialog", { name: "邮件提醒设置" });
+    expect(within(missingDialog).getByText("未找到原授权码")).toBeVisible();
+    expect(within(missingDialog).getByText(/重新填写已有授权码/)).toBeVisible();
+    expect(within(missingDialog).queryByText(/重新申请/)).not.toBeInTheDocument();
+    third.unmount();
+    vi.unstubAllGlobals();
+
+    const ambiguous = structuredClone(savedReminderStatus);
+    ambiguous.reminderMigration = {
+      outcome: "manual-import-required",
+      reason: "ambiguous-source",
+    };
+    installApi({ reminderStatus: ambiguous });
+    render(<Home />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("从旧版本导入数据");
+  });
+
+  test("preserved settings with an old background task reuse the migration action", async () => {
+    const user = userEvent.setup();
+    const needsMigration = structuredClone(savedReminderStatus);
+    needsMigration.config.enabled = true;
+    needsMigration.scheduler.installed = false;
+    needsMigration.scheduler.needsMigration = true;
+    needsMigration.scheduler.stalePath = "";
+    const { fetchMock } = installApi({ reminderStatus: needsMigration });
+    render(<Home />);
+
+    await user.click(await screen.findByRole("button", { name: "邮件提醒" }));
+    const dialog = await screen.findByRole("dialog", { name: "邮件提醒设置" });
+    expect(within(dialog).getByText("设置已保留，请将后台提醒迁移到当前文件夹")).toBeVisible();
+    const migrate = within(dialog).getByRole("button", { name: "迁移到当前文件夹" });
+    expect(migrate).toBeEnabled();
+    await user.click(migrate);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/reminders/enable",
+      expect.objectContaining({ method: "POST" }),
     );
   });
 
