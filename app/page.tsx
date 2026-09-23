@@ -217,9 +217,13 @@ type ReminderStatus = {
   scheduler?: {
     installed?: boolean;
     needsMigration?: boolean;
+    status?: "current" | "stale" | "missing" | "ambiguous" | "permission-denied";
     path?: string;
     stalePath?: string;
     taskName?: string;
+    reasonCodes?: string[];
+    ambiguousTaskCount?: number;
+    ambiguousTaskIds?: string[];
   };
   reminderMigration?: {
     outcome?: "restored" | "manual-import-required";
@@ -1742,10 +1746,13 @@ export default function Home() {
   }
 
   async function enableReminder() {
+    const updatingExistingTask = reminderNeedsMigration;
     setReminderSaving(true);
     try {
       await reminderRequest("/api/reminders/enable", "POST");
-      showNotice("后台提醒已开启；首次检查已完成，没有新文章时不会发送邮件");
+      showNotice(updatingExistingTask
+        ? "后台提醒已更新到当前文件夹"
+        : "后台提醒已开启；首次检查已完成，没有新文章时不会发送邮件");
     } catch (error) {
       showError(error instanceof Error ? error.message : "邮件提醒启用失败");
     } finally {
@@ -4517,14 +4524,14 @@ export default function Home() {
                   {reminderEnabled ? (
                     <div className="reminder-enabled-actions">
                       <div><strong>后台提醒已开启</strong><span>{reminderStatus.state?.nextDueAt ? `下次计划：${new Date(reminderStatus.state.nextDueAt).toLocaleString("zh-CN")}` : "计划任务已安装"}</span></div>
-                      {reminderStatus.scheduler?.stalePath && <button type="button" className="primary-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>迁移到当前文件夹</button>}
+                      {reminderStatus.scheduler?.stalePath && <button type="button" className="primary-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>更新后台提醒到当前文件夹</button>}
                       <button type="button" disabled={reminderSaving} onClick={() => void runReminderNow()}>立即检查一次</button>
                       <button type="button" disabled={reminderSaving} onClick={() => void disableReminder(false)}>停用提醒</button>
                     </div>
                   ) : (
                     <div className="reminder-step-action">
-                      <small>{reminderNeedsMigration ? "设置已保留，请将后台提醒迁移到当前文件夹" : reminderTestReady ? "测试成功，现在可以安全开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
-                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>{reminderNeedsMigration ? "迁移到当前文件夹" : "开启自动邮件提醒"}</button>
+                      <small>{reminderNeedsMigration ? "设置已保留。更新时 Windows 可能要求确认一次权限；应用和日常提醒不会以管理员权限运行。" : reminderTestReady ? "测试成功，现在可以安全开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
+                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>{reminderNeedsMigration ? "更新后台提醒到当前文件夹" : "开启自动邮件提醒"}</button>
                     </div>
                   )}
                 </section>
@@ -4547,10 +4554,21 @@ export default function Home() {
               </aside>
             </div>
 
-            {(reminderStatus.state?.lastError || reminderNeedsMigration || reminderStatus.state?.lastCheckAt || reminderCredentialWasExpected || reminderCredentialStatus === "unreadable") && (
+            {(reminderStatus.state?.lastError || reminderNeedsMigration || reminderStatus.scheduler?.ambiguousTaskCount || reminderStatus.scheduler?.status === "permission-denied" || reminderStatus.state?.lastCheckAt || reminderCredentialWasExpected || reminderCredentialStatus === "unreadable") && (
               <div className="reminder-runtime-status">
                 {reminderStatus.state?.lastError && <p className="search-warning" role="alert">上次运行：{reminderStatus.state.lastError}</p>}
-                {reminderNeedsMigration && <p className="search-warning">设置已保留，请将后台提醒迁移到当前文件夹。</p>}
+                {reminderNeedsMigration && <p className="search-warning">设置已保留，请将后台提醒更新到当前文件夹。</p>}
+                {Boolean(reminderStatus.scheduler?.ambiguousTaskCount) && (
+                  <p className="search-warning" role="alert">
+                    另发现 {reminderStatus.scheduler?.ambiguousTaskCount} 个无法确认归属的旧后台任务，程序没有删除。
+                    {reminderStatus.scheduler?.ambiguousTaskIds?.length
+                      ? ` 可在 Windows 任务计划程序中核对编号：${reminderStatus.scheduler.ambiguousTaskIds.join("、")}。`
+                      : " 可在 Windows 任务计划程序中手动核对。"}
+                  </p>
+                )}
+                {reminderStatus.scheduler?.status === "permission-denied" && (
+                  <p className="search-warning">Windows 未允许自动核对后台任务；页面保留上次成功更新记录。需要更新时，点击按钮并确认一次 Windows 权限提示。</p>
+                )}
                 {reminderCredentialWasExpected && <p className="search-warning">未找到原授权码。可使用“从旧版本导入数据”工具补齐，或重新填写已有授权码。</p>}
                 {reminderCredentialStatus === "unreadable" && <p className="search-warning" role="alert">已找到原授权码，但当前账户无法读取。原文件仍保留，请切换到原账户或使用“从旧版本导入数据”工具。</p>}
                 {reminderStatus.state?.lastCheckAt && <span>上次检查：{new Date(reminderStatus.state.lastCheckAt).toLocaleString("zh-CN")}</span>}

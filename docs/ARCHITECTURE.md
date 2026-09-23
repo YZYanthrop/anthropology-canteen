@@ -116,6 +116,18 @@ credential is never part of this transaction and remains untouched. The client
 treats reminders as active only when both saved config and the scheduler marker
 confirm installation.
 
+For v1.3.3 Windows task updates, the marker is no longer treated as proof of the
+live Task Scheduler definition. The task helper validates the executable,
+worker, working directory, daily time, original interactive user, and limited
+run level. A normal update is attempted first; only an access denial launches
+that helper through UAC, while the server remains non-elevated. The elevated
+helper returns only status, reason codes, and short task identity suffixes
+through an ephemeral file under the package `data/` directory, then the normal
+launcher deletes it. If the desktop session cannot enumerate tasks, the API
+reports that limitation and may display the last successfully verified marker;
+it never returns local paths or account names. Other product-shaped task names
+are reported as ambiguous and are not automatically deleted.
+
 An empty first run creates a blank version 8 data structure. While that file
 remains empty, automatic neighboring-version migration is retried so an old
 portable folder placed beside the new one after the first launch can still be

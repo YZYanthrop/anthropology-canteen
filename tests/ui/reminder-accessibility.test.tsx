@@ -40,7 +40,10 @@ const savedReminderStatus = {
   scheduler: {
     installed: true,
     needsMigration: false,
+    status: "current" as const,
     stalePath: "C:\\Old Anthropology Canteen",
+    ambiguousTaskCount: 0,
+    ambiguousTaskIds: [] as string[],
   },
   reminderMigration: undefined as undefined | {
     outcome: "restored" | "manual-import-required";
@@ -97,6 +100,7 @@ function installApi(options: {
   reminderStatus?: typeof savedReminderStatus;
   failTest?: boolean;
   failEnable?: boolean;
+  failEnableMessage?: string;
   withArticle?: boolean;
 } = {}) {
   let status = structuredClone(options.reminderStatus || savedReminderStatus);
@@ -134,13 +138,13 @@ function installApi(options: {
     if (url === "/api/reminders/enable" && init?.method === "POST") {
       if (options.failEnable) {
         return jsonResponse({
-          message: "Windows 拒绝注册计划任务。请关闭所有 Anthropology Canteen 页面，等待约 10 秒，然后右键 start-local.cmd，选择‘以管理员身份运行’，再重新开启提醒。管理员权限仅用于首次注册或更新后的迁移，日常运行不需要。",
+          message: options.failEnableMessage || "Windows 没有允许更新后台提醒任务。请重试并确认一次 Windows 权限提示；只提升任务小工具，应用和日常提醒仍以普通权限运行。",
         }, 500);
       }
       status = {
         ...status,
         config: { ...status.config, enabled: true },
-        scheduler: { ...status.scheduler, installed: true, needsMigration: false, stalePath: "" },
+        scheduler: { ...status.scheduler, installed: true, needsMigration: false, status: "current", stalePath: "" },
       };
       return jsonResponse(status);
     }
@@ -181,7 +185,7 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     expect(within(dialog).getByText("旧配置运行中")).toBeVisible();
     expect(within(dialog).getByText(/后台提醒仍按已保存配置运行/)).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "发送测试邮件" })).toBeDisabled();
-    expect(within(dialog).getByRole("button", { name: "迁移到当前文件夹" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "更新后台提醒到当前文件夹" })).toBeDisabled();
 
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false);
     await user.keyboard("{Escape}");
@@ -210,7 +214,7 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     );
   });
 
-  test("scheduler permission failure stays visibly disabled and shows the safe administrator hint", async () => {
+  test("scheduler permission failure stays visibly disabled and explains the one-time helper prompt", async () => {
     const user = userEvent.setup();
     const inactiveStatus = structuredClone(savedReminderStatus);
     inactiveStatus.config.enabled = false;
@@ -229,8 +233,8 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
       name: "开启自动邮件提醒",
     }));
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("右键 start-local.cmd");
-    expect(alert).toHaveTextContent("日常运行不需要");
+    expect(alert).toHaveTextContent("确认一次 Windows 权限提示");
+    expect(alert).toHaveTextContent("日常提醒仍以普通权限运行");
     expect(alert).not.toHaveTextContent(/Access is denied|PermissionDenied|0x80070005|C:\\Users/i);
     expect(within(dialog).queryByText("后台提醒已开启")).not.toBeInTheDocument();
     expect(opener).toHaveAccessibleName("邮件提醒");
@@ -370,14 +374,50 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
 
     await user.click(await screen.findByRole("button", { name: "邮件提醒" }));
     const dialog = await screen.findByRole("dialog", { name: "邮件提醒设置" });
-    expect(within(dialog).getByText("设置已保留，请将后台提醒迁移到当前文件夹")).toBeVisible();
-    const migrate = within(dialog).getByRole("button", { name: "迁移到当前文件夹" });
+    expect(within(dialog).getByText(/设置已保留。更新时 Windows 可能要求确认一次权限/)).toBeVisible();
+    const migrate = within(dialog).getByRole("button", { name: "更新后台提醒到当前文件夹" });
     expect(migrate).toBeEnabled();
     await user.click(migrate);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/reminders/enable",
       expect.objectContaining({ method: "POST" }),
     );
+    expect(await screen.findByRole("status")).toHaveTextContent("后台提醒已更新到当前文件夹");
+  });
+
+  test("ambiguous old Windows tasks are reported without a delete action", async () => {
+    const user = userEvent.setup();
+    const ambiguous = structuredClone(savedReminderStatus);
+    ambiguous.scheduler.ambiguousTaskCount = 2;
+    ambiguous.scheduler.ambiguousTaskIds = ["old-task-a", "old-task-b"];
+    installApi({ reminderStatus: ambiguous });
+    render(<Home />);
+
+    await user.click(await screen.findByRole("button", { name: "邮件提醒已开" }));
+    const dialog = await screen.findByRole("dialog", { name: "邮件提醒设置" });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("程序没有删除");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("old-task-a、old-task-b");
+    expect(within(dialog).queryByRole("button", { name: /删除.*旧后台任务/ })).not.toBeInTheDocument();
+  });
+
+  test("cancelling the Windows permission prompt reports that nothing changed", async () => {
+    const user = userEvent.setup();
+    const needsMigration = structuredClone(savedReminderStatus);
+    needsMigration.config.enabled = true;
+    needsMigration.scheduler.installed = false;
+    needsMigration.scheduler.needsMigration = true;
+    needsMigration.scheduler.stalePath = "";
+    installApi({
+      reminderStatus: needsMigration,
+      failEnable: true,
+      failEnableMessage: "没有更改后台提醒任务。你已取消 Windows 权限确认；设置、授权码和发送记录都保持不变。",
+    });
+    render(<Home />);
+
+    await user.click(await screen.findByRole("button", { name: "邮件提醒" }));
+    await user.click(await screen.findByRole("button", { name: "更新后台提醒到当前文件夹" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("没有更改后台提醒任务");
+    expect(screen.getByRole("alert")).toHaveTextContent("授权码和发送记录都保持不变");
   });
 
   test("match labels are semantic text and narrow search remains a full row", async () => {

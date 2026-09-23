@@ -117,7 +117,8 @@ Current Windows-only files:
 - `import-data-from-old-version.cmd`
 - packaged `runtime/node.exe`
 - `tools/register-windows-reminder.ps1`, `tools/unregister-windows-reminder.ps1`,
-  and `tools/dpapi-helper.ps1`
+  `tools/inspect-windows-reminder.ps1`, `tools/elevate-windows-reminder.ps1`,
+  `tools/windows-reminder-task-common.ps1`, and `tools/dpapi-helper.ps1`
 
 `packaging/windows/` assembles the versioned x64 ZIP from the shared build,
 downloads and checksum-verifies the pinned runtime, and smoke-tests the final
@@ -141,6 +142,15 @@ launch.
 Launchers also compare the running server's package root with their own folder.
 If an older extracted copy is still using the default port, the current copy
 selects a later local port instead of silently opening the older program.
+
+The unreleased v1.3.3 source updates one deterministic reminder task in place.
+It first tries as the normal desktop user and invokes only the validated task
+helper through UAC after an access denial. The helper registers the task for the
+original interactive user with `RunLevel Limited`, verifies the complete task
+definition, and returns no path, user name, email address, or credential to the
+browser. Repeating the update after moving the portable folder keeps one task
+and changes its action to the current folder. Product-shaped tasks with other
+identity suffixes are reported but never removed by a prefix match.
 
 ## macOS layer
 

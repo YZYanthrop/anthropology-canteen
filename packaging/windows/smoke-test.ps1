@@ -176,9 +176,15 @@ try {
 
   $DpapiHelper = Join-Path $ExtractedRoot "tools\dpapi-helper.ps1"
   $RegisterReminder = Join-Path $ExtractedRoot "tools\register-windows-reminder.ps1"
+  $InspectReminder = Join-Path $ExtractedRoot "tools\inspect-windows-reminder.ps1"
+  $ElevateReminder = Join-Path $ExtractedRoot "tools\elevate-windows-reminder.ps1"
+  $ReminderTaskCommon = Join-Path $ExtractedRoot "tools\windows-reminder-task-common.ps1"
   $UnregisterReminder = Join-Path $ExtractedRoot "tools\unregister-windows-reminder.ps1"
   $ReminderWorker = Join-Path $ExtractedRoot "reminder-worker.mjs"
-  foreach ($RequiredReminderFile in @($DpapiHelper, $RegisterReminder, $UnregisterReminder, $ReminderWorker)) {
+  foreach ($RequiredReminderFile in @(
+      $DpapiHelper, $RegisterReminder, $InspectReminder, $ElevateReminder,
+      $ReminderTaskCommon, $UnregisterReminder, $ReminderWorker
+    )) {
     if (-not (Test-Path -LiteralPath $RequiredReminderFile -PathType Leaf)) {
       throw "The extracted reminder package is incomplete: $RequiredReminderFile"
     }
@@ -196,7 +202,7 @@ try {
   }
 
   if (-not $SkipSchedulerRegistration) {
-    $WindowsSmokeTaskName = "Anthropology Canteen Smoke $([guid]::NewGuid().ToString('N'))"
+    $WindowsSmokeTaskName = "Anthropology Canteen Reminder $([guid]::NewGuid().ToString('N').Substring(0, 12))"
     & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $RegisterReminder `
       -TaskName $WindowsSmokeTaskName `
       -NodePath $Node `
@@ -208,19 +214,51 @@ try {
     if ($RegisterExitCode -ne 0) {
       throw "The packaged Windows reminder task registration failed with exit code $RegisterExitCode."
     }
-    $RegisteredTask = Get-ScheduledTask -TaskName $WindowsSmokeTaskName -ErrorAction Stop
+    $FirstTaskCount = @(Get-ScheduledTask -TaskName $WindowsSmokeTaskName -ErrorAction Stop).Count
+    $MovedPackageRoot = Join-Path $TemporaryRoot "moved-package"
+    Copy-Item -LiteralPath $ExtractedRoot -Destination $MovedPackageRoot -Recurse
+    $MovedRegisterReminder = Join-Path $MovedPackageRoot "tools\register-windows-reminder.ps1"
+    $MovedNode = Join-Path $MovedPackageRoot "runtime\node.exe"
+    $MovedWorker = Join-Path $MovedPackageRoot "reminder-worker.mjs"
+    & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $MovedRegisterReminder `
+      -TaskName $WindowsSmokeTaskName `
+      -NodePath $MovedNode `
+      -WorkerPath $MovedWorker `
+      -RootPath $MovedPackageRoot `
+      -Time "23:59"
+    $SecondRegisterExitCode = $LASTEXITCODE
+    $global:LASTEXITCODE = 0
+    if ($SecondRegisterExitCode -ne 0) {
+      throw "The repeated packaged Windows reminder task update failed with exit code $SecondRegisterExitCode."
+    }
+    $RepeatedTasks = @(Get-ScheduledTask -TaskName $WindowsSmokeTaskName -ErrorAction Stop)
+    if ($FirstTaskCount -ne 1 -or $RepeatedTasks.Count -ne 1) {
+      throw "Repeated registration added another Windows reminder task for the same identity."
+    }
+    $RegisteredTask = $RepeatedTasks[0]
     $RegisteredAction = @($RegisteredTask.Actions)[0]
     if ([System.IO.Path]::GetFullPath([string]$RegisteredAction.Execute) -ne
-        [System.IO.Path]::GetFullPath($Node) -or
-        [string]$RegisteredAction.WorkingDirectory -ne [System.IO.Path]::GetFullPath($ExtractedRoot) -or
-        [string]$RegisteredAction.Arguments -notmatch [regex]::Escape($ReminderWorker)) {
+        [System.IO.Path]::GetFullPath($MovedNode) -or
+        [string]$RegisteredAction.WorkingDirectory -ne [System.IO.Path]::GetFullPath($MovedPackageRoot) -or
+        [string]$RegisteredAction.Arguments -notmatch [regex]::Escape($MovedWorker)) {
       throw "The packaged Windows reminder task points to the wrong runtime or package root."
     }
     if (@($RegisteredTask.Triggers).Count -lt 2 -or
-        [string]$RegisteredTask.Principal.RunLevel -ne "Limited") {
+        [string]$RegisteredTask.Principal.RunLevel -ne "Limited" -or
+        [string]$RegisteredTask.Principal.LogonType -ne "Interactive") {
       throw "The packaged Windows reminder task does not have the expected triggers or privilege level."
     }
-    & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $UnregisterReminder `
+    $InspectionJson = & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (
+      Join-Path $MovedPackageRoot "tools\inspect-windows-reminder.ps1"
+    ) -TaskName $WindowsSmokeTaskName -NodePath $MovedNode -WorkerPath $MovedWorker `
+      -RootPath $MovedPackageRoot -Time "23:59"
+    if ($LASTEXITCODE -ne 0 -or ($InspectionJson | ConvertFrom-Json).status -ne "current") {
+      throw "The packaged Windows reminder task did not pass the post-update inspection."
+    }
+    $global:LASTEXITCODE = 0
+    & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (
+      Join-Path $MovedPackageRoot "tools\unregister-windows-reminder.ps1"
+    ) `
       -TaskName $WindowsSmokeTaskName
     $UnregisterExitCode = $LASTEXITCODE
     $global:LASTEXITCODE = 0

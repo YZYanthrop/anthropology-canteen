@@ -1405,7 +1405,6 @@ function reminderPublicConfig(config) {
     username: config.username,
     format: config.format,
     schedule: config.schedule,
-    schedulerPath: config.schedulerPath,
   };
 }
 

@@ -47,6 +47,18 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
     new URL("../tools/register-windows-reminder.ps1", import.meta.url),
     "utf8",
   );
+  const inspectReminder = await readFile(
+    new URL("../tools/inspect-windows-reminder.ps1", import.meta.url),
+    "utf8",
+  );
+  const elevateReminder = await readFile(
+    new URL("../tools/elevate-windows-reminder.ps1", import.meta.url),
+    "utf8",
+  );
+  const reminderTaskCommon = await readFile(
+    new URL("../tools/windows-reminder-task-common.ps1", import.meta.url),
+    "utf8",
+  );
   const unregisterReminder = await readFile(
     new URL("../tools/unregister-windows-reminder.ps1", import.meta.url),
     "utf8",
@@ -95,6 +107,15 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(registerReminder, /-LogonType Interactive/);
   assert.match(registerReminder, /-RunLevel Limited/);
   assert.match(registerReminder, /ANTHROPOLOGY_CANTEEN_SCHEDULER_PERMISSION_DENIED/);
+  assert.match(registerReminder, /Export-ScheduledTask/);
+  assert.match(registerReminder, /SCHEDULER_VALIDATION_FAILED/);
+  assert.match(inspectReminder, /Get-ReminderTaskInspection/);
+  assert.match(elevateReminder, /Start-Process[\s\S]+-Verb RunAs[\s\S]+-WindowStyle Hidden/);
+  assert.match(elevateReminder, /OriginalUserSid/);
+  assert.doesNotMatch(elevateReminder, /credential|recipient|sender|ciphertext/i);
+  assert.match(reminderTaskCommon, /ExpectedUserSid/);
+  assert.match(reminderTaskCommon, /ambiguousTaskIds/);
+  assert.match(smoke, /Repeated registration added another Windows reminder task/);
   assert.match(unregisterReminder, /-ErrorAction Stop/);
   assert.doesNotMatch(unregisterReminder, /SilentlyContinue/);
 
