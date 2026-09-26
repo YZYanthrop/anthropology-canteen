@@ -4,8 +4,8 @@ Last updated: 2026-09-26
 
 ## Stable baseline
 
-- Current public product version: `v1.3.2`.
-- Stable Git tag: `v1.3.2`; Windows x64, macOS arm64, and macOS x64 artifacts
+- Current public product version: `v1.3.3`.
+- Stable Git tag: `v1.3.3`; Windows x64, macOS arm64, and macOS x64 artifacts
   are built from that one immutable tag.
 - Local data schema: version 8; v1.3.0 public packages used version 7.
 - Local API-key and reminder settings schema: version 3; the main research data
@@ -14,7 +14,7 @@ Last updated: 2026-09-26
   IDs are quarantined while subscriptions and user states are preserved.
 - Current published distributions: Windows x64 plus unsigned macOS Apple
   Silicon arm64 and Intel x64 portable ZIPs in one
-  [v1.3.2 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2).
+  [v1.3.3 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3).
 - macOS bootstrap tag: `macos-v1.1.1-beta.1` at the validated build commit
   `c2ec6d1`; its GitHub Pre-release is
   [published here](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/macos-v1.1.1-beta.1).
@@ -23,10 +23,10 @@ Last updated: 2026-09-26
 - Source development requires Node.js 22.13 or newer and pnpm 11.9. The current
   Windows share package pins Node.js 24.14.0.
 
-The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, `v1.3.1`, and
-`v1.3.2` tags are immutable.
+The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, `v1.3.1`,
+`v1.3.2`, and `v1.3.3` tags are immutable.
 
-## v1.3.3 release candidate
+## v1.3.3 release baseline
 
 - Slices A–E are included in one release candidate. Product metadata and
   provider User-Agent values are `1.3.3`; release date is 2026-09-26.
@@ -35,9 +35,12 @@ The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, `v1.3.1`, and
   scheduler updates are documented in `CHANGELOG.md`.
 - Main data remains format 8, reminder state 2, and settings 3. No account,
   cloud service, new platform, installer, or email-provider integration is added.
-- Windows and both macOS artifacts must pass native candidate and immutable-tag
-  runs from one final commit before v1.3.3 is published. Previous release tags
-  remain unchanged; macOS archives remain unsigned and unnotarized.
+- The immutable tag points to `a853e712a84156b5cc5575a828d2295298b35beb`. Candidate run
+  [#36212326375](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/36212326375)
+  and formal tag run [#36212646270](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/36212646270)
+  passed shared checks, Windows x64, both native macOS architectures and source privacy.
+  All three public ZIPs were re-downloaded and matched their SHA-256 sidecars.
+  macOS archives remain unsigned and unnotarized.
 
 ## v1.2.0 release baseline
 

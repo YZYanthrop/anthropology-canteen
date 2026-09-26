@@ -8,8 +8,8 @@ document router below.
 
 ## Stable product
 
-- Public version and immutable tag: `v1.3.2` at
-  `f89936b8e4854928142fb028de869794639fed3d`.
+- Public version and immutable tag: `v1.3.3` at
+  `a853e712a84156b5cc5575a828d2295298b35beb`.
 - Targets: Windows x64, macOS arm64, and macOS x64 from one source tag.
 - Main local-data schema: version 8.
 - Reminder-state schema: version 2.
@@ -32,17 +32,14 @@ document router below.
 
 ## Active work
 
-- v1.3.2 已完成实现和三平台发布；原生验证与发布后下载摘要核对通过。
-  稳定公开版本仍为 [v1.3.2](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.2)。
-- v1.3.3 A–E 已纳入同一发布候选；版本号和发布日期已冻结。Slice D 保留升级时的邮件资料；
-  Slice E 让 Windows 后台提醒任务更新在必要时只提升任务小工具，不增加同一身份的任务。
-  实施证据见[升级提醒交接](handoffs/v1.3.3-slice-d.md)与
-  [Windows 任务交接](handoffs/v1.3.3-slice-e.md)。
-- 三平台候选原生验证、正式标签构建与 GitHub Release 尚待完成；完成前公开稳定版本仍为 v1.3.2。
-  实际触摸/混合设备、屏幕阅读器和真实高倍缩放等仍需后续人工验收。
-- [v1.4.0 路线图](plans/v1.4.0-roadmap.md) 保持 `Proposed`，不与 v1.3.3 并行实施。
+- v1.3.3 A–E 已从同一标签提交正式发布：[三个平台的便携包](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3)。
+  候选与标签运行的三平台原生检查均通过；公开附件重新下载后与同名校验文件一致。
+- 升级可保留同一旧版文件夹中的邮件设置、发送记录和 Windows 加密授权码；Windows
+  后台提醒任务在必要时只提升任务小工具。同一身份重复更新不增加任务，来源不明的旧任务不自动删除。
+- 主数据格式 8、提醒状态 2、设置 3 不变。实际触摸/混合设备、屏幕阅读器和真实高倍缩放
+  仍需后续人工验收；自动化通过不等于没有缺陷。
+- [v1.4.0 路线图](plans/v1.4.0-roadmap.md) 仍为 `Proposed`，尚未批准实施。
 - 已发布标签和附件不可改写；本地试用包及候选包不是正式发布文件。
-
 ## Read only what the task needs
 
 - Every task: `AGENTS.md`, this file, and `docs/work/ACTIVE.md`.

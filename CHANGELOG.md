@@ -18,6 +18,14 @@
 - 无法确认归属的其他旧任务只显示数量和匿名身份编号，不自动删除；任务状态和浏览器接口不返回个人路径、账户名、邮箱或授权码。
 - 主数据格式 8、提醒状态 2、设置 3 不变；未修改启动器、导入格式、邮箱接入或平台支持。
 
+### 正式发布
+
+- 标签提交：`a853e712a84156b5cc5575a828d2295298b35beb`；[候选运行 #36212326375](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/36212326375) 与 [正式标签运行 #36212646270](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/36212646270) 的共享验证、Windows x64、macOS Apple Silicon、macOS Intel 和源码归档六项任务均通过。
+- Windows x64（43,307,551 bytes）：`E16EBF81DC6AB823D2DD464D7B982A555A00BD108A5BA504296F5153E9DA4F6B`。
+- macOS Apple Silicon arm64（46,520,616 bytes）：`2E8EB9D80C7BBBF6BC3770F5EEC0C2049777A2E5250E9703340AF5379A28008B`。
+- macOS Intel x64（47,724,845 bytes）：`EFB516173F607CD33BF7E13214E555E09CB909F1488EA72E6C12ECC9B035C955`。
+- 三个平台 ZIP 与同名 `.sha256` 文件已发布在 [v1.3.3 GitHub Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3)，公开后重新下载并逐一核对通过。macOS 包未签名、未公证。
+
 ## [1.3.2] - 2026-08-24
 
 ### 文章状态、恢复与日期准确性

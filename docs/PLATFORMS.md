@@ -4,9 +4,13 @@
 
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
-| Windows x64 | v1.3.2 released; native package and reminder smoke passed | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | v1.3.2 released; unsigned native package and reminder smoke passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
-| macOS Intel | v1.3.2 released; unsigned native package and reminder smoke passed | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| Windows x64 | v1.3.3 released; native package and reminder smoke passed | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
+| macOS Apple Silicon | v1.3.3 released; unsigned native package and reminder smoke passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | v1.3.3 released; unsigned native package and reminder smoke passed | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+
+The v1.3.3 tag run [#36212646270](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/36212646270)
+passed Windows and both native macOS package smoke tests from one commit. Public ZIPs were
+re-downloaded and checked against their SHA-256 sidecars; Mac packages remain unsigned.
 
 The local v1.3.2 Windows trial package was built on 2026-08-23. Its extracted
 final-package smoke passed archive privacy, checksum, VBS launch, compiled
