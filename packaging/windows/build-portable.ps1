@@ -188,6 +188,9 @@ try {
   ) -Destination (Join-Path $StageRoot "tools\import-data.mjs")
   foreach ($ToolName in @(
     "register-windows-reminder.ps1",
+    "inspect-windows-reminder.ps1",
+    "elevate-windows-reminder.ps1",
+    "windows-reminder-task-common.ps1",
     "unregister-windows-reminder.ps1",
     "dpapi-helper.ps1"
   )) {

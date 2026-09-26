@@ -203,6 +203,29 @@ button {
   align-self: start;
 }
 
+.sidebar {
+  max-height: calc(100vh - 124px);
+  max-height: calc(100dvh - 124px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  padding: 3px;
+  scroll-padding-block: 8px;
+}
+
+.sidebar:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
+}
+
+@media (min-width: 821px) and (max-height: 280px) {
+  .sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 .filter-nav {
   display: grid;
   gap: 4px;
@@ -386,12 +409,45 @@ i.keyword {
 }
 
 .subscription-group li:hover .subscription-remove,
+.subscription-group li:focus-within .subscription-remove,
 .subscription-remove:focus-visible {
   color: #9a6c5e;
 }
 
 .subscription-remove:hover {
   background: var(--coral-soft);
+}
+
+.subscription-remove-label {
+  display: none;
+}
+
+@media (any-pointer: coarse), (hover: none) {
+  .subscription-group ul {
+    display: grid;
+    gap: 4px;
+  }
+
+  .subscription-group li {
+    gap: 6px;
+  }
+
+  .subscription-group li .subscription-name {
+    min-height: 44px;
+  }
+
+  .subscription-group li .subscription-remove {
+    width: auto;
+    min-width: 44px;
+    min-height: 44px;
+    flex: 0 0 auto;
+    padding: 6px;
+    color: #895849;
+    background: var(--coral-soft);
+  }
+
+  .subscription-remove-icon { display: none; }
+  .subscription-remove-label { display: inline; }
 }
 
 .sidebar-note {
@@ -1453,6 +1509,18 @@ mark {
   padding: 18px 20px;
 }
 
+.update-details {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.update-details p { margin: 0 0 8px; }
+.update-details ul { margin: 0 0 8px; padding-left: 18px; }
+.update-details .update-explanation { margin-bottom: 0; }
+
 .signal-card .section-heading small {
   color: #969b98;
   font-size: 11px;
@@ -2265,6 +2333,9 @@ mark {
 
   .sidebar {
     position: static;
+    max-height: none;
+    overflow: visible;
+    scrollbar-gutter: auto;
     margin-bottom: 24px;
   }
 

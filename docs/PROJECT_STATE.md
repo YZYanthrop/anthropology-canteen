@@ -1,6 +1,6 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-08-24
+Last updated: 2026-09-26
 
 ## Stable baseline
 
@@ -25,6 +25,19 @@ Last updated: 2026-08-24
 
 The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, `v1.3.1`, and
 `v1.3.2` tags are immutable.
+
+## v1.3.3 release candidate
+
+- Slices A–E are included in one release candidate. Product metadata and
+  provider User-Agent values are `1.3.3`; release date is 2026-09-26.
+- Desktop sidebar scrolling, visible touch actions, plain-language update
+  results, reminder-data preservation on upgrade, and recoverable Windows
+  scheduler updates are documented in `CHANGELOG.md`.
+- Main data remains format 8, reminder state 2, and settings 3. No account,
+  cloud service, new platform, installer, or email-provider integration is added.
+- Windows and both macOS artifacts must pass native candidate and immutable-tag
+  runs from one final commit before v1.3.3 is published. Previous release tags
+  remain unchanged; macOS archives remain unsigned and unnotarized.
 
 ## v1.2.0 release baseline
 
@@ -177,6 +190,16 @@ launch and use. Intel has native CI coverage but no recorded human test.
 See `docs/ARCHITECTURE.md` and `docs/PLATFORMS.md` for boundaries.
 
 ## Active milestone
+
+[v1.3.3 普通中文与左栏可用性](plans/v1.3.3-language-and-sidebar-usability.md) A–D
+已在本地合并；Slice D 实现同源提醒资料自动迁移、事务恢复和准确授权码状态。
+[Slice E](plans/v1.3.3-windows-reminder-task-migration.md) 已在短期分支完成，只在 Windows
+拒绝普通更新时提升任务小工具；同一身份重复更新保持一项，来源不明的旧任务不删除。
+lint、构建、57 项离线、26 项界面、12 个 Edge 合成场景及完整 Windows v1.3.3 临时包
+smoke 通过。主数据格式 8、提醒状态 2、设置 3 不变；标准用户使用另一管理员账户及 macOS
+钥匙串仍需各自环境验收。目标版本为 v1.3.3，正式版本号仍待冻结；尚未合并、推送、打标签或发布。
+[v1.4.0 路线图](plans/v1.4.0-roadmap.md) 保持 `Proposed`。
+稳定公开版本仍是 v1.3.2；主数据格式 8、提醒状态 2、设置 3 及三平台支持均不变。
 
 The v1.3.0 local-reminder, v1.3.1 stabilization, and v1.3.2 usability and
 recoverability milestones are complete:

@@ -101,14 +101,6 @@ export function reminderSecretFile(root = MODULE_ROOT) {
   return resolve(root, "data", "anthropology-canteen-reminder-secret.json");
 }
 
-function parseJson(text, fallback) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return fallback;
-  }
-}
-
 function cleanReminderState(value) {
   const state = emptyReminderState();
   if (!value || typeof value !== "object") return state;
@@ -304,7 +296,11 @@ function runProcess(command, args, input = "") {
     child.once("close", (code) => {
       const result = { code: code ?? 1, stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") };
       if (result.code !== 0) {
-        rejectProcess(new Error(result.stderr.trim() || `${command} failed`));
+        const error = new Error(result.stderr.trim() || `${command} failed`);
+        error.code = result.code;
+        error.stdout = result.stdout;
+        error.stderr = result.stderr;
+        rejectProcess(error);
       } else {
         resolveProcess(result.stdout.trim());
       }
@@ -331,11 +327,14 @@ async function storeWindowsSecret(root, secret) {
   });
 }
 
-async function readWindowsSecret(root) {
-  const raw = parseJson(await readFile(reminderSecretFile(root), "utf8"), {});
+async function readWindowsSecret(secretRoot, helperRoot = secretRoot) {
+  const raw = JSON.parse(await readFile(reminderSecretFile(secretRoot), "utf8"));
+  if (raw?.version !== REMINDER_SECRET_VERSION) {
+    throw new Error("Unsupported encrypted reminder secret version.");
+  }
   const ciphertext = cleanString(raw.ciphertext, 2000);
-  if (!ciphertext) return "";
-  const helper = resolve(root, "tools", "dpapi-helper.ps1");
+  if (!ciphertext) throw new Error("Encrypted reminder secret is empty.");
+  const helper = resolve(helperRoot, "tools", "dpapi-helper.ps1");
   return runProcess("powershell.exe", [
     "-NoProfile",
     "-NonInteractive",
@@ -369,14 +368,38 @@ export async function saveReminderSecret(root, config, secret) {
   throw new Error("当前平台暂不支持安全保存邮箱凭据。");
 }
 
-export async function readReminderSecret(root, config) {
+export async function inspectReminderSecret(root, config, options = {}) {
+  const platform = options.platform || process.platform;
+  const secretRoot = options.secretRoot || root;
+  const helperRoot = options.helperRoot || root;
   try {
-    if (process.platform === "win32") return await readWindowsSecret(root);
-    if (process.platform === "darwin") return await readMacSecret(root, config);
-  } catch {
-    return "";
+    const secret = platform === "win32"
+      ? await readWindowsSecret(secretRoot, helperRoot)
+      : platform === "darwin"
+        ? await readMacSecret(helperRoot, config)
+        : "";
+    if (platform !== "win32" && platform !== "darwin") {
+      return { status: "unsupported", secret: "" };
+    }
+    return secret
+      ? { status: "configured", secret }
+      : { status: "unreadable", secret: "" };
+  } catch (error) {
+    if (platform === "win32" && error?.code === "ENOENT") {
+      return { status: "missing", secret: "" };
+    }
+    if (
+      platform === "darwin" &&
+      /Keychain operation failed:\s*-25300\b/.test(String(error?.stderr || error?.message || ""))
+    ) {
+      return { status: "missing", secret: "" };
+    }
+    return { status: "unreadable", secret: "" };
   }
-  return "";
+}
+
+export async function readReminderSecret(root, config) {
+  return (await inspectReminderSecret(root, config)).secret;
 }
 
 export async function deleteReminderSecret(root, config) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { updateSummary, type UpdateAttempt } from "./lib/update-summary";
 import {
   comparePublicationDates,
   effectivePublicationPrecision,
@@ -211,8 +212,23 @@ type ReminderStatus = {
     };
   };
   credentialConfigured?: boolean;
+  credentialStatus?: "configured" | "missing" | "unreadable" | "unsupported";
   tested?: boolean;
-  scheduler?: { installed?: boolean; path?: string; stalePath?: string; taskName?: string };
+  scheduler?: {
+    installed?: boolean;
+    needsMigration?: boolean;
+    status?: "current" | "stale" | "missing" | "ambiguous" | "permission-denied";
+    path?: string;
+    stalePath?: string;
+    taskName?: string;
+    reasonCodes?: string[];
+    ambiguousTaskCount?: number;
+    ambiguousTaskIds?: string[];
+  };
+  reminderMigration?: {
+    outcome?: "restored" | "manual-import-required";
+    reason?: string;
+  };
   state?: {
     baselineComplete?: boolean;
     lastAttemptAt?: string;
@@ -1401,6 +1417,7 @@ export default function Home() {
   const [subscriptions, setSubscriptions] =
     useState<Subscriptions>(DEFAULT_SUBSCRIPTIONS);
   const [loading, setLoading] = useState(true);
+  const [updateAttempt, setUpdateAttempt] = useState<UpdateAttempt>("idle");
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [activeSubscription, setActiveSubscription] =
@@ -1463,6 +1480,7 @@ export default function Home() {
   const reminderDialogRef = useRef<HTMLElement | null>(null);
   const reminderInitialFocusRef = useRef<HTMLSelectElement | null>(null);
   const reminderReturnFocusRef = useRef<HTMLElement | null>(null);
+  const reminderMigrationNoticeRef = useRef(false);
 
   function showNotice(
     message: string,
@@ -1510,6 +1528,7 @@ export default function Home() {
     setFeed(data.feed);
     if (!data.feed?.historyScholar) overviewFeedRef.current = data.feed;
     setAttemptCoverage(null);
+    setUpdateAttempt("idle");
     setScholarProfiles(data.scholarProfiles);
   }
 
@@ -1608,6 +1627,26 @@ export default function Home() {
   function applyReminderStatus(status: ReminderStatus, syncForm = false) {
     setReminderStatus(status);
     if (status.sessionToken) setReminderSessionToken(status.sessionToken);
+    if (!reminderMigrationNoticeRef.current && status.reminderMigration?.outcome) {
+      reminderMigrationNoticeRef.current = true;
+      if (status.reminderMigration.outcome === "restored") {
+        showNotice("邮件设置和授权码已保留");
+      } else {
+        const reason = status.reminderMigration.reason;
+        const message = reason === "source-invalid"
+          ? "旧版提醒资料有文件无法验证，当前资料未被替换。请使用“从旧版本导入数据”工具检查。"
+          : reason === "write-failed"
+            ? "提醒资料未能安全写入，当前资料已恢复。请关闭应用后使用“从旧版本导入数据”工具。"
+            : reason === "target-settings-present"
+              ? "当前邮件设置已保留，旧版提醒资料没有自动覆盖。需要时请使用“从旧版本导入数据”工具。"
+              : reason === "credential-unreadable"
+                ? "已找到原授权码，但当前账户无法读取。原文件仍保留。"
+                : reason === "credential-missing"
+                  ? "未找到原授权码。可使用“从旧版本导入数据”工具补齐。"
+                  : "无法唯一确认完整的旧版提醒资料，请使用“从旧版本导入数据”工具。";
+        showError(message);
+      }
+    }
     const config = status.config;
     if (!config) return;
     const saved = normalizeReminderFormConfig(config);
@@ -1707,10 +1746,13 @@ export default function Home() {
   }
 
   async function enableReminder() {
+    const updatingExistingTask = reminderNeedsMigration;
     setReminderSaving(true);
     try {
       await reminderRequest("/api/reminders/enable", "POST");
-      showNotice("后台提醒已开启；首次检查已完成，没有新文章时不会发送邮件");
+      showNotice(updatingExistingTask
+        ? "后台提醒已更新到当前文件夹"
+        : "后台提醒已开启；首次检查已完成，没有新文章时不会发送邮件");
     } catch (error) {
       showError(error instanceof Error ? error.message : "邮件提醒启用失败");
     } finally {
@@ -1904,6 +1946,8 @@ export default function Home() {
     cachedFeed: FeedResponse | null | undefined = undefined,
   ) {
     setLoading(true);
+    setUpdateAttempt("checking");
+    setAttemptCoverage([]);
     setError("");
     try {
       const response = await fetch(`/api/feed${force ? "?refresh=1" : ""}`, {
@@ -1934,6 +1978,7 @@ export default function Home() {
       setFeed(data);
       if (!scholar) overviewFeedRef.current = data;
       setAttemptCoverage(data.coverage || []);
+      setUpdateAttempt("complete");
       setSubscriptions(resolvedSubscriptions);
       const nextArchive = reconcileArticleArchive(
         localDataRef.current.states,
@@ -1946,8 +1991,15 @@ export default function Home() {
         subscriptions: resolvedSubscriptions,
         articleArchive: nextArchive,
       });
-      if (force) showNotice("已检查最新出版记录");
+      if (force) {
+        showNotice(updateSummary(
+          data.coverage || [],
+          "complete",
+          sourceSubscriptions.scholar.length + sourceSubscriptions.journal.length > 0,
+        ).title);
+      }
     } catch {
+      setUpdateAttempt("failed");
       const cached =
         cachedFeed === undefined ? localDataRef.current.feed : cachedFeed;
       if (cached) {
@@ -2766,8 +2818,7 @@ export default function Home() {
         const scholar =
           feed?.scholars?.find(
             (item) =>
-              item.subscriptionId === savedScholar.subscriptionId ||
-              item.label.toLowerCase() === savedScholar.label.toLowerCase(),
+              item.subscriptionId === savedScholar.subscriptionId,
           ) || savedScholar;
         const cachedProfile = Object.values(scholarProfiles).find(
           (item) => cachedProfileMatches(item.candidate, scholar),
@@ -2866,11 +2917,11 @@ export default function Home() {
     (state) => state.ignored,
   ).length;
   const healthCoverage = attemptCoverage ?? feed?.coverage ?? [];
-  const healthCounts = {
-    success: healthCoverage.filter((entry) => entry.status === "success").length,
-    partial: healthCoverage.filter((entry) => entry.status === "partial").length,
-    failed: healthCoverage.filter((entry) => entry.status === "failed").length,
-  };
+  const update = updateSummary(
+    healthCoverage,
+    updateAttempt,
+    subscriptions.scholar.length + subscriptions.journal.length > 0,
+  );
   const failedProviders = [...new Set(
     healthCoverage.flatMap((entry) =>
       entry.providers
@@ -2920,10 +2971,20 @@ export default function Home() {
   const reminderCredentialReady = Boolean(
     reminderStatus?.credentialConfigured,
   );
+  const reminderCredentialStatus = reminderStatus?.credentialStatus || (
+    reminderCredentialReady ? "configured" : "missing"
+  );
+  const reminderCredentialWasExpected = Boolean(
+    reminderCredentialStatus === "missing" &&
+    reminderStatus?.reminderMigration?.outcome === "manual-import-required",
+  );
   const savedReminderTestReady = Boolean(reminderStatus?.tested);
   const reminderTestReady = savedReminderTestReady && !reminderDirty;
   const reminderEnabled = Boolean(
     reminderStatus?.config?.enabled && reminderStatus?.scheduler?.installed,
+  );
+  const reminderNeedsMigration = Boolean(
+    reminderStatus?.scheduler?.needsMigration || reminderStatus?.scheduler?.stalePath,
   );
   const reminderProviderGuidance =
     REMINDER_PROVIDER_GUIDANCE[reminderConfig.provider] ||
@@ -3049,7 +3110,7 @@ export default function Home() {
       </header>
 
       <div className="workspace">
-        <aside className="sidebar">
+        <aside className="sidebar" aria-label="关注与筛选" tabIndex={0}>
           <nav className="filter-nav" aria-label="信息流筛选">
             {FILTERS.map((item) => (
               <button
@@ -3191,15 +3252,8 @@ export default function Home() {
             </div>
           </div>
 
-          <section className="update-health-compact" aria-label="更新健康摘要">
-            <span>上次成功：{lastSuccessfulUpdate}</span>
-            <span>
-              订阅：{healthCounts.success} 成功 · {healthCounts.partial} 部分失败 ·{" "}
-              {healthCounts.failed} 失败
-            </span>
-            {failedProviders.length > 0 && (
-              <span>失败来源：{failedProviders.join("、")}</span>
-            )}
+          <section className="update-health-compact" aria-label="更新情况摘要">
+            <UpdateDetails update={update} failedProviders={failedProviders} lastSuccessfulUpdate={lastSuccessfulUpdate} />
           </section>
 
           {currentScholar && (
@@ -3817,30 +3871,13 @@ export default function Home() {
         <aside className="right-rail">
           <section className="signal-card">
             <div className="section-heading">
-              <span>更新健康</span>
-              <small>真实数据源</small>
+              <span>更新情况</span>
             </div>
             <div className="signal-stat">
               <strong>{feed?.items.length || 0}</strong>
               <span>条出版记录</span>
             </div>
-            <div className="health-last-success">
-              <span>上次成功取得数据</span>
-              <strong>{lastSuccessfulUpdate}</strong>
-            </div>
-            <dl className="health-counts">
-              <div><dt>成功</dt><dd>{healthCounts.success}</dd></div>
-              <div><dt>部分失败</dt><dd>{healthCounts.partial}</dd></div>
-              <div><dt>失败</dt><dd>{healthCounts.failed}</dd></div>
-            </dl>
-            <div className="health-providers">
-              <span>失败来源</span>
-              <strong>
-                {failedProviders.length > 0
-                  ? failedProviders.join("、")
-                  : "无"}
-              </strong>
-            </div>
+            <UpdateDetails update={update} failedProviders={failedProviders} lastSuccessfulUpdate={lastSuccessfulUpdate} />
           </section>
         </aside>
       </div>
@@ -4459,7 +4496,13 @@ export default function Home() {
                           ? "新授权码尚未保存"
                           : reminderCredentialReady
                             ? "✓ 授权码已安全保存"
-                            : "请保存授权码"}
+                            : reminderCredentialStatus === "unreadable"
+                              ? "已找到，但当前账户无法读取"
+                              : reminderCredentialStatus === "unsupported"
+                                ? "当前环境不支持安全保存"
+                                : reminderCredentialWasExpected
+                                  ? "未找到原授权码"
+                                  : "请保存授权码"}
                     </span>
                     <div>
                       <button type="button" disabled={reminderSaving || !reminderFormSaved || !reminderSecretInput.trim()} onClick={() => void saveReminderCredential()}>{reminderCredentialReady ? "更换授权码" : "保存授权码"}</button>
@@ -4481,14 +4524,14 @@ export default function Home() {
                   {reminderEnabled ? (
                     <div className="reminder-enabled-actions">
                       <div><strong>后台提醒已开启</strong><span>{reminderStatus.state?.nextDueAt ? `下次计划：${new Date(reminderStatus.state.nextDueAt).toLocaleString("zh-CN")}` : "计划任务已安装"}</span></div>
-                      {reminderStatus.scheduler?.stalePath && <button type="button" className="primary-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>迁移到当前文件夹</button>}
+                      {reminderStatus.scheduler?.stalePath && <button type="button" className="primary-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>更新后台提醒到当前文件夹</button>}
                       <button type="button" disabled={reminderSaving} onClick={() => void runReminderNow()}>立即检查一次</button>
                       <button type="button" disabled={reminderSaving} onClick={() => void disableReminder(false)}>停用提醒</button>
                     </div>
                   ) : (
                     <div className="reminder-step-action">
-                      <small>{reminderTestReady ? "测试成功，现在可以安全开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
-                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>开启自动邮件提醒</button>
+                      <small>{reminderNeedsMigration ? "设置已保留。更新时 Windows 可能要求确认一次权限；应用和日常提醒不会以管理员权限运行。" : reminderTestReady ? "测试成功，现在可以安全开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
+                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>{reminderNeedsMigration ? "更新后台提醒到当前文件夹" : "开启自动邮件提醒"}</button>
                     </div>
                   )}
                 </section>
@@ -4511,10 +4554,23 @@ export default function Home() {
               </aside>
             </div>
 
-            {(reminderStatus.state?.lastError || reminderStatus.scheduler?.stalePath || reminderStatus.state?.lastCheckAt) && (
+            {(reminderStatus.state?.lastError || reminderNeedsMigration || reminderStatus.scheduler?.ambiguousTaskCount || reminderStatus.scheduler?.status === "permission-denied" || reminderStatus.state?.lastCheckAt || reminderCredentialWasExpected || reminderCredentialStatus === "unreadable") && (
               <div className="reminder-runtime-status">
                 {reminderStatus.state?.lastError && <p className="search-warning" role="alert">上次运行：{reminderStatus.state.lastError}</p>}
-                {reminderStatus.scheduler?.stalePath && <p className="search-warning">提醒仍绑定旧版文件夹：{reminderStatus.scheduler.stalePath}</p>}
+                {reminderNeedsMigration && <p className="search-warning">设置已保留，请将后台提醒更新到当前文件夹。</p>}
+                {Boolean(reminderStatus.scheduler?.ambiguousTaskCount) && (
+                  <p className="search-warning" role="alert">
+                    另发现 {reminderStatus.scheduler?.ambiguousTaskCount} 个无法确认归属的旧后台任务，程序没有删除。
+                    {reminderStatus.scheduler?.ambiguousTaskIds?.length
+                      ? ` 可在 Windows 任务计划程序中核对编号：${reminderStatus.scheduler.ambiguousTaskIds.join("、")}。`
+                      : " 可在 Windows 任务计划程序中手动核对。"}
+                  </p>
+                )}
+                {reminderStatus.scheduler?.status === "permission-denied" && (
+                  <p className="search-warning">Windows 未允许自动核对后台任务；页面保留上次成功更新记录。需要更新时，点击按钮并确认一次 Windows 权限提示。</p>
+                )}
+                {reminderCredentialWasExpected && <p className="search-warning">未找到原授权码。可使用“从旧版本导入数据”工具补齐，或重新填写已有授权码。</p>}
+                {reminderCredentialStatus === "unreadable" && <p className="search-warning" role="alert">已找到原授权码，但当前账户无法读取。原文件仍保留，请切换到原账户或使用“从旧版本导入数据”工具。</p>}
                 {reminderStatus.state?.lastCheckAt && <span>上次检查：{new Date(reminderStatus.state.lastCheckAt).toLocaleString("zh-CN")}</span>}
                 {reminderStatus.state?.lastSuccessfulSendAt && <span>上次发信：{new Date(reminderStatus.state.lastSuccessfulSendAt).toLocaleString("zh-CN")}</span>}
               </div>
@@ -4546,6 +4602,29 @@ export default function Home() {
         </div>
       )}
     </main>
+  );
+}
+
+function UpdateDetails({ update, failedProviders, lastSuccessfulUpdate }: {
+  update: ReturnType<typeof updateSummary>;
+  failedProviders: string[];
+  lastSuccessfulUpdate: string;
+}) {
+  return (
+    <div className="update-details">
+      <p>{update.title}</p>
+      <p>上次成功取得数据：{lastSuccessfulUpdate}</p>
+      {update.showResults && <>
+        <p>检查对象：关注的学者和期刊</p>
+        <ul>
+          <li>已完成检查：{update.counts.success} 项</li>
+          <li>部分来源暂时无法查询：{update.counts.partial} 项</li>
+          <li>{update.failedLabel}：{update.counts.failed} 项</li>
+        </ul>
+        {failedProviders.length > 0 && <p>暂时无法查询的数据来源：{failedProviders.join("、")}</p>}
+        <p className="update-explanation">完成检查不代表有新文章，也不保证数据来源已收录全部成果。关键词组只用于匹配文章。</p>
+      </>}
+    </div>
   );
 }
 
@@ -4582,11 +4661,21 @@ function SubscriptionGroup({
             </button>
             <button
               className="subscription-remove"
-              aria-label={`移除 ${item.label}`}
-              title="移除"
-              onClick={() => onRemove(item)}
+              aria-label={`取消关注 ${item.label}`}
+              title="取消关注"
+              onClick={(event) => {
+                const row = event.currentTarget.closest("li");
+                const target = row?.nextElementSibling?.querySelector<HTMLButtonElement>(".subscription-name")
+                  || row?.previousElementSibling?.querySelector<HTMLButtonElement>(".subscription-name")
+                  || row?.closest("details")?.querySelector<HTMLElement>("summary");
+                // Move focus while both rows still exist; React preserves the
+                // neighbouring keyed control when it removes the current row.
+                target?.focus();
+                onRemove(item);
+              }}
             >
-              ×
+              <span className="subscription-remove-icon" aria-hidden="true">×</span>
+              <span className="subscription-remove-label">取消关注</span>
             </button>
           </li>
         ))}

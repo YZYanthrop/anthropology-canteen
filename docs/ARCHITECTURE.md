@@ -27,6 +27,10 @@ data root, import old data, and assemble an archive.
 - `app/lib/scholar-search.ts` normalizes scholar identities and publications.
 - `app/lib/publication-date.ts` normalizes year/month/day precision, stable
   ordering, display, duplicate-date selection, and follow-date comparisons.
+- `app/lib/update-summary.ts` only derives user-facing update descriptions;
+  current-attempt state stays in memory and does not change stored formats.
+- `tests/browser/` serves synthetic in-memory APIs for real-browser UI tests;
+  it never uses personal local-data handlers or live academic providers.
 - The production build creates `dist/client` and `dist/server`, which are shared
   by every desktop package.
 
@@ -112,13 +116,29 @@ credential is never part of this transaction and remains untouched. The client
 treats reminders as active only when both saved config and the scheduler marker
 confirm installation.
 
+For v1.3.3 Windows task updates, the marker is no longer treated as proof of the
+live Task Scheduler definition. The task helper validates the executable,
+worker, working directory, daily time, original interactive user, and limited
+run level. A normal update is attempted first; only an access denial launches
+that helper through UAC, while the server remains non-elevated. The elevated
+helper returns only status, reason codes, and short task identity suffixes
+through an ephemeral file under the package `data/` directory, then the normal
+launcher deletes it. If the desktop session cannot enumerate tasks, the API
+reports that limitation and may display the last successfully verified marker;
+it never returns local paths or account names. Other product-shaped task names
+are reported as ambiguous and are not automatically deleted.
+
 An empty first run creates a blank version 8 data structure. While that file
 remains empty, automatic neighboring-version migration is retried so an old
 portable folder placed beside the new one after the first launch can still be
-found. Manual import must
-validate the JSON, back up an existing destination, and bring the neighboring
-settings file only when present. Automatic neighboring-version migration keeps
-the newest data by `savedAt` and chooses settings independently by file time.
+found. The selected main-data folder is also the only automatic source for
+settings, reminder delivery state, and the Windows DPAPI ciphertext. Present
+files are validated before a migration-wide temporary-write, backup, replace,
+and rollback transaction. Existing nonblank settings, credentials, and reminder
+history are not overwritten. A later repair of previously omitted reminder
+files requires exactly one sibling whose installation ID, credential reference,
+sender, and authentication address match the current settings. Manual import
+remains the fallback when that source cannot be identified uniquely.
 
 Because every version opens on the same friendly localhost origin, launchers
 add a per-launch query value and the portable server marks HTML as `no-store`.

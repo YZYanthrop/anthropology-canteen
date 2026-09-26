@@ -1,11 +1,14 @@
 import { homedir } from "node:os";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { writeJsonAtomic } from "./reminder-utils.mjs";
 
 export const WINDOWS_SCHEDULER_PERMISSION_MESSAGE =
-  "Windows 拒绝注册计划任务。请关闭所有 Anthropology Canteen 页面，等待约 10 秒，然后右键 start-local.cmd，选择‘以管理员身份运行’，再重新开启提醒。管理员权限仅用于首次注册或更新后的迁移，日常运行不需要。";
+  "Windows 没有允许更新后台提醒任务。请重试并确认一次 Windows 权限提示；只提升任务小工具，应用和日常提醒仍以普通权限运行。";
+
+export const WINDOWS_SCHEDULER_ELEVATION_CANCELLED_MESSAGE =
+  "没有更改后台提醒任务。你已取消 Windows 权限确认；设置、授权码和发送记录都保持不变。";
 
 function cleanSchedulerDiagnostic(value) {
   const lines = String(value || "")
@@ -35,6 +38,36 @@ export function schedulerCommandError({
   const raw = [stderr, stdout, error?.message, error?.code]
     .filter(Boolean)
     .join("\n");
+  if (/ANTHROPOLOGY_CANTEEN_SCHEDULER_ELEVATION_CANCELLED/i.test(raw)) {
+    const cancellationError = new Error(WINDOWS_SCHEDULER_ELEVATION_CANCELLED_MESSAGE);
+    cancellationError.code = "SCHEDULER_ELEVATION_CANCELLED";
+    cancellationError.userMessage = WINDOWS_SCHEDULER_ELEVATION_CANCELLED_MESSAGE;
+    return cancellationError;
+  }
+  if (/ANTHROPOLOGY_CANTEEN_SCHEDULER_ROLLBACK_FAILED/i.test(raw)) {
+    const rollbackError = new Error(
+      "后台提醒任务没有更新完成，而且无法自动恢复原任务。邮件设置、授权码和发送记录没有被删除；请暂时保留旧版文件夹并重试。",
+    );
+    rollbackError.code = "SCHEDULER_ROLLBACK_FAILED";
+    rollbackError.userMessage = rollbackError.message;
+    return rollbackError;
+  }
+  if (/ANTHROPOLOGY_CANTEEN_SCHEDULER_VALIDATION_FAILED/i.test(raw)) {
+    const validationError = new Error(
+      "后台提醒任务更新后未通过核对，原任务已恢复。邮件设置、授权码和发送记录保持不变。",
+    );
+    validationError.code = "SCHEDULER_VALIDATION_FAILED";
+    validationError.userMessage = validationError.message;
+    return validationError;
+  }
+  if (/ANTHROPOLOGY_CANTEEN_SCHEDULER_ELEVATION_FAILED/i.test(raw)) {
+    const elevationError = new Error(
+      "Windows 任务小工具未能完成更新。邮件设置、授权码和发送记录保持不变，请重试。",
+    );
+    elevationError.code = "SCHEDULER_ELEVATION_FAILED";
+    elevationError.userMessage = elevationError.message;
+    return elevationError;
+  }
   if (
     windowsPermissionHint &&
     /(ANTHROPOLOGY_CANTEEN_SCHEDULER_PERMISSION_DENIED|PermissionDenied|Access\s+is\s+denied|HRESULT\s*0x80070005|0x80070005|UnauthorizedAccess|\bEACCES\b|\bEPERM\b)/i.test(raw)
@@ -76,23 +109,8 @@ function taskName(config) {
   return `Anthropology Canteen Reminder ${config.installationId.slice(0, 12)}`;
 }
 
-function launchdLabel(config) {
-  return `org.anthropology-canteen.reminder.${config.installationId.slice(0, 24)}`;
-}
-
-function schedulerMarker(root) {
-  return resolve(root, "data", "anthropology-canteen-reminder-scheduler.json");
-}
-
-async function installWindows(root, config, runCommand = run) {
-  const script = resolve(root, "tools", "register-windows-reminder.ps1");
-  await runCommand("powershell.exe", [
-    "-NoProfile",
-    "-NonInteractive",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    script,
+function windowsTaskArguments(root, config) {
+  return [
     "-TaskName",
     taskName(config),
     "-NodePath",
@@ -103,8 +121,100 @@ async function installWindows(root, config, runCommand = run) {
     root,
     "-Time",
     config.schedule.time,
-  ], { operation: "注册", windowsPermissionHint: true });
-  return { taskName: taskName(config), platform: "windows", path: root };
+  ];
+}
+
+function powershellFileArguments(script, taskArguments) {
+  return [
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    script,
+    ...taskArguments,
+  ];
+}
+
+function parseWindowsInspection(output) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(output || ""));
+  } catch {
+    throw schedulerCommandError({
+      operation: "核对",
+      error: { message: "计划任务返回了无法识别的核对结果。" },
+    });
+  }
+  return {
+    status: ["current", "stale", "missing", "ambiguous"].includes(parsed?.status)
+      ? parsed.status
+      : "ambiguous",
+    installed: parsed?.installed === true,
+    reasonCodes: Array.isArray(parsed?.reasonCodes)
+      ? parsed.reasonCodes.map(String).slice(0, 12)
+      : [],
+    ambiguousTaskCount: Number.isInteger(parsed?.ambiguousTaskCount)
+      ? Math.max(0, parsed.ambiguousTaskCount)
+      : 0,
+    ambiguousTaskIds: Array.isArray(parsed?.ambiguousTaskIds)
+      ? parsed.ambiguousTaskIds.map(String).filter((value) => /^[A-Za-z0-9-]{1,12}$/.test(value)).slice(0, 12)
+      : [],
+  };
+}
+
+async function inspectWindows(root, config, runCommand = run) {
+  const script = resolve(root, "tools", "inspect-windows-reminder.ps1");
+  const output = await runCommand(
+    "powershell.exe",
+    powershellFileArguments(script, windowsTaskArguments(root, config)),
+    { operation: "核对", windowsPermissionHint: true },
+  );
+  return parseWindowsInspection(output);
+}
+
+function launchdLabel(config) {
+  return `org.anthropology-canteen.reminder.${config.installationId.slice(0, 24)}`;
+}
+
+function schedulerMarker(root) {
+  return resolve(root, "data", "anthropology-canteen-reminder-scheduler.json");
+}
+
+async function installWindows(root, config, runCommand = run) {
+  const script = resolve(root, "tools", "register-windows-reminder.ps1");
+  const taskArguments = windowsTaskArguments(root, config);
+  let registrationOutput;
+  try {
+    registrationOutput = await runCommand(
+      "powershell.exe",
+      powershellFileArguments(script, taskArguments),
+      { operation: "更新", windowsPermissionHint: true },
+    );
+  } catch (error) {
+    if (error?.code !== "SCHEDULER_PERMISSION_DENIED") throw error;
+    const elevationScript = resolve(root, "tools", "elevate-windows-reminder.ps1");
+    registrationOutput = await runCommand(
+      "powershell.exe",
+      powershellFileArguments(elevationScript, taskArguments),
+      { operation: "请求 Windows 权限", windowsPermissionHint: true },
+    );
+  }
+
+  const inspection = parseWindowsInspection(registrationOutput);
+  if (!inspection.installed || inspection.status !== "current") {
+    const validationError = new Error("后台提醒任务更新后未通过核对，原任务已尽量恢复。");
+    validationError.code = "SCHEDULER_VALIDATION_FAILED";
+    validationError.userMessage = validationError.message;
+    throw validationError;
+  }
+  return {
+    taskName: taskName(config),
+    platform: "windows",
+    status: inspection.status,
+    ambiguousTaskCount: inspection.ambiguousTaskCount,
+    ambiguousTaskIds: inspection.ambiguousTaskIds,
+  };
 }
 
 async function uninstallWindows(root, config, runCommand = run) {
@@ -204,7 +314,11 @@ export async function installScheduler(root, config, options = {}) {
     : platform === "darwin"
       ? await installMac(root, config, runCommand)
       : { platform, path: root, unsupported: true };
-  await writeJsonAtomic(schedulerMarker(root), { ...result, installedAt: new Date().toISOString() });
+  await writeJsonAtomic(schedulerMarker(root), {
+    ...result,
+    path: root,
+    installedAt: new Date().toISOString(),
+  });
   return result;
 }
 
@@ -216,20 +330,79 @@ export async function uninstallScheduler(root, config, options = {}) {
   await unlink(schedulerMarker(root)).catch(() => {});
 }
 
-export async function getSchedulerStatus(root) {
+export async function getSchedulerStatus(root, config, options = {}) {
+  let marker;
   try {
-    const marker = JSON.parse(await readFile(schedulerMarker(root), "utf8"));
+    marker = JSON.parse(await readFile(schedulerMarker(root), "utf8"));
+  } catch {
+    marker = {};
+  }
+
+  const platform = options.platform || process.platform;
+  const runCommand = options.runCommand || run;
+  if (platform === "win32" && config?.installationId) {
+    const requiredFiles = [
+      resolve(root, "runtime", "node.exe"),
+      resolve(root, "reminder-worker.mjs"),
+      resolve(root, "tools", "inspect-windows-reminder.ps1"),
+    ];
+    const packaged = (await Promise.all(requiredFiles.map((file) => access(file).then(
+      () => true,
+      () => false,
+    )))).every(Boolean);
+    if (packaged) {
+      try {
+        const inspection = await inspectWindows(root, config, runCommand);
+        return {
+          installed: inspection.installed,
+          status: inspection.status,
+          stalePath: inspection.status === "stale" || (marker.path && marker.path !== root)
+            ? "previous-folder"
+            : "",
+          path: "",
+          platform: "windows",
+          installedAt: String(marker.installedAt || ""),
+          taskName: taskName(config),
+          reasonCodes: inspection.reasonCodes,
+          ambiguousTaskCount: inspection.ambiguousTaskCount,
+          ambiguousTaskIds: inspection.ambiguousTaskIds,
+        };
+      } catch (error) {
+        if (error?.code === "SCHEDULER_PERMISSION_DENIED") {
+          const markerMatches = marker.path === root && marker.taskName === taskName(config);
+          return {
+            installed: markerMatches,
+            status: "permission-denied",
+            stalePath: marker.path && marker.path !== root ? "previous-folder" : "",
+            path: "",
+            platform: "windows",
+            installedAt: String(marker.installedAt || ""),
+            taskName: taskName(config),
+            reasonCodes: ["inspection-permission-denied"],
+            ambiguousTaskCount: Number.isInteger(marker.ambiguousTaskCount)
+              ? Math.max(0, marker.ambiguousTaskCount)
+              : 0,
+            ambiguousTaskIds: Array.isArray(marker.ambiguousTaskIds)
+              ? marker.ambiguousTaskIds.map(String).filter((value) => /^[A-Za-z0-9-]{1,12}$/.test(value)).slice(0, 12)
+              : [],
+          };
+        }
+        throw error;
+      }
+    }
+  }
+
+  if (marker.path || marker.platform || marker.taskName || marker.label) {
     return {
       installed: marker.path === root,
-      stalePath: marker.path && marker.path !== root ? String(marker.path) : "",
-      path: String(marker.path || ""),
+      stalePath: marker.path && marker.path !== root ? "previous-folder" : "",
+      path: "",
       platform: marker.platform,
       installedAt: String(marker.installedAt || ""),
       taskName: marker.taskName || marker.label || "",
     };
-  } catch {
-    return { installed: false, path: "", platform: process.platform, taskName: "" };
   }
+  return { installed: false, path: "", platform, taskName: "", status: "missing" };
 }
 
 export { taskName, launchdLabel };
