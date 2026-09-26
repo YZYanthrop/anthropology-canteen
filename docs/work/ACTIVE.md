@@ -1,22 +1,22 @@
 # Active work packet
 
-Last updated: 2026-09-23
+Last updated: 2026-09-26
 
-- Status: `Ready for review`
+- Status: `Release candidate`
 - Approved for implementation: yes
-- Target version: `v1.3.3 Slice E`
+- Target version: `v1.3.3`
 - Plan: [Windows 后台提醒任务迁移](../plans/v1.3.3-windows-reminder-task-migration.md)
-- Implementation branch: `codex/v1.3.3-reminder-task-migration`
-- Current step: Slice E 实现、回归、Windows 原生验证、文档和交接已完成；等待分支 diff 审阅，不合并、不发布
+- Release branch: `codex/v1.3.3-release`
+- Current step: A–E 已纳入同一发布候选；冻结提交后执行本地验证、三平台原生候选和标签构建，再发布 GitHub Release
 - Baseline commit: `24b15fb8282d8188c963b4ed3dbe8df322c1840b`
 - Stable public version: `v1.3.2`
 - Immutable release commit: `f89936b8e4854928142fb028de869794639fed3d`
 
 ## 下一步
 
-审阅 Slice E 分支 diff 与 [交接](../handoffs/v1.3.3-slice-e.md)。同一提醒身份的任务重复
-更新仍为一项，权限确认只提升任务小工具；来源不明确的旧任务只报告不删除。合并、版本冻结、
-推送、标签及发布仍是后续单独授权任务。
+按 [发布规范](../RELEASING.md) 逐项确认本地测试、候选运行、标签运行、空白包隐私和
+公开附件摘要。任一平台失败或版本来源不一致即停止；现有标签不可移动。用户已明确授权
+本次合并、推送、创建新标签及 GitHub Release，不包含签名或公证。
 
 ## 范围
 
@@ -28,5 +28,5 @@ Last updated: 2026-09-23
 ## 基线提醒
 
 v1.3.2 实现、三平台发布与公开附件校验已完成，详见 CHANGELOG。
-2026-09-23 规划基线为本地 `main` 的 `24b15fb`；`origin/main` 跟踪信息仍可能过期，
-不能仅凭 ahead 数字判断远端状态。实施前重新检查工作区和实际远端，不依赖旧任务记录。
+2026-09-26 已通过实际远端查询核对：发布前 GitHub `main` 为 `c20a6be`，
+且是 A–E 实施分支的祖先；主工作区未提交的规划文档保持原状，不并入发布候选。

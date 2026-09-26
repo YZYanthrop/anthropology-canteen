@@ -1,6 +1,6 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-09-17
+Last updated: 2026-09-26
 
 ## Stable baseline
 
@@ -25,6 +25,19 @@ Last updated: 2026-09-17
 
 The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, `v1.3.1`, and
 `v1.3.2` tags are immutable.
+
+## v1.3.3 release candidate
+
+- Slices A–E are included in one release candidate. Product metadata and
+  provider User-Agent values are `1.3.3`; release date is 2026-09-26.
+- Desktop sidebar scrolling, visible touch actions, plain-language update
+  results, reminder-data preservation on upgrade, and recoverable Windows
+  scheduler updates are documented in `CHANGELOG.md`.
+- Main data remains format 8, reminder state 2, and settings 3. No account,
+  cloud service, new platform, installer, or email-provider integration is added.
+- Windows and both macOS artifacts must pass native candidate and immutable-tag
+  runs from one final commit before v1.3.3 is published. Previous release tags
+  remain unchanged; macOS archives remain unsigned and unnotarized.
 
 ## v1.2.0 release baseline
 

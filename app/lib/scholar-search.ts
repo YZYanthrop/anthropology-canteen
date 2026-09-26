@@ -168,7 +168,7 @@ type OpenLibraryDocument = {
   publisher?: string[];
 };
 
-const USER_AGENT = "AnthropologyCanteen/1.3.2";
+const USER_AGENT = "AnthropologyCanteen/1.3.3";
 const RESPONSE_CACHE_TTL = 15 * 60 * 1000;
 const responseCache = new Map<
   string,

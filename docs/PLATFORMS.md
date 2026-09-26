@@ -143,7 +143,7 @@ Launchers also compare the running server's package root with their own folder.
 If an older extracted copy is still using the default port, the current copy
 selects a later local port instead of silently opening the older program.
 
-The unreleased v1.3.3 source updates one deterministic reminder task in place.
+The v1.3.3 source updates one deterministic reminder task in place.
 It first tries as the normal desktop user and invokes only the validated task
 helper through UAC after an access denial. The helper registers the task for the
 original interactive user with `RunLevel Limited`, verifies the complete task
