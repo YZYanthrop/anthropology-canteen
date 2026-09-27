@@ -162,6 +162,16 @@ both platforms. Windows and macOS provide different interactive launchers, but
 validation, live-PID refusal, backups, settings allowlisting, and rollback stay
 identical.
 
+v1.3.4 Slice B uses `installFileTransaction` in the already bundled
+`reminder-utils.mjs` for both import paths. The local `.migration-recovery.json`
+journal records every temporary/backup name before creation. Ordinary JSON
+writers and migration share `.migration-write.lock`; automatic migration also
+compares target bytes with the discovery snapshot before replacing them.
+Recovery verifies each original, keeps incomplete journals and backups across
+restart, and blocks further writes instead of retrying blindly. A completed
+transaction with cleanup failures remains separately identifiable. No runtime
+verification of this change has run yet; unified verification follows A–D.
+
 ## External academic data
 
 The server-side routes use OpenAlex, Semantic Scholar, Crossref, Open Library,

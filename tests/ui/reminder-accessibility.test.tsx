@@ -439,6 +439,16 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/reminders/enable")).toBe(false);
   });
 
+  test.each(["write-failed", "recovery-incomplete", "cleanup-failed"])("migration %s does not claim complete restoration", async (reason) => {
+    const user = userEvent.setup();
+    const status = structuredClone(savedReminderStatus);
+    status.reminderMigration = { outcome: "manual-import-required", reason };
+    installApi({ reminderStatus: status });
+    render(<Home />);
+    await user.click(await screen.findByRole("button", { name: "邮件提醒已开" }));
+    expect(await screen.findByRole("alert")).not.toHaveTextContent("当前资料已恢复");
+  });
+
   test("match labels are semantic text and narrow search remains a full row", async () => {
     const user = userEvent.setup();
     installApi({ withArticle: true });

@@ -1,11 +1,7 @@
 import {
   access,
-  copyFile,
   lstat,
-  mkdir,
   readFile,
-  rename,
-  rm,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -159,70 +155,18 @@ async function assertNoLiveServer(targetDirectory) {
   }
 }
 
-function backupName(filename, stamp) {
-  return filename.replace(/\.json$/i, `.backup-${stamp}.json`);
+async function installValidatedFiles({ targetDirectory, files, transactionOptions }) {
+  // The same existing utility is present at the product root in source and
+  // portable archives. Launchers and archive layout do not change.
+  const utilityUrl = new URL(basename(dirname(fileURLToPath(import.meta.url))) === "shared"
+    ? "../../reminder-utils.mjs" : "../reminder-utils.mjs", import.meta.url);
+  const { installFileTransaction } = await import(utilityUrl.href);
+  return installFileTransaction(files.map((file) => ({
+    destination: join(targetDirectory, file.name), bytes: file.bytes,
+  })), transactionOptions);
 }
 
-async function nextBackupPath(directory, filename, stamp) {
-  let candidate = join(directory, backupName(filename, stamp));
-  let counter = 2;
-  while (await exists(candidate)) {
-    candidate = join(
-      directory,
-      backupName(filename, `${stamp}-${counter}`),
-    );
-    counter += 1;
-  }
-  return candidate;
-}
-
-async function installValidatedFiles({ targetDirectory, files }) {
-  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "");
-  const prepared = [];
-  const installed = [];
-  await mkdir(targetDirectory, { recursive: true });
-
-  try {
-    for (const file of files) {
-      const destination = join(targetDirectory, file.name);
-      const temporary = join(
-        targetDirectory,
-        `.${file.name}.import-${process.pid}-${prepared.length}`,
-      );
-      await copyFile(file.source, temporary);
-      const backup = (await exists(destination))
-        ? await nextBackupPath(targetDirectory, file.name, stamp)
-        : null;
-      prepared.push({ ...file, destination, temporary, backup });
-    }
-
-    for (const file of prepared) {
-      if (file.backup) await rename(file.destination, file.backup);
-      try {
-        await rename(file.temporary, file.destination);
-        installed.push(file);
-      } catch (error) {
-        if (file.backup && !(await exists(file.destination))) {
-          await rename(file.backup, file.destination);
-        }
-        throw error;
-      }
-    }
-  } catch (error) {
-    for (const file of installed.reverse()) {
-      await rm(file.destination, { force: true });
-      if (file.backup && (await exists(file.backup))) {
-        await copyFile(file.backup, file.destination);
-      }
-    }
-    for (const file of prepared) await rm(file.temporary, { force: true });
-    throw error;
-  }
-
-  return prepared.filter((file) => file.backup).map((file) => file.backup);
-}
-
-export async function importPortableData({ source, targetRoot }) {
+export async function importPortableData({ source, targetRoot, transactionOptions }) {
   const { dataFile, sourceDirectory } = await resolveSource(resolve(source));
   const targetDirectory = join(resolve(targetRoot), "data");
   const destinationData = join(targetDirectory, DATA_NAME);
@@ -230,26 +174,26 @@ export async function importPortableData({ source, targetRoot }) {
     throw new Error("The source and destination data files are the same.");
   }
 
-  await validatedJson(dataFile, DATA_NAME, "data");
+  const dataBytes = await validatedJson(dataFile, DATA_NAME, "data");
   const settingsFile = join(sourceDirectory, SETTINGS_NAME);
-  const files = [{ name: DATA_NAME, source: dataFile }];
+  const files = [{ name: DATA_NAME, source: dataFile, bytes: dataBytes }];
   if (await exists(settingsFile)) {
-    await validatedJson(settingsFile, SETTINGS_NAME, "settings");
-    files.push({ name: SETTINGS_NAME, source: settingsFile });
+    const bytes = await validatedJson(settingsFile, SETTINGS_NAME, "settings");
+    files.push({ name: SETTINGS_NAME, source: settingsFile, bytes });
   }
   const reminderStateFile = join(sourceDirectory, REMINDER_STATE_NAME);
   if (await exists(reminderStateFile)) {
-    await validatedJson(reminderStateFile, REMINDER_STATE_NAME, "reminder-state");
-    files.push({ name: REMINDER_STATE_NAME, source: reminderStateFile });
+    const bytes = await validatedJson(reminderStateFile, REMINDER_STATE_NAME, "reminder-state");
+    files.push({ name: REMINDER_STATE_NAME, source: reminderStateFile, bytes });
   }
   const reminderSecretFile = join(sourceDirectory, REMINDER_SECRET_NAME);
   if (await exists(reminderSecretFile)) {
-    await validatedJson(reminderSecretFile, REMINDER_SECRET_NAME, "reminder-secret");
-    files.push({ name: REMINDER_SECRET_NAME, source: reminderSecretFile });
+    const bytes = await validatedJson(reminderSecretFile, REMINDER_SECRET_NAME, "reminder-secret");
+    files.push({ name: REMINDER_SECRET_NAME, source: reminderSecretFile, bytes });
   }
 
   await assertNoLiveServer(targetDirectory);
-  const backups = await installValidatedFiles({ targetDirectory, files });
+  const backups = await installValidatedFiles({ targetDirectory, files, transactionOptions });
   return {
     destinationData,
     importedSettings: files.some((file) => file.name === SETTINGS_NAME),
@@ -276,7 +220,11 @@ async function main() {
     }
     for (const backup of result.backups) console.log(`Backup created: ${backup}`);
   } catch (error) {
-    console.error(`Import failed: ${error.message}`);
+    console.error(error.recovery === "incomplete"
+      ? "Import failed and recovery is incomplete. Keep both folders and all backups; do not retry or delete the recovery record."
+      : error.recovery === "restored"
+        ? `Import failed; current data was restored.${error.cleanupFailed ? " Temporary cleanup is incomplete; keep the recovery record." : ""}`
+        : error.code === "MIGRATION_CLEANUP_REQUIRED" ? error.message : `Import failed: ${error.message}`);
     process.exitCode = 1;
   }
 }

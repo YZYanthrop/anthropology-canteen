@@ -2,10 +2,8 @@ import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
-  open,
   readFile,
   readdir,
-  rename,
   rm,
   stat,
   unlink,
@@ -15,6 +13,9 @@ import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import worker from "./dist/server/index.js";
 import {
+  assertMigrationReady,
+  installFileTransaction,
+  migrationRecoveryStatus,
   cleanReminderConfig,
   deleteReminderSecret,
   inspectReminderSecret,
@@ -1052,66 +1053,8 @@ async function findSiblingMigrationCandidates() {
   );
 }
 
-function migrationBackupPath(destination) {
-  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "");
-  return destination.replace(/\.json$/i, `.backup-migration-${stamp}-${randomUUID()}.json`);
-}
-
-async function pathExists(file) {
-  try {
-    await stat(file);
-    return true;
-  } catch (error) {
-    if (error?.code === "ENOENT") return false;
-    throw error;
-  }
-}
-
 export async function installMigrationFiles(files, options = {}) {
-  const renameFile = options.renameFile || rename;
-  const prepared = [];
-  for (const file of files) await mkdir(dirname(file.destination), { recursive: true });
-  try {
-    for (const [index, file] of files.entries()) {
-      const temporary = `${file.destination}.migration-${process.pid}-${randomUUID()}`;
-      const handle = await open(temporary, "w");
-      try {
-        await handle.writeFile(file.bytes);
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-      prepared.push({
-        ...file,
-        temporary,
-        backup: (await pathExists(file.destination))
-          ? migrationBackupPath(file.destination)
-          : "",
-        backedUp: false,
-        installed: false,
-        index,
-      });
-    }
-
-    for (const file of prepared) {
-      if (file.backup) {
-        await renameFile(file.destination, file.backup);
-        file.backedUp = true;
-      }
-      await renameFile(file.temporary, file.destination);
-      file.installed = true;
-    }
-  } catch (error) {
-    for (const file of prepared.reverse()) {
-      if (file.installed) await rm(file.destination, { force: true }).catch(() => undefined);
-      if (file.backedUp && await pathExists(file.backup)) {
-        await rename(file.backup, file.destination).catch(() => undefined);
-      }
-      await rm(file.temporary, { force: true }).catch(() => undefined);
-    }
-    throw error;
-  }
-  return prepared.filter((file) => file.backup).map((file) => file.backup);
+  return installFileTransaction(files, options);
 }
 
 function recordReminderMigration(outcome, reason = "") {
@@ -1137,6 +1080,11 @@ async function loadSourceReminderFiles(candidate) {
 }
 
 async function ensureSiblingMigration() {
+  const recovery = await migrationRecoveryStatus(dataRoot);
+  if (recovery.blocked || recovery.cleanupPending) {
+    recordReminderMigration("manual-import-required", recovery.blocked ? "recovery-incomplete" : "cleanup-failed");
+    return;
+  }
   if (reminderMigration?.outcome === "restored") return;
   await ensureDataRoot();
   await withDirectoryLock(migrationLockPath(), async () => {
@@ -1260,9 +1208,14 @@ async function ensureSiblingMigration() {
     }
 
     try {
+      const targets = new Map([[dataFile, targetData], [settingsFile, targetSettings],
+        [reminderStateFile, targetState], [reminderSecretFile, targetSecret]]);
+      for (const file of files) file.expectedBytes = targets.get(file.destination)?.bytes ?? null;
       await installMigrationFiles(files);
-    } catch {
-      recordReminderMigration("manual-import-required", "write-failed");
+    } catch (error) {
+      recordReminderMigration("manual-import-required", error.recovery === "incomplete" || error.code === "MIGRATION_RECOVERY_REQUIRED"
+        ? "recovery-incomplete" : error.cleanupFailed || error.code === "MIGRATION_CLEANUP_REQUIRED"
+          ? "cleanup-failed" : error.recovery === "restored" ? "write-failed-restored" : "write-failed");
       return;
     }
 
@@ -1285,6 +1238,7 @@ async function ensureSiblingMigration() {
 
 async function readLocalDataFile() {
   await ensureSiblingMigration();
+  await assertMigrationReady(dataRoot);
   try {
     return cleanLocalData(await readJsonWithBackup(dataFile));
   } catch (error) {
@@ -1333,6 +1287,7 @@ async function patchLocalDataFile(patch) {
 
 async function readLocalSettingsFile() {
   await ensureSiblingMigration();
+  await assertMigrationReady(dataRoot);
   try {
     return cleanLocalSettings(
       await readJsonWithBackup(settingsFile),
@@ -1486,6 +1441,17 @@ function reminderRequestAllowed(headers, pathname) {
 }
 
 async function readReminderStatus() {
+  await ensureSiblingMigration();
+  if ((await migrationRecoveryStatus(dataRoot)).blocked) {
+    return {
+      version: 1, platform: process.platform,
+      config: reminderPublicConfig(cleanReminderConfig({})),
+      credentialConfigured: false, credentialStatus: "unreadable", tested: false,
+      scheduler: { installed: false, status: "recovery-required", needsMigration: false },
+      state: {}, reminderMigration: { outcome: "manual-import-required", reason: "recovery-incomplete" },
+      sessionToken: runtimeSessionToken,
+    };
+  }
   const settings = await readLocalSettingsFile();
   const config = cleanReminderConfig(settings.reminders);
   const state = await readReminderState(root);
@@ -1655,6 +1621,7 @@ async function handleReminders(url, method, body, headers) {
 }
 
 async function handleReminderMutation(url, method, body, headers) {
+  await assertMigrationReady(dataRoot);
   if (await schedulerRecoveryPending(root)) {
     return jsonResponse({ message: "后台提醒上次更新的恢复未完成，请保留当前和旧版文件夹，处理恢复问题后再操作。" }, { status: 409 });
   }
@@ -1779,10 +1746,10 @@ async function handleLocalData(url, method, body, headers) {
           writeLocalDataFile(input),
         );
     return jsonResponse(data);
-  } catch {
+  } catch (error) {
     return jsonResponse(
-      { message: "Anthropology Canteen could not read or write local data." },
-      { status: 500 },
+      { message: error.code === "MIGRATION_RECOVERY_REQUIRED" ? error.message : "Anthropology Canteen could not read or write local data." },
+      { status: error.code === "MIGRATION_RECOVERY_REQUIRED" ? 409 : 500 },
     );
   }
 }
@@ -2124,7 +2091,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   });
   server.listen(port, "127.0.0.1", async () => {
     await ensureDataRoot();
-    await refreshRuntimeSettings();
+    try { await refreshRuntimeSettings(); }
+    catch (error) {
+      if (error.code !== "MIGRATION_RECOVERY_REQUIRED") throw error;
+      // Keep the local status/recovery UI reachable without reading partial settings.
+    }
     await writeFile(pidFile, String(process.pid), "utf8");
     console.log("");
     console.log("Anthropology Canteen is ready.");

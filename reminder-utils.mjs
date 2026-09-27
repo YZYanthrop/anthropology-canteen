@@ -1,6 +1,6 @@
 import { copyFile, mkdir, open, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -211,6 +211,13 @@ export async function readReminderState(root = MODULE_ROOT) {
 }
 
 export async function writeJsonAtomic(file, value) {
+  return withDirectoryLock(join(dirname(file), ".migration-write.lock"), async () => {
+    await assertMigrationReady(dirname(file));
+    return writeJsonAtomicUnlocked(file, value);
+  });
+}
+
+async function writeJsonAtomicUnlocked(file, value) {
   await mkdir(dirname(file), { recursive: true });
   try {
     JSON.parse(await readFile(file, "utf8"));
@@ -227,6 +234,172 @@ export async function writeJsonAtomic(file, value) {
     await handle.close();
   }
   await rename(temp, file);
+}
+
+const MIGRATION_JOURNAL = ".migration-recovery.json";
+
+async function optionalBytes(file) {
+  try { return await readFile(file); }
+  catch (error) { if (error.code === "ENOENT") return null; throw error; }
+}
+
+function sameBytes(first, second) {
+  return first === null || second === null ? first === second : first.equals(second);
+}
+
+export async function migrationRecoveryStatus(directory) {
+  const bytes = await optionalBytes(join(directory, MIGRATION_JOURNAL));
+  if (bytes === null) return { blocked: false, cleanupPending: false };
+  try {
+    const record = JSON.parse(bytes);
+    const finished = ["committed", "restored"].includes(record.phase);
+    return { blocked: !finished, cleanupPending: finished, phase: record.phase };
+  } catch { return { blocked: true, cleanupPending: false, phase: "unknown" }; }
+}
+
+export async function assertMigrationReady(directory) {
+  if ((await migrationRecoveryStatus(directory)).blocked) {
+    const error = new Error("资料迁移恢复未完成，请保留当前及旧版文件夹和恢复材料，停止覆盖并人工处理。");
+    error.code = "MIGRATION_RECOVERY_REQUIRED";
+    throw error;
+  }
+}
+
+async function durableBytes(file, bytes, exclusive = false) {
+  const temporary = exclusive ? file : `${file}.${randomUUID()}.tmp`;
+  const handle = await open(temporary, "wx", 0o600);
+  try { await handle.writeFile(bytes); await handle.sync(); }
+  finally { await handle.close(); }
+  if (!exclusive) await rename(temporary, file);
+}
+
+/** Shared by automatic migration and the portable manual importer. All regular
+ * JSON writers use this same lock. The journal contains names, not file content;
+ * incomplete transactions are never replayed or discarded on restart. */
+export async function installFileTransaction(files, options = {}) {
+  if (!files.length) return [];
+  const directory = dirname(resolve(files[0].destination));
+  if (files.some((file) => dirname(resolve(file.destination)) !== directory) ||
+      new Set(files.map((file) => resolve(file.destination))).size !== files.length) {
+    throw new Error("Migration destinations must be unique files in one directory");
+  }
+  await mkdir(directory, { recursive: true });
+  return withDirectoryLock(join(directory, ".migration-write.lock"), async () => {
+    await assertMigrationReady(directory);
+    const journal = join(directory, MIGRATION_JOURNAL);
+    // A completed journal may still name files whose cleanup failed. Keep it
+    // intact for diagnosis instead of silently replacing the remaining record.
+    if ((await migrationRecoveryStatus(directory)).cleanupPending) {
+      const error = new Error("上次资料迁移已结束，但残留清理未完成，请先处理保留的记录。");
+      error.code = "MIGRATION_CLEANUP_REQUIRED";
+      throw error;
+    }
+    const prepared = [];
+    for (const [index, file] of files.entries()) {
+      const original = await optionalBytes(file.destination);
+      if (Object.hasOwn(file, "expectedBytes") && !sameBytes(original, file.expectedBytes)) {
+        throw new Error("Migration target changed before replacement");
+      }
+      const id = randomUUID();
+      prepared.push({ ...file, original, index,
+        temporary: `${file.destination}.migration-${id}`,
+        backup: original === null ? "" : `${file.destination}.backup-migration-${id}.json`,
+        restoreTemporary: `${file.destination}.restore-${id}`,
+      });
+    }
+    const record = { phase: "prepared", files: prepared.map((file) => ({
+      destination: basename(file.destination), temporary: basename(file.temporary),
+      backup: file.backup ? basename(file.backup) : "", existed: file.original !== null,
+      restoreTemporary: basename(file.restoreTemporary),
+    })) };
+    const checkpoint = options.checkpoint || (async () => {});
+    const save = async (phase, exclusive = false) => {
+      await durableBytes(journal, JSON.stringify({ ...record, phase }), exclusive);
+      record.phase = phase;
+    };
+    await save("prepared", true); // Names are durable before the first temporary is created.
+    let primary;
+    let recovery = "restored";
+    try {
+      for (const file of prepared) {
+        const handle = await (options.openFile || open)(file.temporary, "wx", 0o600);
+        try {
+          await checkpoint("write", file.index);
+          await handle.writeFile(file.bytes);
+          await checkpoint("sync", file.index);
+          await handle.sync();
+        } finally { await handle.close(); }
+        await checkpoint("close", file.index);
+        if (file.backup) {
+          await checkpoint("backup", file.index);
+          await durableBytes(file.backup, file.original, true);
+          if (!sameBytes(await readFile(file.backup), file.original)) throw new Error("Backup did not verify");
+        }
+      }
+      for (const file of prepared) {
+        if (!sameBytes(await optionalBytes(file.destination), file.original)) throw new Error("Migration target changed during preparation");
+        await checkpoint("replace", file.index);
+        await (options.renameFile || rename)(file.temporary, file.destination);
+        if (!sameBytes(await readFile(file.destination), file.bytes)) throw new Error("Replacement did not verify");
+      }
+      await save("committed");
+    } catch (error) {
+      primary = error;
+      const failures = [];
+      for (const file of [...prepared].reverse()) {
+        try {
+          const current = await optionalBytes(file.destination);
+          if (sameBytes(current, file.original)) continue;
+          if (!sameBytes(current, file.bytes)) throw new Error("Target changed outside migration; preserving recovery material");
+          await checkpoint("restore", file.index);
+          if (file.original === null) await rm(file.destination);
+          else {
+            const backup = await readFile(file.backup);
+            if (!sameBytes(backup, file.original)) throw new Error("Recovery backup did not verify");
+            await durableBytes(file.restoreTemporary, backup, true);
+            await rename(file.restoreTemporary, file.destination);
+          }
+          if (!sameBytes(await optionalBytes(file.destination), file.original)) throw new Error("Restoration did not verify");
+        } catch (failure) { failures.push(failure); }
+      }
+      if (failures.length) {
+        error.recoveryErrors = failures;
+        recovery = "incomplete";
+        // The prepared journal is already durable even if this update fails.
+        await save("recovery-required").catch(() => {});
+      } else {
+        try { await save("restored"); }
+        catch (failure) { error.recoveryErrors = [failure]; recovery = "incomplete"; }
+      }
+    }
+    let cleanupFailed = false;
+    if (recovery !== "incomplete") {
+      for (const file of prepared) {
+        try {
+          await checkpoint("cleanup", file.index);
+          await rm(file.temporary, { force: true });
+          await rm(file.restoreTemporary, { force: true });
+          if (primary && file.backup) await rm(file.backup, { force: true });
+        } catch { cleanupFailed = true; }
+      }
+      if (!cleanupFailed) {
+        try { await rm(journal); } catch { cleanupFailed = true; }
+      }
+    }
+    if (primary) {
+      primary.recovery = recovery;
+      primary.cleanupFailed = cleanupFailed;
+      throw primary;
+    }
+    if (cleanupFailed) {
+      const error = new Error("资料已迁移，但临时文件清理未完成，请保留恢复记录。");
+      error.code = "MIGRATION_CLEANUP_REQUIRED";
+      error.recovery = "committed";
+      error.cleanupFailed = true;
+      throw error;
+    }
+    return prepared.filter((file) => file.backup).map((file) => file.backup);
+  });
 }
 
 export async function writeReminderState(root, value) {
@@ -362,6 +535,7 @@ async function readMacSecret(root, config) {
 }
 
 export async function saveReminderSecret(root, config, secret) {
+  await assertMigrationReady(resolve(root, "data"));
   if (!cleanString(secret, 500)) throw new Error("请输入邮箱授权码或应用专用密码。");
   if (process.platform === "win32") return storeWindowsSecret(root, secret);
   if (process.platform === "darwin") return storeMacSecret(root, config, secret);
@@ -403,6 +577,7 @@ export async function readReminderSecret(root, config) {
 }
 
 export async function deleteReminderSecret(root, config) {
+  await assertMigrationReady(resolve(root, "data"));
   if (process.platform === "win32") {
     await rm(reminderSecretFile(root), { force: true });
     return;

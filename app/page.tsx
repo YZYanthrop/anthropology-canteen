@@ -1635,7 +1635,13 @@ export default function Home() {
         const reason = status.reminderMigration.reason;
         const message = reason === "source-invalid"
           ? "旧版提醒资料有文件无法验证，当前资料未被替换。请使用“从旧版本导入数据”工具检查。"
+          : reason === "recovery-incomplete"
+            ? "资料迁移恢复未完成。请保留当前和旧版文件夹及备份，停止覆盖并人工处理；不要删除恢复记录后重试。"
+          : reason === "cleanup-failed"
+            ? "资料迁移操作已结束，但残留清理未完成。请保留恢复记录并检查，暂不再次迁移。"
           : reason === "write-failed"
+            ? "资料迁移未能完成，无法确认恢复结果。请保留当前和旧版文件夹及备份，先检查再操作。"
+          : reason === "write-failed-restored"
             ? "提醒资料未能安全写入，当前资料已恢复。请关闭应用后使用“从旧版本导入数据”工具。"
             : reason === "target-settings-present"
               ? "当前邮件设置已保留，旧版提醒资料没有自动覆盖。需要时请使用“从旧版本导入数据”工具。"
