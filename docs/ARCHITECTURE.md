@@ -106,15 +106,24 @@ open. Reminder delivery state is separate from article read state, and writes
 use the reminder lock plus atomic replacement so a background run does not
 leave a partial JSON file.
 
-Reminder activation is transactional across the scheduler, saved config, and
-first baseline check. The OS scheduler must register successfully before the
-server persists `enabled=true` or invokes the one-shot worker. If registration
-fails, the worker is never called and no scheduler marker is written. If the
-first check fails after registration, the server restores the previous config
-and reminder ledger and removes the newly registered task and marker; the SMTP
-credential is never part of this transaction and remains untouched. The client
-treats reminders as active only when both saved config and the scheduler marker
-confirm installation.
+Reminder activation and task updates share a recovery transaction. Before any
+mutation, it snapshots the scheduler marker and settings (including existence
+and backup bytes), then the platform helper snapshots the original OS task.
+Registration, inspection, marker persistence and settings persistence all enter
+the same failure path. Existing tasks are restored; only a task created by this
+transaction may be removed. The original user's limited permissions and task
+and trigger enabled states are preserved. An explicit update never invokes the
+worker or resets its ledger; first activation retains its initial-check behavior.
+SMTP credentials are not read or modified by the recovery transaction.
+
+`data/.scheduler-update.json` and its task snapshot persist until commit or
+verified restoration. Incomplete recovery survives process restart and blocks
+further reminder mutations with HTTP 409. Status returns `recovery-required`
+(or `updating` during an active transaction), never a successful installation.
+The UI explains the unresolved recovery and disables update retries. Recovery
+materials stay local and private; there is no automatic replay of an incomplete
+journal. Preserve both folders for diagnosis before any manual recovery.
+Completed journal cleanup may be retried without repeating OS mutations.
 
 For v1.3.3 Windows task updates, the marker is no longer treated as proof of the
 live Task Scheduler definition. The task helper validates the executable,

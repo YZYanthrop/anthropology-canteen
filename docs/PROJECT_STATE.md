@@ -1,6 +1,17 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-09-26
+Last updated: 2026-09-27
+
+## Current implementation
+
+Only [v1.3.4 Slice A](plans/v1.3.4-reminder-and-migration-safety.md) is approved
+and in progress on `codex/v1.3.4-slice-a`, based on `f88bc46` in an isolated
+worktree. It adds durable task-update recovery and truthful incomplete-recovery
+status. B–D and v1.4.0 are not being implemented. The original checkout's dirty
+documents remain preserved. Local commits are authorized; merge, push, tags and
+publication are not. Required native gaps remain explicit; this is not Verified
+or a release milestone. Product metadata stays at the published 1.3.3 until a
+separately authorized version freeze; schemas remain 8/2/3.
 
 ## Stable baseline
 

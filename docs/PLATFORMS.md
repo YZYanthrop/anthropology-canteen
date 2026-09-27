@@ -156,6 +156,25 @@ browser. Repeating the update after moving the portable folder keeps one task
 and changes its action to the current folder. Product-shaped tasks with other
 identity suffixes are reported but never removed by a prefix match.
 
+## v1.3.4 Slice A implementation (not released)
+
+Windows updates save the full native task XML before registration and verify
+restoration after any later failure, including local marker/settings writes.
+Native XML may omit the default `LeastPrivilege`; restoration accepts that
+default but rejects an explicit elevated principal. Restoration refuses a task
+subsequently changed by another portable folder. The application remains
+unelevated; only the existing bounded helper uses UAC for the original user.
+The native regression fixture is `tests/windows-reminder-rollback.native.ps1`:
+it uses unique temporary tasks and a no-op worker and cleans its exact tasks.
+
+The shared transaction also snapshots macOS plist bytes and loaded/disabled
+state. Bootstrap uses `RunAtLoad=false` during update/restoration, then restores
+the on-disk login behavior without an immediate worker run. Disabled or unloaded
+existing jobs stay that way. Deterministic tests cover these paths; macOS native
+validation remains pending. UAC cancellation and alternate-admin credentials
+also need their separately recorded native evidence; simulated tests do not
+prove those user interactions. See the Slice A handoff for current results.
+
 ## macOS layer
 
 The macOS packaging layer, first validated by the v1.1.1 beta, provides:

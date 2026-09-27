@@ -1,6 +1,6 @@
 # Current project snapshot
 
-Last updated: 2026-09-26
+Last updated: 2026-09-27
 
 This is the lightweight entry point for a new Codex task. Chat history is not
 required. Read this file and `docs/work/ACTIVE.md` first, then follow the
@@ -32,6 +32,11 @@ document router below.
 
 ## Active work
 
+- [v1.3.4 提醒与迁移安全修复](plans/v1.3.4-reminder-and-migration-safety.md) 仅 Slice A
+  已批准实施，状态 `In progress`，隔离分支 `codex/v1.3.4-slice-a`，基线 `f88bc46`。
+  回归测试与修复已完成本地验证；Windows 原生回滚与任务归属保护通过，macOS 原生及部分
+  Windows 权限交互仍待验证，不能标为 Verified。详见 [Slice A 交接](handoffs/v1.3.4-slice-a.md)。
+  允许本地提交；不合并、不推送、不打标签、不发布。B–D 尚未实施，原主目录未提交文档保留。
 - v1.3.3 A–E 已从同一标签提交正式发布：[三个平台的便携包](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3)。
   候选与标签运行的三平台原生检查均通过；公开附件重新下载后与同名校验文件一致。
 - 升级可保留同一旧版文件夹中的邮件设置、发送记录和 Windows 加密授权码；Windows

@@ -1,12 +1,16 @@
 # Active work packet
 
-Last updated: 2026-09-26
+Last updated: 2026-09-27
 
-- Status: `Proposed`
-- Approved for implementation: no
-- Target version: `v1.4.0`
-- Plan: [v1.4.0 路线图](../plans/v1.4.0-roadmap.md)
-- Current step: v1.3.3 已发布；下一步仅审阅 v1.4.0 范围，不创建实现分支
+- Status: `In progress`
+- Approved for implementation: yes — Slice A only
+- Target version: `v1.3.4`
+- Plan: [提醒与迁移安全修复](../plans/v1.3.4-reminder-and-migration-safety.md)
+- Implementation branch: `codex/v1.3.4-slice-a`
+- Implementation commit: `0809a1b09606680499f9807ed5f72e2d79329a5d`
+- Base commit: `f88bc46ea8ad2e1cfa9d0cbd446bd1d50422d3e8`
+- Current step: 本地实现及验证完成，保留原生待验证项，等待验收；尚未达到 Verified
+- Handoff: [Slice A 交接](../handoffs/v1.3.4-slice-a.md)
 - Stable public version: `v1.3.3`
 - Immutable release commit: `a853e712a84156b5cc5575a828d2295298b35beb`
 
@@ -18,5 +22,7 @@ v1.3.3 A–E 已纳入同一标签。Windows x64、macOS Apple Silicon arm64、m
 
 ## 下一步边界
 
-v1.4.0 目前只是方案；未经批准不实施。保持主数据格式 8、提醒状态 2、设置 3，
-保护便携文件夹中的个人资料。三平台继续使用同一产品源码与版本。
+仅实施 Slice A；B–D 和 v1.4.0 不在本次范围。允许本地提交，不合并、不推送、不打标签、不发布。
+保持格式 8/2/3，使用合成资料及唯一临时任务，不读取个人授权码或发送邮件。
+Windows 原生回滚与归属保护通过；macOS 原生、真实 UAC 取消、另一管理员凭据仍待验证。
+四项基础检查结果见交接。原主目录的未提交文档保持原样；此隔离分支不合并，保留供验收。
