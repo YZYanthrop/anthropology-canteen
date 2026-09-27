@@ -217,7 +217,7 @@ type ReminderStatus = {
   scheduler?: {
     installed?: boolean;
     needsMigration?: boolean;
-    status?: "current" | "stale" | "missing" | "ambiguous" | "permission-denied";
+    status?: "current" | "stale" | "missing" | "ambiguous" | "permission-denied" | "recovery-required" | "updating";
     path?: string;
     stalePath?: string;
     taskName?: string;
@@ -1749,7 +1749,7 @@ export default function Home() {
     const updatingExistingTask = reminderNeedsMigration;
     setReminderSaving(true);
     try {
-      await reminderRequest("/api/reminders/enable", "POST");
+      await reminderRequest("/api/reminders/enable", "POST", { operation: updatingExistingTask ? "update" : "enable" });
       showNotice(updatingExistingTask
         ? "后台提醒已更新到当前文件夹"
         : "后台提醒已开启；首次检查已完成，没有新文章时不会发送邮件");
@@ -2986,6 +2986,7 @@ export default function Home() {
   const reminderNeedsMigration = Boolean(
     reminderStatus?.scheduler?.needsMigration || reminderStatus?.scheduler?.stalePath,
   );
+  const reminderRecoveryRequired = reminderStatus?.scheduler?.status === "recovery-required";
   const reminderProviderGuidance =
     REMINDER_PROVIDER_GUIDANCE[reminderConfig.provider] ||
     REMINDER_PROVIDER_GUIDANCE.custom;
@@ -4531,7 +4532,7 @@ export default function Home() {
                   ) : (
                     <div className="reminder-step-action">
                       <small>{reminderNeedsMigration ? "设置已保留。更新时 Windows 可能要求确认一次权限；应用和日常提醒不会以管理员权限运行。" : reminderTestReady ? "测试成功，现在可以安全开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
-                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>{reminderNeedsMigration ? "更新后台提醒到当前文件夹" : "开启自动邮件提醒"}</button>
+                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || reminderRecoveryRequired || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>{reminderNeedsMigration ? "更新后台提醒到当前文件夹" : "开启自动邮件提醒"}</button>
                     </div>
                   )}
                 </section>
@@ -4554,10 +4555,11 @@ export default function Home() {
               </aside>
             </div>
 
-            {(reminderStatus.state?.lastError || reminderNeedsMigration || reminderStatus.scheduler?.ambiguousTaskCount || reminderStatus.scheduler?.status === "permission-denied" || reminderStatus.state?.lastCheckAt || reminderCredentialWasExpected || reminderCredentialStatus === "unreadable") && (
+            {(reminderRecoveryRequired || reminderStatus.state?.lastError || reminderNeedsMigration || reminderStatus.scheduler?.ambiguousTaskCount || reminderStatus.scheduler?.status === "permission-denied" || reminderStatus.state?.lastCheckAt || reminderCredentialWasExpected || reminderCredentialStatus === "unreadable") && (
               <div className="reminder-runtime-status">
+                {reminderRecoveryRequired && <p className="search-warning" role="alert">后台提醒上次更新的恢复未完成。请保留当前和旧版文件夹，处理恢复问题后再操作。</p>}
                 {reminderStatus.state?.lastError && <p className="search-warning" role="alert">上次运行：{reminderStatus.state.lastError}</p>}
-                {reminderNeedsMigration && <p className="search-warning">设置已保留，请将后台提醒更新到当前文件夹。</p>}
+                {reminderNeedsMigration && !reminderRecoveryRequired && <p className="search-warning">设置已保留，请将后台提醒更新到当前文件夹。</p>}
                 {Boolean(reminderStatus.scheduler?.ambiguousTaskCount) && (
                   <p className="search-warning" role="alert">
                     另发现 {reminderStatus.scheduler?.ambiguousTaskCount} 个无法确认归属的旧后台任务，程序没有删除。

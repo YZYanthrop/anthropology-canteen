@@ -108,7 +108,9 @@ test("Windows packaging is reproducible, private, and smoke-tested", async () =>
   assert.match(registerReminder, /-RunLevel Limited/);
   assert.match(registerReminder, /ANTHROPOLOGY_CANTEEN_SCHEDULER_PERMISSION_DENIED/);
   assert.match(registerReminder, /Export-ScheduledTask/);
-  assert.match(registerReminder, /SCHEDULER_VALIDATION_FAILED/);
+  assert.match(registerReminder, /SCHEDULER_UPDATE_FAILED_RESTORED/);
+  assert.match(registerReminder, /SCHEDULER_ROLLBACK_FAILED/);
+  assert.match(registerReminder, /SCHEDULER_SNAPSHOT_FAILED/);
   assert.match(inspectReminder, /Get-ReminderTaskInspection/);
   assert.match(elevateReminder, /Start-Process[\s\S]+-Verb RunAs[\s\S]+-WindowStyle Hidden/);
   assert.match(elevateReminder, /OriginalUserSid/);

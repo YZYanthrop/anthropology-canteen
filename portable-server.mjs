@@ -27,8 +27,9 @@ import {
 } from "./reminder-utils.mjs";
 import {
   getSchedulerStatus,
-  installScheduler,
+  schedulerRecoveryPending,
   uninstallScheduler,
+  withSchedulerTransaction,
   WINDOWS_SCHEDULER_PERMISSION_MESSAGE,
 } from "./reminder-scheduler.mjs";
 
@@ -1556,6 +1557,12 @@ export async function enableReminderTransaction({
   rootPath,
   install,
   uninstall,
+  operation,
+  snapshotScheduler,
+  restoreScheduler,
+  commitScheduler,
+  restoreSettings,
+  completeRollback,
   persist,
   runInitialCheck,
   snapshotLedger,
@@ -1563,34 +1570,48 @@ export async function enableReminderTransaction({
   now = () => new Date().toISOString(),
 }) {
   const wasEnabled = Boolean(current.enabled);
+  const updating = operation === "update" || wasEnabled || Boolean(current.schedulerPath);
   const activating = {
     ...current,
-    enabled: true,
+    enabled: updating ? wasEnabled : true,
     enabledAt: current.enabledAt || now(),
   };
-  const ledgerSnapshot = wasEnabled ? undefined : await snapshotLedger();
-  const scheduler = await install(activating);
-  const activated = {
-    ...activating,
-    schedulerPath: schedulerReference(scheduler, rootPath),
-  };
+  const ledgerSnapshot = updating ? undefined : await snapshotLedger();
+  const schedulerSnapshot = await snapshotScheduler?.();
+  let scheduler;
+  let settingsAttempted = false;
+  let initialCheckAttempted = false;
   try {
+    scheduler = await install(activating, schedulerSnapshot);
+    const activated = {
+      ...activating,
+      schedulerPath: schedulerReference(scheduler, rootPath),
+    };
+    settingsAttempted = true;
     await persist(activated);
-    if (!wasEnabled) await runInitialCheck();
+    if (!updating) {
+      initialCheckAttempted = true;
+      await runInitialCheck();
+    }
+    await commitScheduler?.(schedulerSnapshot);
     return { config: activated, scheduler };
   } catch (primaryError) {
     const rollbackErrors = [];
+    if (settingsAttempted) {
+      try {
+        if (restoreSettings) await restoreSettings();
+        else await persist(current);
+      } catch (error) {
+        rollbackErrors.push(error);
+      }
+    }
     try {
-      await persist(current);
+      if (restoreScheduler) await restoreScheduler(schedulerSnapshot);
+      else if (scheduler) await uninstall(activating);
     } catch (error) {
       rollbackErrors.push(error);
     }
-    try {
-      await uninstall(activated);
-    } catch (error) {
-      rollbackErrors.push(error);
-    }
-    if (!wasEnabled) {
+    if (initialCheckAttempted) {
       try {
         await restoreLedger(ledgerSnapshot);
       } catch (error) {
@@ -1599,7 +1620,12 @@ export async function enableReminderTransaction({
     }
     if (rollbackErrors.length) {
       primaryError.userMessage =
-        `${publicReminderErrorMessage(primaryError)} 提醒未继续启用，但自动回滚未完全成功；请关闭应用后重试停用。`;
+        "后台提醒更新失败，恢复未完成。请保留当前和旧版文件夹，处理恢复问题后再重试；不要继续覆盖任务或提醒资料。";
+    } else {
+      try { await completeRollback?.(); }
+      catch {
+        primaryError.userMessage = "后台提醒更新失败，恢复未完成。恢复记录未能安全结束，请保留当前和旧版文件夹，不要继续覆盖任务或提醒资料。";
+      }
     }
     throw primaryError;
   }
@@ -1618,6 +1644,19 @@ async function handleReminders(url, method, body, headers) {
     } catch {
       return jsonResponse({ message: "无法读取邮件提醒状态。" }, { status: 500 });
     }
+  }
+  try {
+    await ensureDataRoot();
+    return await withDirectoryLock(resolve(dataRoot, ".reminder-operation.lock"),
+      () => handleReminderMutation(url, method, body, headers));
+  } catch (error) {
+    return jsonResponse({ message: publicReminderErrorMessage(error) }, { status: 500 });
+  }
+}
+
+async function handleReminderMutation(url, method, body, headers) {
+  if (await schedulerRecoveryPending(root)) {
+    return jsonResponse({ message: "后台提醒上次更新的恢复未完成，请保留当前和旧版文件夹，处理恢复问题后再操作。" }, { status: 409 });
   }
   if (!reminderRequestAllowed(headers, url.pathname)) {
     return jsonResponse(
@@ -1676,21 +1715,28 @@ async function handleReminders(url, method, body, headers) {
       return jsonResponse(await readReminderStatus());
     }
     if (url.pathname === "/api/reminders/enable" && method === "POST") {
+      const input = parseJson(textFromBody(body), {});
       if (!current.sender || !current.recipient || !current.testedConfigHash || current.testedConfigHash !== reminderConfigHash(current)) {
         return jsonResponse({ message: "请先保存配置并发送测试邮件。" }, { status: 400 });
       }
-      const { scheduler } = await enableReminderTransaction({
+      const { scheduler } = await withDirectoryLock(localSettingsLockPath(), async () => {
+        const latestSettings = await readLocalSettingsFile();
+        if (JSON.stringify(cleanReminderConfig(latestSettings.reminders)) !== JSON.stringify(current)) {
+          throw new Error("邮件设置已改变，请重新核对后再更新后台提醒。");
+        }
+        return withSchedulerTransaction(root, current, (controls) => enableReminderTransaction({
+        ...controls,
         current,
+        operation: input?.operation === "update" ? "update" : undefined,
         rootPath: root,
-        install: (config) => installScheduler(root, config),
-        uninstall: (config) => uninstallScheduler(root, config),
-        persist: (config) => patchLocalSettingsFile({ reminders: config }),
+        persist: (config) => writeLocalSettingsFile({ ...latestSettings, reminders: config }),
         runInitialCheck: () => runReminderJob({ force: true }),
         snapshotLedger: () => readReminderState(root),
         restoreLedger: (state) => withReminderLock(
           root,
           () => writeReminderState(root, state),
         ),
+        }));
       });
       return jsonResponse({ ...(await readReminderStatus()), scheduler });
     }

@@ -95,8 +95,15 @@ function permissionFailure() {
   });
 }
 
-function successfulSchedulerCommand(_command, args) {
+async function successfulSchedulerCommand(_command, args) {
   const script = String(args[args.indexOf("-File") + 1] || "");
+  const snapshotIndex = args.indexOf("-TransactionPath");
+  if (snapshotIndex >= 0 && args.includes("Restore")) {
+    return JSON.stringify({ status: "restored", installed: false });
+  }
+  if (snapshotIndex >= 0) {
+    await writeFile(args[snapshotIndex + 1], JSON.stringify({ existed: false }));
+  }
   if (
     script.endsWith("inspect-windows-reminder.ps1") ||
     script.endsWith("register-windows-reminder.ps1") ||
@@ -254,6 +261,8 @@ test("ambiguous old task ids are preserved for warning and never trigger automat
       runCommand: async (_command, args) => {
         const script = String(args[args.indexOf("-File") + 1] || "");
         invokedScripts.push(script);
+        const snapshotIndex = args.indexOf("-TransactionPath");
+        if (snapshotIndex >= 0) await writeFile(args[snapshotIndex + 1], JSON.stringify({ existed: false }));
         return ambiguousInspection;
       },
     });

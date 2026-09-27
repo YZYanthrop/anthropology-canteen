@@ -4,7 +4,9 @@ param(
   [Parameter(Mandatory = $true)][string]$NodePath,
   [Parameter(Mandatory = $true)][string]$WorkerPath,
   [Parameter(Mandatory = $true)][string]$RootPath,
-  [Parameter(Mandatory = $true)][string]$Time
+  [Parameter(Mandatory = $true)][string]$Time,
+  [string]$TransactionPath = '',
+  [ValidateSet('Register', 'Restore')][string]$Mode = 'Register'
 )
 
 Set-StrictMode -Version Latest
@@ -18,7 +20,7 @@ function Quote-ReminderArgument {
 }
 
 try {
-  $Paths = Assert-ReminderTaskArguments @PSBoundParameters
+  $Paths = Assert-ReminderTaskArguments -TaskName $TaskName -NodePath $NodePath -WorkerPath $WorkerPath -RootPath $RootPath -Time $Time
   $RegisterScript = [System.IO.Path]::GetFullPath((
     Join-Path $Paths.RootPath "tools\register-windows-reminder.ps1"
   ))
@@ -45,14 +47,19 @@ try {
     "-RootPath", (Quote-ReminderArgument $Paths.RootPath),
     "-Time", (Quote-ReminderArgument $Time),
     "-OriginalUserSid", (Quote-ReminderArgument $OriginalUserSid),
-    "-ResultPath", (Quote-ReminderArgument $ResultPath)
-  ) -join " "
+    "-ResultPath", (Quote-ReminderArgument $ResultPath),
+    "-Mode", (Quote-ReminderArgument $Mode)
+  )
+  if ($TransactionPath) {
+    $ArgumentList += @('-TransactionPath', (Quote-ReminderArgument $TransactionPath))
+  }
+  $ArgumentList = $ArgumentList -join ' '
   try {
     $Process = Start-Process -FilePath "powershell.exe" -ArgumentList $ArgumentList `
       -Verb RunAs -WindowStyle Hidden -Wait -PassThru
     if ($Process.ExitCode -ne 0) {
       switch ($Process.ExitCode) {
-        2 { [Console]::Error.WriteLine("ANTHROPOLOGY_CANTEEN_SCHEDULER_VALIDATION_FAILED") }
+        2 { [Console]::Error.WriteLine("ANTHROPOLOGY_CANTEEN_SCHEDULER_UPDATE_FAILED_RESTORED") }
         3 { [Console]::Error.WriteLine("ANTHROPOLOGY_CANTEEN_SCHEDULER_ROLLBACK_FAILED") }
         5 { [Console]::Error.WriteLine("ANTHROPOLOGY_CANTEEN_SCHEDULER_PERMISSION_DENIED") }
         default { [Console]::Error.WriteLine("ANTHROPOLOGY_CANTEEN_SCHEDULER_ELEVATION_FAILED") }
@@ -63,7 +70,8 @@ try {
       throw "MISSING_TASK_RESULT"
     }
     $Result = Get-Content -LiteralPath $ResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($Result.status -ne "current" -or $Result.installed -ne $true) {
+    if (($Mode -eq 'Register' -and ($Result.status -ne 'current' -or $Result.installed -ne $true)) -or
+        ($Mode -eq 'Restore' -and $Result.status -ne 'restored')) {
       throw "INVALID_TASK_RESULT"
     }
     $Result | ConvertTo-Json -Compress

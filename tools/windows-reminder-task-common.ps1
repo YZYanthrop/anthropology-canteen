@@ -1,5 +1,103 @@
 Set-StrictMode -Version Latest
 
+function Get-ReminderExactTask {
+  param([string]$TaskName)
+  $Tasks = @(Get-ScheduledTask -ErrorAction Stop | Where-Object {
+    $_.TaskPath -eq '\' -and $_.TaskName -eq $TaskName
+  })
+  if ($Tasks.Count -gt 1) { throw 'AMBIGUOUS_TASK_IDENTITY' }
+  if ($Tasks.Count -eq 1) { return $Tasks[0] }
+  return $null
+}
+
+function Assert-ReminderPreviousTask {
+  param($Task, [string]$ExpectedUserSid)
+  if ($null -eq $Task) { return }
+  if ((Resolve-ReminderTaskSid ([string]$Task.Principal.UserId)) -ne $ExpectedUserSid -or
+      [string]$Task.Principal.LogonType -ne 'Interactive' -or
+      [string]$Task.Principal.RunLevel -ne 'Limited') { throw 'UNSAFE_PREVIOUS_TASK_IDENTITY' }
+  $Actions = @($Task.Actions)
+  if ($Actions.Count -ne 1) { throw 'UNSAFE_PREVIOUS_TASK_ACTION' }
+  $PreviousRoot = [IO.Path]::GetFullPath([string]$Actions[0].WorkingDirectory)
+  if ([IO.Path]::GetFullPath([string]$Actions[0].Execute) -ne
+      [IO.Path]::GetFullPath((Join-Path $PreviousRoot 'runtime\node.exe')) -or
+      [string]$Actions[0].Arguments -ne ('"' + (Join-Path $PreviousRoot 'reminder-worker.mjs') + '"')) {
+    throw 'UNSAFE_PREVIOUS_TASK_ACTION'
+  }
+}
+
+function Get-ReminderComparableXml {
+  param([string]$Xml)
+  $Document = New-Object System.Xml.XmlDocument
+  $Document.XmlResolver = $null
+  $Document.LoadXml($Xml)
+  foreach ($User in $Document.GetElementsByTagName('UserId')) {
+    $User.InnerText = Resolve-ReminderTaskSid $User.InnerText
+  }
+  return $Document.DocumentElement.OuterXml
+}
+
+function Restore-ReminderTaskSnapshot {
+  param($Snapshot, [string]$TaskName, [string]$OriginalUserSid)
+  if ($Snapshot.taskName -ne $TaskName -or $Snapshot.userSid -ne $OriginalUserSid) {
+    throw 'INVALID_TASK_SNAPSHOT_IDENTITY'
+  }
+  $Current = Get-ReminderExactTask $TaskName
+  Assert-ReminderPreviousTask $Current $OriginalUserSid
+  if ($Snapshot.existed) {
+    $PreviousXml = [string]$Snapshot.xml
+    $Document = New-Object System.Xml.XmlDocument
+    $Document.XmlResolver = $null
+    $Document.LoadXml($PreviousXml)
+    $Principals = @($Document.GetElementsByTagName('Principal'))
+    # Task Scheduler omits RunLevel when it has the schema default,
+    # LeastPrivilege. Do not treat a native export with that omission as an
+    # unsafe principal (or access a missing XML property under StrictMode).
+    $RunLevels = @($Document.GetElementsByTagName('RunLevel'))
+    $Limited = $RunLevels.Count -eq 0 -or
+      ($RunLevels.Count -eq 1 -and $RunLevels[0].InnerText -eq 'LeastPrivilege')
+    if ($Principals.Count -ne 1 -or
+        (Resolve-ReminderTaskSid ([string]$Principals[0].UserId)) -ne $OriginalUserSid -or
+        -not $Limited -or
+        [string]$Principals[0].LogonType -ne 'InteractiveToken') { throw 'UNSAFE_SNAPSHOT_PRINCIPAL' }
+    $Actions = @($Document.GetElementsByTagName('Actions'))
+    if ($Actions.Count -ne 1 -or $Actions[0].ChildNodes.Count -ne 1 -or
+        $Actions[0].FirstChild.LocalName -ne 'Exec') { throw 'UNSAFE_SNAPSHOT_ACTION' }
+    $Exec = $Actions[0].FirstChild
+    Assert-ReminderPreviousTask ([pscustomobject]@{
+      Principal = [pscustomobject]@{ UserId = $OriginalUserSid; LogonType = 'Interactive'; RunLevel = 'Limited' }
+      Actions = @([pscustomobject]@{ Execute = [string]$Exec.Command; Arguments = [string]$Exec.Arguments; WorkingDirectory = [string]$Exec.WorkingDirectory })
+    }) $OriginalUserSid
+    $Matches = $false
+    if ($null -ne $Current) {
+      $ActualXml = Export-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop
+      $Matches = (Get-ReminderComparableXml $ActualXml) -eq (Get-ReminderComparableXml $PreviousXml)
+    }
+    if (-not $Matches) {
+      if ($null -ne $Current -and
+          [IO.Path]::GetFullPath([string]$Current.Actions[0].WorkingDirectory) -ne
+          [IO.Path]::GetFullPath([string]$Snapshot.root)) { throw 'TASK_CHANGED_OUTSIDE_UPDATE' }
+      Register-ScheduledTask -TaskName $TaskName -TaskPath '\' -Xml $PreviousXml -Force -ErrorAction Stop | Out-Null
+    }
+    $Restored = Get-ReminderExactTask $TaskName
+    Assert-ReminderPreviousTask $Restored $OriginalUserSid
+    if ($null -eq $Restored -or [bool]$Restored.Settings.Enabled -ne [bool]$Snapshot.enabled) {
+      throw 'TASK_RESTORE_STATE_MISMATCH'
+    }
+    $RestoredXml = Export-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop
+    if ((Get-ReminderComparableXml $RestoredXml) -ne (Get-ReminderComparableXml $PreviousXml)) {
+      throw 'TASK_RESTORE_DEFINITION_MISMATCH'
+    }
+  } else {
+    if ($null -ne $Current) {
+      if ([IO.Path]::GetFullPath([string]$Current.Actions[0].WorkingDirectory) -ne
+          [IO.Path]::GetFullPath([string]$Snapshot.root)) { throw 'TASK_CHANGED_OUTSIDE_UPDATE' }
+      Unregister-ScheduledTask -TaskName $TaskName -TaskPath '\' -Confirm:$false -ErrorAction Stop
+    }
+    if ($null -ne (Get-ReminderExactTask $TaskName)) { throw 'NEW_TASK_CLEANUP_FAILED' }
+  }
+}
+
 function Resolve-ReminderTaskSid {
   param([Parameter(Mandatory = $true)][string]$UserId)
 

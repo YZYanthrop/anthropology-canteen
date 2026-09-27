@@ -40,7 +40,7 @@ const savedReminderStatus = {
   scheduler: {
     installed: true,
     needsMigration: false,
-    status: "current" as const,
+    status: "current" as "current" | "recovery-required",
     stalePath: "C:\\Old Anthropology Canteen",
     ambiguousTaskCount: 0,
     ambiguousTaskIds: [] as string[],
@@ -380,7 +380,7 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     await user.click(migrate);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/reminders/enable",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ operation: "update" }) }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent("后台提醒已更新到当前文件夹");
   });
@@ -400,7 +400,7 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     expect(within(dialog).queryByRole("button", { name: /删除.*旧后台任务/ })).not.toBeInTheDocument();
   });
 
-  test("cancelling the Windows permission prompt reports that nothing changed", async () => {
+  test("cancelling the Windows permission prompt does not claim that restoration succeeded", async () => {
     const user = userEvent.setup();
     const needsMigration = structuredClone(savedReminderStatus);
     needsMigration.config.enabled = true;
@@ -410,14 +410,33 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     installApi({
       reminderStatus: needsMigration,
       failEnable: true,
-      failEnableMessage: "没有更改后台提醒任务。你已取消 Windows 权限确认；设置、授权码和发送记录都保持不变。",
+      failEnableMessage: "你已取消 Windows 权限确认，后台提醒更新未完成。",
     });
     render(<Home />);
 
     await user.click(await screen.findByRole("button", { name: "邮件提醒" }));
     await user.click(await screen.findByRole("button", { name: "更新后台提醒到当前文件夹" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("没有更改后台提醒任务");
-    expect(screen.getByRole("alert")).toHaveTextContent("授权码和发送记录都保持不变");
+    expect(await screen.findByRole("alert")).toHaveTextContent("你已取消 Windows 权限确认");
+    expect(screen.getByRole("alert")).not.toHaveTextContent(/没有更改|已恢复/);
+  });
+
+  test("incomplete update recovery prevents a blind retry and remains visibly inactive", async () => {
+    const user = userEvent.setup();
+    const failed = structuredClone(savedReminderStatus);
+    failed.scheduler.installed = false;
+    failed.scheduler.needsMigration = true;
+    failed.scheduler.status = "recovery-required";
+    failed.scheduler.stalePath = "";
+    const { fetchMock } = installApi({ reminderStatus: failed });
+    render(<Home />);
+    await user.click(await screen.findByRole("button", { name: "邮件提醒" }));
+    const dialog = await screen.findByRole("dialog", { name: "邮件提醒设置" });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("恢复未完成");
+    expect(within(dialog).queryByText("后台提醒已开启")).not.toBeInTheDocument();
+    const retry = within(dialog).getByRole("button", { name: "更新后台提醒到当前文件夹" });
+    expect(retry).toBeDisabled();
+    await user.click(retry);
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/reminders/enable")).toBe(false);
   });
 
   test("match labels are semantic text and narrow search remains a full row", async () => {
