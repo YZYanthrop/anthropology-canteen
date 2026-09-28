@@ -1,17 +1,20 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 
 ## Current implementation
 
-Only [v1.3.4 Slice A](plans/v1.3.4-reminder-and-migration-safety.md) is approved
-and in progress on `codex/v1.3.4-slice-a`, based on `f88bc46` in an isolated
-worktree. It adds durable task-update recovery and truthful incomplete-recovery
-status. B–D and v1.4.0 are not being implemented. The original checkout's dirty
-documents remain preserved. Local commits are authorized; merge, push, tags and
-publication are not. Required native gaps remain explicit; this is not Verified
-or a release milestone. Product metadata stays at the published 1.3.3 until a
-separately authorized version freeze; schemas remain 8/2/3.
+[v1.3.4 A–D](plans/v1.3.4-reminder-and-migration-safety.md) implementation and
+regression test code are locally committed on `codex/v1.3.4-slice-a`, based on
+`f88bc46` in the existing isolated worktree. A: `0809a1b` / `c8d68db`; B:
+`dd07d9d`; C: `f15b63c`; D: `5ae4aee`; static-review fixes: `08641db`.
+The packet remains In progress, not Verified. Per the September 28 authorization,
+execution of lint/build/Node/UI/native verification is deferred to an independent
+task using the [unified checklist](handoffs/v1.3.4-unified-verification.md).
+A's historical results do not verify B–D or the current combined revision.
+The original checkout's dirty documents remain preserved. v1.4.0 is not started.
+Merge, push, tags, packaging and publication are not authorized. Product metadata
+stays at 1.3.3 until a separately authorized version freeze; schemas remain 8/2/3.
 
 ## Stable baseline
 

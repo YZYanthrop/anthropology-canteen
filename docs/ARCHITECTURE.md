@@ -134,7 +134,7 @@ helper returns only status, reason codes, and short task identity suffixes
 through an ephemeral file under the package `data/` directory, then the normal
 launcher deletes it. If the desktop session cannot enumerate tasks, the API
 reports that limitation with installed=false; a historical marker cannot prove current health.
-it never returns local paths or account names. Other product-shaped task names
+It never returns local paths or account names. Other product-shaped task names
 are reported as ambiguous and are not automatically deleted.
 
 Slice C distinguishes disabled tasks/triggers, stale definitions, missing tasks

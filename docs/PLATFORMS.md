@@ -175,14 +175,19 @@ validation remains pending. UAC cancellation and alternate-admin credentials
 also need their separately recorded native evidence; simulated tests do not
 prove those user interactions. See the Slice A handoff for current results.
 
-## macOS layer
-
 v1.3.4 Slice C (pending verification) queries Task Scheduler enabled flags and
 LaunchAgent loaded/disabled state. A denied query or missing inspection helper
 is unknown, never healthy based on an old marker. Only the explicit re-enable
 action changes disabled state; it uses the existing recovery transaction and
 does not launch the worker. Native platform verification is deferred to the
 unified A–D verification task.
+
+For a macOS job that is both loaded and disabled, updating its loaded definition
+temporarily allows bootstrap after bootout, then restores disabled. The bootstrap
+definition suppresses RunAtLoad. Exact state restoration and absence of worker
+execution need native validation; this is not a verified platform claim.
+
+## macOS layer
 
 The macOS packaging layer, first validated by the v1.1.1 beta, provides:
 

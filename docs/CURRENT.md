@@ -34,10 +34,11 @@ document router below.
 
 - [v1.3.4 提醒与迁移安全修复](plans/v1.3.4-reminder-and-migration-safety.md) Slice A–D
   已批准实施，状态 `In progress`，沿用隔离分支 `codex/v1.3.4-slice-a`，基线 `f88bc46`。
-  回归测试与修复已完成本地验证；Windows 原生回滚与任务归属保护通过，macOS 原生及部分
-  Windows 权限交互仍待验证，不能标为 Verified。详见 [Slice A 交接](handoffs/v1.3.4-slice-a.md)。
-  A 提交 0809a1b、c8d68db 保留；继续 B→C→D，先写测试代码，执行统一后置，不运行测试或请求 UAC。
-  交付实现、文档、本地提交与独立统一验证清单，不要求 Verified。原主目录未提交文档保留。
+  A–D 实现、回归测试代码和文档已完成本地提交；B dd07d9d、C f15b63c、D 5ae4aee，静态审阅修正 08641db。
+  A 的 0809a1b、c8d68db 及历史验证保留；B–D 和修正尚未执行测试，不能标为 Verified。
+  下一步由独立任务执行[统一验证清单](handoffs/v1.3.4-unified-verification.md)，包括基础检查、
+  四个 Slice 故障验收及 Windows/macOS 原生项。本实现任务不自动启动验证或请求 UAC。
+  原主目录未提交文档保留；实现交接不代表版本已验证或可发布。
   允许本地提交；不合并、不推送、不打标签、不发布。
 - v1.3.3 A–E 已从同一标签提交正式发布：[三个平台的便携包](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3)。
   候选与标签运行的三平台原生检查均通过；公开附件重新下载后与同名校验文件一致。
