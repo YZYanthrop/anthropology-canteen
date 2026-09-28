@@ -196,6 +196,9 @@ function Test-ReminderTaskDefinition {
       $LogonTrigger.Count -ne 1) {
     $Reasons.Add("triggers")
   }
+  if (-not $Task.Settings.Enabled) { $Reasons.Add('task-disabled') }
+  if ($DailyTrigger.Count -eq 1 -and -not $DailyTrigger[0].Enabled) { $Reasons.Add('daily-disabled') }
+  if ($LogonTrigger.Count -eq 1 -and -not $LogonTrigger[0].Enabled) { $Reasons.Add('logon-disabled') }
 
   $ActualSid = Resolve-ReminderTaskSid -UserId ([string]$Task.Principal.UserId)
   if ($ActualSid -ne $ExpectedUserSid -or
@@ -250,8 +253,11 @@ function Get-ReminderTaskInspection {
   $Reasons = @(Test-ReminderTaskDefinition -Task $Current[0] `
     -NodePath $NodePath -WorkerPath $WorkerPath -RootPath $RootPath `
     -Time $Time -ExpectedUserSid $ExpectedUserSid)
+  $Disabled = @($Reasons | Where-Object { $_ -in @('task-disabled', 'daily-disabled', 'logon-disabled') }).Count -gt 0
+  $DefinitionValid = @($Reasons | Where-Object { $_ -notin @('task-disabled', 'daily-disabled', 'logon-disabled') }).Count -eq 0
   return [pscustomobject]@{
-    status = $(if ($Reasons.Count -eq 0) { "current" } else { "stale" })
+    status = $(if ($Reasons -contains 'principal' -or $Reasons -contains 'run-level') { 'ambiguous' } elseif ($Disabled) { 'disabled' } elseif ($DefinitionValid) { 'current' } else { 'stale' })
+    definitionValid = $DefinitionValid
     installed = ($Reasons.Count -eq 0)
     reasonCodes = $Reasons
     ambiguousTaskCount = $OtherIds.Count

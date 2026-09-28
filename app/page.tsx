@@ -217,7 +217,7 @@ type ReminderStatus = {
   scheduler?: {
     installed?: boolean;
     needsMigration?: boolean;
-    status?: "current" | "stale" | "missing" | "ambiguous" | "permission-denied" | "recovery-required" | "updating";
+    status?: "current" | "stale" | "missing" | "ambiguous" | "permission-denied" | "recovery-required" | "updating" | "disabled" | "unknown";
     path?: string;
     stalePath?: string;
     taskName?: string;
@@ -1660,7 +1660,7 @@ export default function Home() {
     if (syncForm) setReminderConfig(saved);
   }
 
-  async function loadReminderStatus() {
+  async function loadReminderStatus(syncForm = true) {
     try {
       const token = await portableSessionToken();
       setReminderSessionToken(token);
@@ -1668,10 +1668,12 @@ export default function Home() {
         headers: await localApiHeaders(),
         cache: "no-store",
       });
-      if (!response.ok) return;
-      applyReminderStatus((await response.json()) as ReminderStatus, true);
+      if (!response.ok) throw new Error("无法核对后台提醒");
+      applyReminderStatus((await response.json()) as ReminderStatus, syncForm);
     } catch {
-      // Hosted previews and old portable packages do not expose reminders.
+      setReminderStatus((previous) => previous ? { ...previous,
+        scheduler: { ...previous.scheduler, installed: false, status: "unknown", needsMigration: false, stalePath: "" },
+      } : previous);
     }
   }
 
@@ -1752,11 +1754,12 @@ export default function Home() {
   }
 
   async function enableReminder() {
-    const updatingExistingTask = reminderNeedsMigration;
+    const reenable = reminderStatus?.scheduler?.status === "disabled";
+    const updatingExistingTask = reminderNeedsMigration || reminderStatus?.config?.enabled;
     setReminderSaving(true);
     try {
-      await reminderRequest("/api/reminders/enable", "POST", { operation: updatingExistingTask ? "update" : "enable" });
-      showNotice(updatingExistingTask
+      await reminderRequest("/api/reminders/enable", "POST", { operation: reenable ? "reenable" : updatingExistingTask ? "update" : "enable" });
+      showNotice(reenable ? "后台提醒已重新开启" : updatingExistingTask
         ? "后台提醒已更新到当前文件夹"
         : "后台提醒已开启；首次检查已完成，没有新文章时不会发送邮件");
     } catch (error) {
@@ -2987,12 +2990,20 @@ export default function Home() {
   const savedReminderTestReady = Boolean(reminderStatus?.tested);
   const reminderTestReady = savedReminderTestReady && !reminderDirty;
   const reminderEnabled = Boolean(
-    reminderStatus?.config?.enabled && reminderStatus?.scheduler?.installed,
+    reminderStatus?.config?.enabled && reminderStatus?.scheduler?.installed && reminderStatus?.scheduler?.status === "current",
   );
   const reminderNeedsMigration = Boolean(
     reminderStatus?.scheduler?.needsMigration || reminderStatus?.scheduler?.stalePath,
   );
   const reminderRecoveryRequired = reminderStatus?.scheduler?.status === "recovery-required";
+  const reminderSystemStatus = reminderStatus?.scheduler?.status;
+  const reminderStatusUnknown = !["current", "stale", "missing", "disabled", "recovery-required"].includes(reminderSystemStatus || "");
+  const reminderStatusTitle = reminderRecoveryRequired ? "后台提醒恢复未完成"
+    : reminderStatusUnknown ? "无法核对后台提醒"
+      : reminderSystemStatus === "disabled" ? "后台提醒已停用"
+        : reminderSystemStatus === "missing" ? "后台提醒任务不存在"
+          : reminderSystemStatus === "stale" ? "后台提醒需要更新"
+            : reminderEnabled ? "邮件提醒正在运行" : "后台提醒已停用";
   const reminderProviderGuidance =
     REMINDER_PROVIDER_GUIDANCE[reminderConfig.provider] ||
     REMINDER_PROVIDER_GUIDANCE.custom;
@@ -4382,7 +4393,7 @@ export default function Home() {
             <div className={`reminder-overview ${reminderEnabled ? "is-enabled" : ""} ${reminderDirty ? "is-dirty" : ""}`}>
               <span className="reminder-overview-icon" aria-hidden="true">{reminderEnabled ? "✓" : "✉"}</span>
               <div>
-                <strong>{reminderEnabled ? "邮件提醒正在运行" : "完成下面 3 步即可开启"}</strong>
+                <strong>{reminderStatusTitle}</strong>
                 <p>
                   {reminderEnabled && reminderDirty
                     ? "后台提醒仍按已保存配置运行；保存并重新测试前，本次编辑不会生效。"
@@ -4537,8 +4548,9 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="reminder-step-action">
-                      <small>{reminderNeedsMigration ? "设置已保留。更新时 Windows 可能要求确认一次权限；应用和日常提醒不会以管理员权限运行。" : reminderTestReady ? "测试成功，现在可以安全开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
-                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || reminderRecoveryRequired || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>{reminderNeedsMigration ? "更新后台提醒到当前文件夹" : "开启自动邮件提醒"}</button>
+                      <small>{reminderRecoveryRequired ? "请保留恢复材料，处理后再操作。" : reminderStatusUnknown ? "无法读取系统任务状态。请检查系统权限后重新核对；旧记录不能证明提醒正常。" : reminderSystemStatus === "disabled" ? "任务或触发条件已停用。只有你选择重新开启后才会修改。" : reminderNeedsMigration ? "设置已保留。更新时 Windows 可能要求确认一次权限；应用和日常提醒不会以管理员权限运行。" : reminderTestReady ? "测试成功，可由你选择开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
+                      {reminderStatusUnknown ? <button type="button" disabled={reminderSaving} onClick={() => void loadReminderStatus(false)}>重新核对后台提醒</button> :
+                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || reminderRecoveryRequired || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>{reminderSystemStatus === "disabled" ? "重新开启后台提醒" : reminderNeedsMigration ? "更新后台提醒到当前文件夹" : reminderSystemStatus === "missing" && reminderStatus.config?.enabled ? "重新创建后台提醒" : "开启自动邮件提醒"}</button>}
                     </div>
                   )}
                 </section>
@@ -4575,7 +4587,7 @@ export default function Home() {
                   </p>
                 )}
                 {reminderStatus.scheduler?.status === "permission-denied" && (
-                  <p className="search-warning">Windows 未允许自动核对后台任务；页面保留上次成功更新记录。需要更新时，点击按钮并确认一次 Windows 权限提示。</p>
+                  <p className="search-warning">Windows 未允许核对后台任务；上次成功记录不能证明当前正常。请检查系统权限后重新核对。</p>
                 )}
                 {reminderCredentialWasExpected && <p className="search-warning">未找到原授权码。可使用“从旧版本导入数据”工具补齐，或重新填写已有授权码。</p>}
                 {reminderCredentialStatus === "unreadable" && <p className="search-warning" role="alert">已找到原授权码，但当前账户无法读取。原文件仍保留，请切换到原账户或使用“从旧版本导入数据”工具。</p>}

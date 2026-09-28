@@ -133,9 +133,16 @@ that helper through UAC, while the server remains non-elevated. The elevated
 helper returns only status, reason codes, and short task identity suffixes
 through an ephemeral file under the package `data/` directory, then the normal
 launcher deletes it. If the desktop session cannot enumerate tasks, the API
-reports that limitation and may display the last successfully verified marker;
+reports that limitation with installed=false; a historical marker cannot prove current health.
 it never returns local paths or account names. Other product-shaped task names
 are reported as ambiguous and are not automatically deleted.
+
+Slice C distinguishes disabled tasks/triggers, stale definitions, missing tasks
+and unknown inspection results. Read-only status never registers or elevates.
+Explicit `operation=reenable` is an additive API option; ordinary updates preserve
+disabled state. Re-enabling uses Slice A rollback and never runs an initial check.
+The macOS reader checks live loaded/disabled state and the on-disk definition.
+These additions remain pending unified verification.
 
 An empty first run creates a blank version 8 data structure. While that file
 remains empty, automatic neighboring-version migration is retried so an old

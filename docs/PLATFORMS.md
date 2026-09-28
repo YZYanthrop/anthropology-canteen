@@ -177,6 +177,13 @@ prove those user interactions. See the Slice A handoff for current results.
 
 ## macOS layer
 
+v1.3.4 Slice C (pending verification) queries Task Scheduler enabled flags and
+LaunchAgent loaded/disabled state. A denied query or missing inspection helper
+is unknown, never healthy based on an old marker. Only the explicit re-enable
+action changes disabled state; it uses the existing recovery transaction and
+does not launch the worker. Native platform verification is deferred to the
+unified A–D verification task.
+
 The macOS packaging layer, first validated by the v1.1.1 beta, provides:
 
 - architecture-specific packages with a Finder-double-clickable command that

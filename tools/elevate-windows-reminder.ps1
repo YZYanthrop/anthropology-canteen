@@ -6,7 +6,8 @@ param(
   [Parameter(Mandatory = $true)][string]$RootPath,
   [Parameter(Mandatory = $true)][string]$Time,
   [string]$TransactionPath = '',
-  [ValidateSet('Register', 'Restore')][string]$Mode = 'Register'
+  [ValidateSet('Register', 'Restore')][string]$Mode = 'Register',
+  [switch]$Reenable
 )
 
 Set-StrictMode -Version Latest
@@ -53,6 +54,7 @@ try {
   if ($TransactionPath) {
     $ArgumentList += @('-TransactionPath', (Quote-ReminderArgument $TransactionPath))
   }
+  if ($Reenable) { $ArgumentList += '-Reenable' }
   $ArgumentList = $ArgumentList -join ' '
   try {
     $Process = Start-Process -FilePath "powershell.exe" -ArgumentList $ArgumentList `
@@ -70,7 +72,7 @@ try {
       throw "MISSING_TASK_RESULT"
     }
     $Result = Get-Content -LiteralPath $ResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if (($Mode -eq 'Register' -and ($Result.status -ne 'current' -or $Result.installed -ne $true)) -or
+    if (($Mode -eq 'Register' -and (-not $Result.definitionValid -or ($Reenable -and $Result.status -ne 'current'))) -or
         ($Mode -eq 'Restore' -and $Result.status -ne 'restored')) {
       throw "INVALID_TASK_RESULT"
     }

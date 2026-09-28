@@ -8,7 +8,8 @@ param(
   [string]$OriginalUserSid = '',
   [string]$ResultPath = '',
   [string]$TransactionPath = '',
-  [ValidateSet('Register', 'Restore')][string]$Mode = 'Register'
+  [ValidateSet('Register', 'Restore')][string]$Mode = 'Register',
+  [switch]$Reenable
 )
 
 Set-StrictMode -Version Latest
@@ -82,7 +83,7 @@ try {
     $Daily = New-ScheduledTaskTrigger -Daily -At ([datetime]::ParseExact($Time, 'HH:mm', $null))
     $Logon = New-ScheduledTaskTrigger -AtLogOn
     $Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 20) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-    if ($null -ne $PreviousTask) {
+    if ($null -ne $PreviousTask -and -not $Reenable) {
       $Settings.Enabled = [bool]$Snapshot.enabled
       foreach ($Trigger in @($PreviousTask.Triggers)) {
         if ($Trigger.CimClass.CimClassName -eq 'MSFT_TaskDailyTrigger') { $Daily.Enabled = [bool]$Trigger.Enabled }
@@ -93,7 +94,7 @@ try {
     $MutationAttempted = $true
     Register-ScheduledTask -TaskName $TaskName -TaskPath '\' -Action $Action -Trigger $Daily, $Logon -Settings $Settings -Principal $Principal -Force -ErrorAction Stop | Out-Null
     $Result = Get-ReminderTaskInspection -TaskName $TaskName -NodePath $Paths.NodePath -WorkerPath $Paths.WorkerPath -RootPath $Paths.RootPath -Time $Time -ExpectedUserSid $OriginalUserSid
-    if ($Result.status -ne 'current') { throw 'TASK_VALIDATION_FAILED' }
+    if (-not $Result.definitionValid -or ($Reenable -and $Result.status -ne 'current')) { throw 'TASK_VALIDATION_FAILED' }
   }
   $ResultJson = $Result | ConvertTo-Json -Compress
   if ($ResultPath) { [IO.File]::WriteAllText($ResultPath, $ResultJson, [Text.UTF8Encoding]::new($false)) }

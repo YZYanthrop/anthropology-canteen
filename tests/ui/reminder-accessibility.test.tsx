@@ -40,7 +40,7 @@ const savedReminderStatus = {
   scheduler: {
     installed: true,
     needsMigration: false,
-    status: "current" as "current" | "recovery-required",
+    status: "current" as "current" | "recovery-required" | "disabled" | "unknown" | "missing" | "stale",
     stalePath: "C:\\Old Anthropology Canteen",
     ambiguousTaskCount: 0,
     ambiguousTaskIds: [] as string[],
@@ -447,6 +447,24 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     render(<Home />);
     await user.click(await screen.findByRole("button", { name: "邮件提醒已开" }));
     expect(await screen.findByRole("alert")).not.toHaveTextContent("当前资料已恢复");
+  });
+
+  test.each(["disabled", "unknown", "missing", "stale"] as const)("live %s status has truthful label and explicit action", async (status) => {
+    const user = userEvent.setup();
+    const value = structuredClone(savedReminderStatus);
+    value.scheduler = { ...value.scheduler, status, installed: false, stalePath: "", needsMigration: status === "stale" };
+    const { fetchMock } = installApi({ reminderStatus: value });
+    render(<Home />);
+    await user.click(await screen.findByRole("button", { name: "邮件提醒" }));
+    const dialog = await screen.findByRole("dialog", { name: "邮件提醒设置" });
+    expect(within(dialog).queryByText("邮件提醒正在运行")).not.toBeInTheDocument();
+    expect(within(dialog).getAllByText({ disabled: "后台提醒已停用", unknown: "无法核对后台提醒", missing: "后台提醒任务不存在", stale: "后台提醒需要更新" }[status]).length).toBeGreaterThan(0);
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/reminders/enable")).toBe(false);
+    if (status === "disabled") {
+      await user.click(within(dialog).getByRole("button", { name: "重新开启后台提醒" }));
+      expect(fetchMock).toHaveBeenCalledWith("/api/reminders/enable", expect.objectContaining({ body: JSON.stringify({ operation: "reenable" }) }));
+    }
+    if (status === "unknown") expect(within(dialog).queryByRole("button", { name: "开启自动邮件提醒" })).not.toBeInTheDocument();
   });
 
   test("match labels are semantic text and narrow search remains a full row", async () => {

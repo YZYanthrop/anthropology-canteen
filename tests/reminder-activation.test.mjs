@@ -281,7 +281,7 @@ test("ambiguous old task ids are preserved for warning and never trigger automat
         throw permissionFailure();
       },
     });
-    assert.equal(status.installed, true);
+    assert.equal(status.installed, false);
     assert.equal(status.status, "permission-denied");
     assert.equal(status.path, "");
     assert.equal(status.ambiguousTaskCount, 2);
@@ -313,7 +313,7 @@ test("a successful scheduler registration precedes the initial check and leaves 
         events.push(config.enabled ? "persist-enabled" : "persist-disabled");
       },
       runInitialCheck: async () => {
-        assert.equal((await getSchedulerStatus(root)).installed, true);
+        assert.equal(JSON.parse(await readFile(join(root, "data", "anthropology-canteen-reminder-scheduler.json"), "utf8")).path, root);
         assert.equal(savedConfig.enabled, true);
         events.push("initial-check");
       },
@@ -326,7 +326,8 @@ test("a successful scheduler registration precedes the initial check and leaves 
     assert.equal(result.config.enabled, true);
     assert.equal(savedConfig.enabled, true);
     assert.ok(savedConfig.schedulerPath);
-    assert.equal((await getSchedulerStatus(root)).installed, true);
+    assert.equal(JSON.parse(await readFile(join(root, "data", "anthropology-canteen-reminder-scheduler.json"), "utf8")).path, root);
+    assert.equal((await getSchedulerStatus(root)).installed, false, "a marker alone cannot verify the live system task");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

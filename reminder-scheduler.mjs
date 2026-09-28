@@ -303,10 +303,11 @@ function parseWindowsInspection(output) {
     });
   }
   return {
-    status: ["current", "stale", "missing", "ambiguous"].includes(parsed?.status)
+    status: ["current", "stale", "missing", "ambiguous", "disabled"].includes(parsed?.status)
       ? parsed.status
       : "ambiguous",
-    installed: parsed?.installed === true,
+    installed: parsed?.installed === true && parsed.status === "current",
+    definitionValid: parsed?.definitionValid === true || (parsed.status === "current" && parsed.installed === true),
     reasonCodes: Array.isArray(parsed?.reasonCodes)
       ? parsed.reasonCodes.map(String).slice(0, 12)
       : [],
@@ -365,14 +366,14 @@ async function installWindows(root, config, runCommand = run, transaction) {
   let registrationOutput;
   try {
     registrationOutput = await runWindowsTaskHelper(root, config, runCommand,
-      ["-TransactionPath", transaction.record.taskSnapshot]);
+      ["-TransactionPath", transaction.record.taskSnapshot, ...(transaction.options.reenable ? ["-Reenable"] : [])]);
   } catch (error) {
     transaction.noTaskMutation = ["SCHEDULER_PERMISSION_DENIED", "SCHEDULER_ELEVATION_CANCELLED", "SCHEDULER_SNAPSHOT_FAILED"].includes(error.code);
     throw error;
   }
   if (!(await readOptionalFile(transaction.record.taskSnapshot))) throw recoveryError();
   const inspection = parseWindowsInspection(registrationOutput);
-  if (!inspection.installed || inspection.status !== "current") {
+  if (!inspection.definitionValid || !["current", "disabled"].includes(inspection.status)) {
     const validationError = new Error("后台提醒任务更新后未通过核对。");
     validationError.code = "SCHEDULER_VALIDATION_FAILED";
     validationError.userMessage = validationError.message;
@@ -441,7 +442,8 @@ function withoutRunAtLoad(bytes) {
 async function restoreMacSnapshot(snapshot, runCommand) {
   const { uid, label, plist, loaded, disabled, bytes } = snapshot;
   if (await macJobDisabled(uid, label, runCommand) !== disabled) {
-    throw new Error("macOS 任务启用状态已被其他操作改变，停止自动覆盖。");
+    if (snapshot.reenable && disabled) await runCommand("/bin/launchctl", ["disable", `gui/${uid}/${label}`]);
+    else throw new Error("macOS 任务启用状态已被其他操作改变，停止自动覆盖。");
   }
   const current = await readOptionalFile(plist);
   const currentLoaded = await macJobLoaded(uid, label, runCommand);
@@ -487,7 +489,8 @@ async function installMac(root, config, runCommand = run, transaction) {
       throw new Error("无法确认原 macOS 提醒任务归属，已停止更新。");
     }
   }
-  const snapshot = { uid, label, plist, loaded, disabled, bytes: previous === null ? null : previous.toString("base64") };
+  const reenable = transaction.options.reenable === true;
+  const snapshot = { uid, label, plist, loaded, disabled, reenable, bytes: previous === null ? null : previous.toString("base64") };
   transaction.record.mac = snapshot;
   await saveTransaction(transaction, "prepared");
   transaction.restorePlatform = () => restoreMacSnapshot(snapshot, runCommand);
@@ -505,8 +508,9 @@ async function installMac(root, config, runCommand = run, transaction) {
 <key>StandardErrorPath</key><string>${xmlEscape(resolve(root, "data", "anthropology-canteen-reminder.log"))}</string>
 </dict></plist>
 `;
+  if (reenable && disabled) await runCommand("/bin/launchctl", ["enable", `gui/${uid}/${label}`]);
   if (loaded) await runCommand("/bin/launchctl", ["bootout", `gui/${uid}/${label}`]);
-  const shouldLoad = !disabled && (loaded || previous === null);
+  const shouldLoad = reenable || (!disabled && (loaded || previous === null));
   if (shouldLoad) {
     // Bootstrap must not execute the worker as a side effect of folder update.
     // The on-disk definition retains RunAtLoad for the next normal login.
@@ -515,7 +519,7 @@ async function installMac(root, config, runCommand = run, transaction) {
   }
   await writeDurable(plist, Buffer.from(plistText));
   if (await macJobLoaded(uid, label, runCommand) !== shouldLoad ||
-      await macJobDisabled(uid, label, runCommand) !== disabled) {
+      await macJobDisabled(uid, label, runCommand) !== (reenable ? false : disabled)) {
     throw new Error("macOS 提醒任务更新后未通过核对。");
   }
   return { label: launchdLabel(config), platform: "macos", path: root, plist };
@@ -604,7 +608,8 @@ export async function getSchedulerStatus(root, config, options = {}) {
         return {
           installed: inspection.installed,
           status: inspection.status,
-          stalePath: inspection.status === "stale" || (marker.path && marker.path !== root)
+          definitionValid: inspection.definitionValid,
+          stalePath: inspection.status === "stale"
             ? "previous-folder"
             : "",
           path: "",
@@ -617,11 +622,10 @@ export async function getSchedulerStatus(root, config, options = {}) {
         };
       } catch (error) {
         if (error?.code === "SCHEDULER_PERMISSION_DENIED") {
-          const markerMatches = marker.path === root && marker.taskName === taskName(config);
           return {
-            installed: markerMatches,
+            installed: false,
             status: "permission-denied",
-            stalePath: marker.path && marker.path !== root ? "previous-folder" : "",
+            stalePath: "",
             path: "",
             platform: "windows",
             installedAt: String(marker.installedAt || ""),
@@ -635,22 +639,35 @@ export async function getSchedulerStatus(root, config, options = {}) {
               : [],
           };
         }
-        throw error;
+        return { installed: false, status: "unknown", path: "", platform: "windows", reasonCodes: ["inspection-failed"] };
       }
     }
   }
 
-  if (marker.path || marker.platform || marker.taskName || marker.label) {
-    return {
-      installed: marker.path === root,
-      stalePath: marker.path && marker.path !== root ? "previous-folder" : "",
-      path: "",
-      platform: marker.platform,
-      installedAt: String(marker.installedAt || ""),
-      taskName: marker.taskName || marker.label || "",
-    };
+  if (platform === "darwin" && config?.installationId) {
+    try {
+      const uid = String(options.uid || process.getuid?.() || "");
+      if (!uid) throw new Error("Unknown user");
+      const label = launchdLabel(config);
+      const plist = options.plistPath || launchdPath(config);
+      const loaded = await macJobLoaded(uid, label, runCommand);
+      const disabled = await macJobDisabled(uid, label, runCommand);
+      const bytes = await readOptionalFile(plist);
+      if (!bytes) return { installed: false, status: loaded ? "unknown" : "missing", path: "", platform };
+      const storedRoot = await runCommand("/usr/bin/plutil", ["-extract", "WorkingDirectory", "raw", "-o", "-", plist]);
+      const storedLabel = await runCommand("/usr/bin/plutil", ["-extract", "Label", "raw", "-o", "-", plist]);
+      const args = JSON.parse(await runCommand("/usr/bin/plutil", ["-extract", "ProgramArguments", "json", "-o", "-", plist]));
+      const calendar = JSON.parse(await runCommand("/usr/bin/plutil", ["-extract", "StartCalendarInterval", "json", "-o", "-", plist]));
+      const [hour, minute] = config.schedule.time.split(":").map(Number);
+      const valid = storedRoot === root && storedLabel === label && Array.isArray(args) && args.length === 2 &&
+        args[0] === resolve(root, "runtime", "bin", "node") && args[1] === resolve(root, "reminder-worker.mjs") &&
+        calendar.Hour === hour && calendar.Minute === minute;
+      return { installed: valid && loaded && !disabled, definitionValid: valid,
+        status: disabled || !loaded ? "disabled" : valid ? "current" : "stale", path: "", platform,
+        reasonCodes: [...(!loaded ? ["job-unloaded"] : []), ...(disabled ? ["job-disabled"] : []), ...(!valid ? ["definition-mismatch"] : [])] };
+    } catch { return { installed: false, status: "unknown", path: "", platform, reasonCodes: ["inspection-failed"] }; }
   }
-  return { installed: false, path: "", platform, taskName: "", status: "missing" };
+  return { installed: false, path: "", platform, taskName: "", status: "unknown", reasonCodes: ["inspection-unavailable"] };
 }
 
 export { taskName, launchdLabel };

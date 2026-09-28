@@ -1459,7 +1459,7 @@ async function readReminderStatus() {
   const credential = await inspectReminderSecret(root, config);
   const publicScheduler = {
     ...scheduler,
-    needsMigration: Boolean(config.enabled && !scheduler.installed),
+    needsMigration: scheduler.status === "stale",
   };
   return {
     version: 1,
@@ -1536,10 +1536,10 @@ export async function enableReminderTransaction({
   now = () => new Date().toISOString(),
 }) {
   const wasEnabled = Boolean(current.enabled);
-  const updating = operation === "update" || wasEnabled || Boolean(current.schedulerPath);
+  const updating = ["update", "reenable"].includes(operation) || wasEnabled || Boolean(current.schedulerPath);
   const activating = {
     ...current,
-    enabled: updating ? wasEnabled : true,
+    enabled: operation === "reenable" ? true : updating ? wasEnabled : true,
     enabledAt: current.enabledAt || now(),
   };
   const ledgerSnapshot = updating ? undefined : await snapshotLedger();
@@ -1686,7 +1686,7 @@ async function handleReminderMutation(url, method, body, headers) {
       if (!current.sender || !current.recipient || !current.testedConfigHash || current.testedConfigHash !== reminderConfigHash(current)) {
         return jsonResponse({ message: "请先保存配置并发送测试邮件。" }, { status: 400 });
       }
-      const { scheduler } = await withDirectoryLock(localSettingsLockPath(), async () => {
+      await withDirectoryLock(localSettingsLockPath(), async () => {
         const latestSettings = await readLocalSettingsFile();
         if (JSON.stringify(cleanReminderConfig(latestSettings.reminders)) !== JSON.stringify(current)) {
           throw new Error("邮件设置已改变，请重新核对后再更新后台提醒。");
@@ -1694,7 +1694,7 @@ async function handleReminderMutation(url, method, body, headers) {
         return withSchedulerTransaction(root, current, (controls) => enableReminderTransaction({
         ...controls,
         current,
-        operation: input?.operation === "update" ? "update" : undefined,
+        operation: ["update", "reenable"].includes(input?.operation) ? input.operation : undefined,
         rootPath: root,
         persist: (config) => writeLocalSettingsFile({ ...latestSettings, reminders: config }),
         runInitialCheck: () => runReminderJob({ force: true }),
@@ -1703,9 +1703,9 @@ async function handleReminderMutation(url, method, body, headers) {
           root,
           () => writeReminderState(root, state),
         ),
-        }));
+        }), { reenable: input?.operation === "reenable" });
       });
-      return jsonResponse({ ...(await readReminderStatus()), scheduler });
+      return jsonResponse(await readReminderStatus());
     }
     if (url.pathname === "/api/reminders/run-now" && method === "POST") {
       const result = await runReminderJob({ force: true });

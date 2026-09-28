@@ -174,6 +174,13 @@ test("explicit folder update never runs the initial check even when saved enable
   assert.ok(f.events.includes("commit"));
 });
 
+test("explicit re-enable changes saved enabled state but never performs an immediate check", async () => {
+  const f = fixture({ enabled: false, failAt: "none" });
+  await enableReminderTransaction({ ...f.args, operation: "reenable" });
+  assert.equal(f.state().saved.enabled, true);
+  assert.equal(f.state().workerRuns, 0);
+});
+
 test("failed task restoration is reported without claiming unchanged or restored state", async () => {
   const f = fixture({ failAt: "inspection", rollbackFails: true });
   await assert.rejects(enableReminderTransaction(f.args), (error) => {
