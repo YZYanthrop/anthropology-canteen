@@ -41,7 +41,7 @@ for (const blockedFile of ["anthropology-canteen-settings.json", "anthropology-c
   });
 }
 
-for (const state of ["loaded", "unloaded", "disabled", "absent"]) {
+for (const state of ["loaded", "loaded-disabled", "unloaded", "disabled", "absent"]) {
   for (const fails of [false, true]) {
     test(`macOS update preserves ${state} task and suppresses worker execution (failure=${fails})`, async () => {
       const root = await mkdtemp(join(tmpdir(), "canteen-slice-a-mac-"));
@@ -49,8 +49,9 @@ for (const state of ["loaded", "unloaded", "disabled", "absent"]) {
       const oldRoot = join(root, "old");
       const config = { installationId: "slice-a-test", schedule: { time: "08:00" } };
       let label;
-      let loaded = state === "loaded";
-      const disabled = state === "disabled";
+      let loaded = ["loaded", "loaded-disabled"].includes(state);
+      let disabled = ["disabled", "loaded-disabled"].includes(state);
+      const initialDisabled = disabled;
       const initialLoaded = loaded;
       const original = Buffer.from('<?xml version="1.0"?><plist><dict><key>RunAtLoad</key><true/></dict></plist>');
       const bootstrapDefinitions = [];
@@ -72,6 +73,8 @@ for (const state of ["loaded", "unloaded", "disabled", "absent"]) {
         }
         if (args[0] === "print-disabled") return `{ "${label}" => ${disabled} }`;
         mutations.push(args[0]);
+        if (args[0] === "enable") { disabled = false; return ""; }
+        if (args[0] === "disable") { disabled = true; return ""; }
         if (args[0] === "bootout") { loaded = false; return ""; }
         if (args[0] === "bootstrap") {
           const bytes = await readFile(plist, "utf8");
@@ -97,9 +100,10 @@ for (const state of ["loaded", "unloaded", "disabled", "absent"]) {
           else assert.deepEqual(await readFile(plist), original);
         } else {
           await operation;
-          assert.equal(loaded, state === "loaded" || state === "absent");
+          assert.equal(loaded, ["loaded", "loaded-disabled", "absent"].includes(state));
           assert.match(await readFile(plist, "utf8"), /<key>RunAtLoad<\/key><true\/>/);
         }
+        assert.equal(disabled, initialDisabled);
         if (state === "disabled" || state === "unloaded") assert.deepEqual(mutations, []);
         else assert.ok(bootstrapDefinitions.length > 0);
         await assert.rejects(access(join(root, "data", ".scheduler-update.json")), { code: "ENOENT" });
@@ -177,6 +181,13 @@ test("explicit folder update never runs the initial check even when saved enable
 test("explicit re-enable changes saved enabled state but never performs an immediate check", async () => {
   const f = fixture({ enabled: false, failAt: "none" });
   await enableReminderTransaction({ ...f.args, operation: "reenable" });
+  assert.equal(f.state().saved.enabled, true);
+  assert.equal(f.state().workerRuns, 0);
+});
+
+test("explicit enable with a historical scheduler path enables config without resetting its ledger", async () => {
+  const f = fixture({ enabled: false, failAt: "none" });
+  await enableReminderTransaction({ ...f.args, operation: "enable" });
   assert.equal(f.state().saved.enabled, true);
   assert.equal(f.state().workerRuns, 0);
 });

@@ -211,12 +211,12 @@ test("manual import shares incomplete-recovery protection and preserves its sour
     await writeJson(join(oldRoot, "data", settingsName), { version: 3, reminders: reminderConfig() });
     await writeJson(join(targetRoot, "data", filename), data("Current"));
     const originalSource = await readFile(join(oldRoot, "data", filename));
-    await assert.rejects(importPortableData({ source: oldRoot, targetRoot, transactionOptions: {
+    await assert.rejects(importPortableData({ source: join(oldRoot, "data"), targetRoot, transactionOptions: {
       checkpoint: async (event, index) => {
         if ((event === "replace" && index === 1) || event === "restore") throw new Error("injected failure");
       },
     } }), (error) => error.recovery === "incomplete");
-    await assert.rejects(importPortableData({ source: oldRoot, targetRoot }), /恢复未完成/);
+    await assert.rejects(importPortableData({ source: join(oldRoot, "data"), targetRoot }), /恢复未完成/);
     assert.deepEqual(await readFile(join(oldRoot, "data", filename)), originalSource);
     const files = await readdir(join(targetRoot, "data"));
     assert.ok(files.includes(".migration-recovery.json"));

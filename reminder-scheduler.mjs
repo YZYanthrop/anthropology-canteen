@@ -442,22 +442,25 @@ function withoutRunAtLoad(bytes) {
 async function restoreMacSnapshot(snapshot, runCommand) {
   const { uid, label, plist, loaded, disabled, bytes } = snapshot;
   if (await macJobDisabled(uid, label, runCommand) !== disabled) {
-    if (snapshot.reenable && disabled) await runCommand("/bin/launchctl", ["disable", `gui/${uid}/${label}`]);
+    if (snapshot.mayChangeDisabled && disabled) await runCommand("/bin/launchctl", ["disable", `gui/${uid}/${label}`]);
     else throw new Error("macOS 任务启用状态已被其他操作改变，停止自动覆盖。");
   }
   const current = await readOptionalFile(plist);
   const currentLoaded = await macJobLoaded(uid, label, runCommand);
-  if ((current === null ? null : current.toString("base64")) === bytes && currentLoaded === loaded) return;
+  if ((current === null ? null : current.toString("base64")) === bytes && currentLoaded === loaded &&
+      await macJobDisabled(uid, label, runCommand) === disabled) return;
   if (currentLoaded) await runCommand("/bin/launchctl", ["bootout", `gui/${uid}/${label}`]);
   if (bytes === null) await rm(plist, { force: true });
   else {
     const original = Buffer.from(bytes, "base64");
     if (loaded) {
       await writeDurable(plist, withoutRunAtLoad(original));
+      if (disabled) await runCommand("/bin/launchctl", ["enable", `gui/${uid}/${label}`]);
       await runCommand("/bin/launchctl", ["bootstrap", `gui/${uid}`, plist]);
     }
     await writeDurable(plist, original);
   }
+  if (disabled && loaded) await runCommand("/bin/launchctl", ["disable", `gui/${uid}/${label}`]);
   const restored = await readOptionalFile(plist);
   if ((restored === null ? null : restored.toString("base64")) !== bytes ||
       await macJobLoaded(uid, label, runCommand) !== loaded ||
@@ -475,7 +478,7 @@ async function installMac(root, config, runCommand = run, transaction) {
   const previous = await readOptionalFile(plist);
   const loaded = await macJobLoaded(uid, label, runCommand);
   const disabled = await macJobDisabled(uid, label, runCommand);
-  if ((loaded && previous === null) || (loaded && disabled)) {
+  if (loaded && previous === null) {
     throw new Error("无法可靠恢复原 macOS 提醒任务，已停止更新。");
   }
   if (previous) withoutRunAtLoad(previous); // Validate before any OS mutation.
@@ -490,7 +493,8 @@ async function installMac(root, config, runCommand = run, transaction) {
     }
   }
   const reenable = transaction.options.reenable === true;
-  const snapshot = { uid, label, plist, loaded, disabled, reenable, bytes: previous === null ? null : previous.toString("base64") };
+  const snapshot = { uid, label, plist, loaded, disabled, reenable,
+    mayChangeDisabled: disabled && (reenable || loaded), bytes: previous === null ? null : previous.toString("base64") };
   transaction.record.mac = snapshot;
   await saveTransaction(transaction, "prepared");
   transaction.restorePlatform = () => restoreMacSnapshot(snapshot, runCommand);
@@ -508,16 +512,17 @@ async function installMac(root, config, runCommand = run, transaction) {
 <key>StandardErrorPath</key><string>${xmlEscape(resolve(root, "data", "anthropology-canteen-reminder.log"))}</string>
 </dict></plist>
 `;
-  if (reenable && disabled) await runCommand("/bin/launchctl", ["enable", `gui/${uid}/${label}`]);
   if (loaded) await runCommand("/bin/launchctl", ["bootout", `gui/${uid}/${label}`]);
-  const shouldLoad = reenable || (!disabled && (loaded || previous === null));
+  const shouldLoad = reenable || loaded || (previous === null && !disabled);
   if (shouldLoad) {
     // Bootstrap must not execute the worker as a side effect of folder update.
     // The on-disk definition retains RunAtLoad for the next normal login.
     await writeDurable(plist, withoutRunAtLoad(Buffer.from(plistText)));
+    if (disabled) await runCommand("/bin/launchctl", ["enable", `gui/${uid}/${label}`]);
     await runCommand("/bin/launchctl", ["bootstrap", `gui/${uid}`, plist]);
   }
   await writeDurable(plist, Buffer.from(plistText));
+  if (disabled && shouldLoad && !reenable) await runCommand("/bin/launchctl", ["disable", `gui/${uid}/${label}`]);
   if (await macJobLoaded(uid, label, runCommand) !== shouldLoad ||
       await macJobDisabled(uid, label, runCommand) !== (reenable ? false : disabled)) {
     throw new Error("macOS 提醒任务更新后未通过核对。");

@@ -467,6 +467,18 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     if (status === "unknown") expect(within(dialog).queryByRole("button", { name: "开启自动邮件提醒" })).not.toBeInTheDocument();
   });
 
+  test("saved disabled configuration requires explicit re-enable even with a current system task", async () => {
+    const user = userEvent.setup();
+    const value = structuredClone(savedReminderStatus);
+    value.config.enabled = false;
+    const { fetchMock } = installApi({ reminderStatus: value });
+    render(<Home />);
+    await user.click(await screen.findByRole("button", { name: "邮件提醒" }));
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/reminders/enable")).toBe(false);
+    await user.click(await screen.findByRole("button", { name: "重新开启后台提醒" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/reminders/enable", expect.objectContaining({ body: JSON.stringify({ operation: "reenable" }) }));
+  });
+
   test("match labels are semantic text and narrow search remains a full row", async () => {
     const user = userEvent.setup();
     installApi({ withArticle: true });

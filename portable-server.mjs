@@ -1575,7 +1575,7 @@ export async function enableReminderTransaction({
   const updating = ["update", "reenable"].includes(operation) || wasEnabled || Boolean(current.schedulerPath);
   const activating = {
     ...current,
-    enabled: operation === "reenable" ? true : updating ? wasEnabled : true,
+    enabled: ["enable", "reenable"].includes(operation) ? true : updating ? wasEnabled : true,
     enabledAt: current.enabledAt || now(),
   };
   const ledgerSnapshot = updating ? undefined : await snapshotLedger();
@@ -1730,7 +1730,7 @@ async function handleReminderMutation(url, method, body, headers) {
         return withSchedulerTransaction(root, current, (controls) => enableReminderTransaction({
         ...controls,
         current,
-        operation: ["update", "reenable"].includes(input?.operation) ? input.operation : undefined,
+        operation: ["enable", "update", "reenable"].includes(input?.operation) ? input.operation : undefined,
         rootPath: root,
         persist: (config) => writeLocalSettingsFile({ ...latestSettings, reminders: config }),
         runInitialCheck: () => runReminderJob({ force: true }),

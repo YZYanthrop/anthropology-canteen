@@ -1756,7 +1756,8 @@ export default function Home() {
   }
 
   async function enableReminder() {
-    const reenable = reminderStatus?.scheduler?.status === "disabled";
+    const reenable = reminderStatus?.scheduler?.status === "disabled" ||
+      (reminderStatus?.scheduler?.status === "current" && !reminderStatus?.config?.enabled);
     const updatingExistingTask = reminderNeedsMigration || reminderStatus?.config?.enabled;
     setReminderSaving(true);
     try {
@@ -4552,7 +4553,7 @@ export default function Home() {
                     <div className="reminder-step-action">
                       <small>{reminderRecoveryRequired ? "请保留恢复材料，处理后再操作。" : reminderStatusUnknown ? "无法读取系统任务状态。请检查系统权限后重新核对；旧记录不能证明提醒正常。" : reminderSystemStatus === "disabled" ? "任务或触发条件已停用。只有你选择重新开启后才会修改。" : reminderNeedsMigration ? "设置已保留。更新时 Windows 可能要求确认一次权限；应用和日常提醒不会以管理员权限运行。" : reminderTestReady ? "测试成功，可由你选择开启。" : "收到测试邮件后，这个按钮才会可用。"}</small>
                       {reminderStatusUnknown ? <button type="button" disabled={reminderSaving} onClick={() => void loadReminderStatus(false)}>重新核对后台提醒</button> :
-                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || reminderRecoveryRequired || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>{reminderSystemStatus === "disabled" ? "重新开启后台提醒" : reminderNeedsMigration ? "更新后台提醒到当前文件夹" : reminderSystemStatus === "missing" && reminderStatus.config?.enabled ? "重新创建后台提醒" : "开启自动邮件提醒"}</button>}
+                      <button type="button" className="primary-button reminder-enable-button" disabled={reminderSaving || reminderRecoveryRequired || !reminderTestReady || !reminderCredentialReady || reminderDirty} onClick={() => void enableReminder()}>{(reminderSystemStatus === "disabled" || (reminderSystemStatus === "current" && !reminderStatus.config?.enabled)) ? "重新开启后台提醒" : reminderNeedsMigration ? "更新后台提醒到当前文件夹" : reminderSystemStatus === "missing" && reminderStatus.config?.enabled ? "重新创建后台提醒" : "开启自动邮件提醒"}</button>}
                     </div>
                   )}
                 </section>
