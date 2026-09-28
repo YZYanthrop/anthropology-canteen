@@ -36,7 +36,9 @@ def main():
     require(re.fullmatch(r"[0-9a-fA-F]{64}\s+\*?" + re.escape(args.zip.name), sidecar), "Invalid sidecar filename/format")
     checks.append("SHA sidecar filename/format only; digest not recomputed")
     with tempfile.TemporaryDirectory(prefix="canteen-candidate-") as temp:
-        destination = Path(temp)
+        # macOS /var is a symlink to /private/var. Node resolves the module path,
+        # so pass the same canonical path when checking the direct entry point.
+        destination = Path(temp).resolve()
         with zipfile.ZipFile(args.zip) as archive:
             entries = archive.infolist()
             names = [entry.filename for entry in entries]
@@ -103,7 +105,10 @@ def main():
                     process = subprocess.Popen([str(node), str(root / "portable-server.mjs")], cwd=root, env=env, stdout=log, stderr=log, creationflags=flags)
                     try:
                         for attempt in range(120):
-                            require(process.poll() is None, "Portable server exited before readiness")
+                            if process.poll() is not None:
+                                detail = (destination / "server.log").read_text(encoding="utf-8", errors="replace")[-4000:]
+                                detail = detail.replace(str(destination), "<temporary-candidate>")
+                                raise RuntimeError("Portable server exited before readiness (exit " + str(process.returncode) + "): " + detail)
                             try:
                                 with request("/api/runtime-status") as response:
                                     status = json.load(response)
