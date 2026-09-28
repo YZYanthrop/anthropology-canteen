@@ -158,6 +158,11 @@ identity suffixes are reported but never removed by a prefix match.
 
 ## v1.3.4 Slice A implementation (not released)
 
+Current combined verification: [A–D report](handoffs/v1.3.4-validation.md).
+Windows native task checks (31) and real UAC cancellation with no prior task
+passed. Alternate-admin identity and the report's other native gaps remain
+pending; earlier Slice A evidence below is historical, not full verification.
+
 Windows updates save the full native task XML before registration and verify
 restoration after any later failure, including local marker/settings writes.
 Native XML may omit the default `LeastPrivilege`; restoration accepts that
@@ -172,15 +177,15 @@ state. Bootstrap uses `RunAtLoad=false` during update/restoration, then restores
 the on-disk login behavior without an immediate worker run. Disabled or unloaded
 existing jobs stay that way. Deterministic tests cover these paths; macOS native
 validation remains pending. UAC cancellation and alternate-admin credentials
-also need their separately recorded native evidence; simulated tests do not
+need separately recorded native evidence for each covered scenario; simulated tests do not
 prove those user interactions. See the Slice A handoff for current results.
 
-v1.3.4 Slice C (pending verification) queries Task Scheduler enabled flags and
+v1.3.4 Slice C queries Task Scheduler enabled flags and
 LaunchAgent loaded/disabled state. A denied query or missing inspection helper
 is unknown, never healthy based on an old marker. Only the explicit re-enable
 action changes disabled state; it uses the existing recovery transaction and
-does not launch the worker. Native platform verification is deferred to the
-unified A–D verification task.
+does not launch the worker. Current Windows evidence and remaining native gaps
+are recorded in the unified A–D verification report; macOS native is pending.
 
 For a macOS job that is both loaded and disabled, updating its loaded definition
 temporarily allows bootstrap after bootout, then restores disabled. The bootstrap

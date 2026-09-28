@@ -8,10 +8,13 @@ Last updated: 2026-09-28
 regression test code are locally committed on `codex/v1.3.4-slice-a`, based on
 `f88bc46` in the existing isolated worktree. A: `0809a1b` / `c8d68db`; B:
 `dd07d9d`; C: `f15b63c`; D: `5ae4aee`; static-review fixes: `08641db`.
-The packet remains In progress, not Verified. Per the September 28 authorization,
-execution of lint/build/Node/UI/native verification is deferred to an independent
-task using the [unified checklist](handoffs/v1.3.4-unified-verification.md).
-A's historical results do not verify B–D or the current combined revision.
+The packet remains In progress, not Verified. Unified verification fixed backup
+naming and incomplete reminder-identity discovery in `691a749`. Lint/build,
+132 Node tests and 39 UI tests passed. Windows native task checks (31), actual
+UAC cancellation and temporary filesystem permission/locking cases passed.
+macOS native and remaining Windows identity/permission combinations are pending;
+see the [verification report](handoffs/v1.3.4-validation.md). A's historical
+results are retained separately from this combined revision's evidence.
 The original checkout's dirty documents remain preserved. v1.4.0 is not started.
 Merge, push, tags, packaging and publication are not authorized. Product metadata
 stays at 1.3.3 until a separately authorized version freeze; schemas remain 8/2/3.

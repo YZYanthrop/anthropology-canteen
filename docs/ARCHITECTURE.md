@@ -142,12 +142,15 @@ and unknown inspection results. Read-only status never registers or elevates.
 Explicit `operation=reenable` is an additive API option; ordinary updates preserve
 disabled state. Re-enabling uses Slice A rollback and never runs an initial check.
 The macOS reader checks live loaded/disabled state and the on-disk definition.
-These additions remain pending unified verification.
+Windows and deterministic verification results are recorded in the v1.3.4
+verification handoff; macOS native verification remains pending.
 
 Slice D separates discovery failure from current-file reads. A complete empty
 scan is distinct from inaccessible parents or disappearing/unreadable candidates.
 Current nonempty data does not require discovery unless reminder backfill is
 needed; failed backfill discovery does not prevent reading that current data.
+Unreadable sibling reminder identities also make a backfill scan incomplete;
+another candidate must not be selected as a falsely unique match.
 If current data is missing and discovery failed, the reader returns an explicit
 error instead of writing a blank replacement. Empty files still allow later
 discovery. Incomplete recovery protection takes priority over both paths.
@@ -184,8 +187,8 @@ writers and migration share `.migration-write.lock`; automatic migration also
 compares target bytes with the discovery snapshot before replacing them.
 Recovery verifies each original, keeps incomplete journals and backups across
 restart, and blocks further writes instead of retrying blindly. A completed
-transaction with cleanup failures remains separately identifiable. No runtime
-verification of this change has run yet; unified verification follows A–D.
+transaction with cleanup failures remains separately identifiable. Deterministic
+and Windows filesystem verification passed; macOS native verification is pending.
 
 ## External academic data
 
