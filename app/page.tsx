@@ -1635,6 +1635,8 @@ export default function Home() {
         const reason = status.reminderMigration.reason;
         const message = reason === "source-invalid"
           ? "旧版提醒资料有文件无法验证，当前资料未被替换。请使用“从旧版本导入数据”工具检查。"
+          : reason === "source-scan-failed" || reason === "source-scan-incomplete"
+            ? "无法完整查找旧版本，不能确认是否存在旧资料。当前正常资料仍可使用；需要迁移时请恢复文件夹访问后重试或使用旧版导入工具。"
           : reason === "recovery-incomplete"
             ? "资料迁移恢复未完成。请保留当前和旧版文件夹及备份，停止覆盖并人工处理；不要删除恢复记录后重试。"
           : reason === "cleanup-failed"

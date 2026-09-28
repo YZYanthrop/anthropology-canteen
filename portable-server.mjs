@@ -867,11 +867,14 @@ async function ensureDataRoot() {
 
 async function readJsonWithBackup(file) {
   try {
-    return parseJson(await readFile(file, "utf8"));
+    const value = parseJson(await readFile(file, "utf8"));
+    if (!isPlainObject(value)) throw new Error("Current local file is not a valid JSON object");
+    return value;
   } catch (primaryError) {
     if (primaryError?.code === "ENOENT") throw primaryError;
     try {
       const recovered = parseJson(await readFile(`${file}.backup`, "utf8"));
+      if (!isPlainObject(recovered)) throw new Error("Backup is not a valid JSON object");
       await writeJsonAtomic(file, recovered);
       return recovered;
     } catch {
@@ -1008,16 +1011,17 @@ function reminderIdentity(settings) {
   });
 }
 
-async function findSiblingMigrationCandidates() {
+export async function findSiblingMigrationCandidates(options = {}) {
   const parentRoot = dirname(root);
   let entries = [];
   try {
-    entries = await readdir(parentRoot, { withFileTypes: true });
+    entries = await (options.readDirectory || readdir)(parentRoot, { withFileTypes: true });
   } catch {
-    return null;
+    return { candidates: [], reason: "source-scan-failed" };
   }
 
   const candidates = [];
+  let incomplete = false;
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const siblingRoot = resolve(parentRoot, entry.name);
@@ -1029,10 +1033,13 @@ async function findSiblingMigrationCandidates() {
       "data",
       "anthropology-canteen-data.json",
     );
+    let found = false;
     try {
-      const info = await stat(candidate);
+      const info = await (options.statFile || stat)(candidate);
       if (!info.isFile()) continue;
-      const source = await readMigrationJson(candidate, validateMigrationData);
+      found = true;
+      const source = await (options.readCandidate || readMigrationJson)(candidate, validateMigrationData);
+      if (!source.exists) { incomplete = true; continue; }
       const data = cleanLocalData(source.value);
       if (hasLocalDataContent(data)) {
         const savedAtMs = Date.parse(data.savedAt || "");
@@ -1043,14 +1050,18 @@ async function findSiblingMigrationCandidates() {
           mtimeMs: Number.isFinite(savedAtMs) ? savedAtMs : info.mtimeMs,
         });
       }
-    } catch {
-      // Ignore unrelated folders and unreadable old copies.
+    } catch (error) {
+      if (!found && error.code === "ENOENT") {
+        // An existing unrelated folder with no product data is not an error.
+        // A directory that disappeared after enumeration is a partial scan.
+        try { await stat(siblingRoot); } catch { incomplete = true; }
+      } else incomplete = true;
     }
   }
 
-  return candidates.sort((a, b) =>
-    b.mtimeMs - a.mtimeMs || a.root.localeCompare(b.root),
-  );
+  return { candidates: candidates.sort((a, b) =>
+    b.mtimeMs - a.mtimeMs || a.root.localeCompare(b.root)),
+    reason: incomplete ? "source-scan-incomplete" : "" };
 }
 
 export async function installMigrationFiles(files, options = {}) {
@@ -1079,7 +1090,7 @@ async function loadSourceReminderFiles(candidate) {
   return { settings, state, secret };
 }
 
-async function ensureSiblingMigration() {
+async function ensureSiblingMigration(options = {}) {
   const recovery = await migrationRecoveryStatus(dataRoot);
   if (recovery.blocked || recovery.cleanupPending) {
     recordReminderMigration("manual-import-required", recovery.blocked ? "recovery-incomplete" : "cleanup-failed");
@@ -1089,14 +1100,15 @@ async function ensureSiblingMigration() {
   await ensureDataRoot();
   await withDirectoryLock(migrationLockPath(), async () => {
     if (reminderMigration?.outcome === "restored") return;
-    const [targetData, targetSettings, targetState, targetSecret, candidates] = await Promise.all([
+    const [targetData, targetSettings, targetState, targetSecret] = await Promise.all([
       readMigrationTarget(dataFile, validateMigrationData),
       readMigrationTarget(settingsFile, validateMigrationSettings),
       readMigrationTarget(reminderStateFile, validateMigrationReminderState),
       readMigrationTarget(reminderSecretFile, validateMigrationReminderSecret),
-      findSiblingMigrationCandidates(),
     ]);
-    if (!candidates.length) return;
+    // Failure to read current data belongs to the current-data reader, not old
+    // version discovery. Never pick a source to conceal a damaged current file.
+    if (targetData.error) return;
 
     const targetDataIsEmpty = !targetData.exists || (
       targetData.value && !hasLocalDataContent(cleanLocalData(targetData.value))
@@ -1108,6 +1120,23 @@ async function ensureSiblingMigration() {
       targetState.value && isBlankReminderState(targetState.value)
     );
     const targetSecretIsMissing = !targetSecret.exists;
+
+    const needsBackfill = targetSettings.value && !isBlankLocalSettings(targetSettings.value) &&
+      Boolean(reminderIdentity(targetSettings.value)) && (targetStateIsBlank || targetSecretIsMissing);
+    if (!targetDataIsEmpty && !needsBackfill) {
+      if (["source-scan-failed", "source-scan-incomplete"].includes(reminderMigration?.reason)) reminderMigration = undefined;
+      return;
+    }
+    let discovery;
+    try { discovery = await (options.scan || findSiblingMigrationCandidates)(); }
+    catch { discovery = { candidates: [], reason: "source-scan-failed" }; }
+    if (discovery.reason) {
+      recordReminderMigration("manual-import-required", discovery.reason);
+      return;
+    }
+    if (["source-scan-failed", "source-scan-incomplete"].includes(reminderMigration?.reason)) reminderMigration = undefined;
+    const candidates = discovery.candidates;
+    if (!candidates.length) return;
 
     let candidate;
     let backfill = false;
@@ -1236,13 +1265,20 @@ async function ensureSiblingMigration() {
   });
 }
 
-async function readLocalDataFile() {
-  await ensureSiblingMigration();
+async function readLocalDataFile(options = {}) {
+  await ensureSiblingMigration(options);
   await assertMigrationReady(dataRoot);
   try {
-    return cleanLocalData(await readJsonWithBackup(dataFile));
+    const value = await readJsonWithBackup(dataFile);
+    validateMigrationData(value);
+    return cleanLocalData(value);
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
+    if (["source-scan-failed", "source-scan-incomplete"].includes(reminderMigration?.reason)) {
+      const discoveryError = new Error("无法完整查找旧版本，当前资料尚未建立。请恢复文件夹访问后重试，或使用旧版导入工具；未创建空白资料。");
+      discoveryError.code = "MIGRATION_DISCOVERY_FAILED";
+      throw discoveryError;
+    }
     const data = emptyLocalData();
     await writeJsonAtomic(dataFile, data);
     return data;
@@ -1748,8 +1784,8 @@ async function handleLocalData(url, method, body, headers) {
     return jsonResponse(data);
   } catch (error) {
     return jsonResponse(
-      { message: error.code === "MIGRATION_RECOVERY_REQUIRED" ? error.message : "Anthropology Canteen could not read or write local data." },
-      { status: error.code === "MIGRATION_RECOVERY_REQUIRED" ? 409 : 500 },
+      { message: ["MIGRATION_RECOVERY_REQUIRED", "MIGRATION_DISCOVERY_FAILED"].includes(error.code) ? error.message : "当前资料无法读取或写入，请保留文件并检查访问权限及备份。" },
+      { status: ["MIGRATION_RECOVERY_REQUIRED", "MIGRATION_DISCOVERY_FAILED"].includes(error.code) ? 409 : 500 },
     );
   }
 }

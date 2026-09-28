@@ -144,6 +144,14 @@ disabled state. Re-enabling uses Slice A rollback and never runs an initial chec
 The macOS reader checks live loaded/disabled state and the on-disk definition.
 These additions remain pending unified verification.
 
+Slice D separates discovery failure from current-file reads. A complete empty
+scan is distinct from inaccessible parents or disappearing/unreadable candidates.
+Current nonempty data does not require discovery unless reminder backfill is
+needed; failed backfill discovery does not prevent reading that current data.
+If current data is missing and discovery failed, the reader returns an explicit
+error instead of writing a blank replacement. Empty files still allow later
+discovery. Incomplete recovery protection takes priority over both paths.
+
 An empty first run creates a blank version 8 data structure. While that file
 remains empty, automatic neighboring-version migration is retried so an old
 portable folder placed beside the new one after the first launch can still be
