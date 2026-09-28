@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  copyFile,
   mkdir,
   mkdtemp,
   readFile,
@@ -39,6 +40,24 @@ test("portable importer CLI entry runs from a path containing spaces", async () 
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("portable tools layout resolves the shared migration utility without a source checkout", async () => {
+  const root = await mkdtemp(join(tmpdir(), "canteen-import-layout-"));
+  const source = join(root, "old data");
+  const target = join(root, "portable folder");
+  const tools = join(target, "tools");
+  await mkdir(source);
+  await mkdir(tools, { recursive: true });
+  await writeFile(join(source, "anthropology-canteen-data.json"), JSON.stringify(validLocalData({ layout: { saved: true } }, 8)));
+  await copyFile(importer, join(tools, "import-data.mjs"));
+  await copyFile(new URL("../reminder-utils.mjs", import.meta.url), join(target, "reminder-utils.mjs"));
+  try {
+    const result = spawnSync(process.execPath, [join(tools, "import-data.mjs"), "--source", source, "--target-root", target], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const imported = JSON.parse(await readFile(join(target, "data", "anthropology-canteen-data.json"), "utf8"));
+    assert.equal(imported.states.layout.saved, true);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("portable import validates JSON, backs up targets, and copies only approved neighbors", async () => {

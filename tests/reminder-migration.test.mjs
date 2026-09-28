@@ -20,6 +20,7 @@ import {
   saveReminderSecret,
 } from "../reminder-utils.mjs";
 import { importPortableData } from "../packaging/shared/import-data.mjs";
+import { setWindowsFixtureAccess } from "./helpers/windows-files.mjs";
 
 const SERVER_FILES = [
   "portable-server.mjs",
@@ -224,6 +225,27 @@ test("manual import shares incomplete-recovery protection and preserves its sour
   } finally { await rm(parent, { recursive: true, force: true }); }
 });
 
+test("Windows denied source companion cancels import before changing the target", { skip: process.platform !== "win32" }, async () => {
+  const parent = await mkdtemp(join(tmpdir(), "canteen-migration-source-acl-"));
+  const source = join(parent, "source");
+  const targetRoot = join(parent, "target");
+  const companion = join(source, "anthropology-canteen-settings.json");
+  const target = join(targetRoot, "data", "anthropology-canteen-data.json");
+  await writeJson(join(source, "anthropology-canteen-data.json"), data("Source"));
+  await writeJson(companion, { version: 3 });
+  await writeJson(target, data("Current"));
+  const before = await readFile(target);
+  try {
+    await setWindowsFixtureAccess(parent, companion, "DenyRead");
+    await assert.rejects(importPortableData({ source, targetRoot }));
+    assert.deepEqual(await readFile(target), before);
+    assert.deepEqual(await readdir(join(targetRoot, "data")), ["anthropology-canteen-data.json"]);
+  } finally {
+    await setWindowsFixtureAccess(parent, companion, "AllowRead");
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("one sibling supplies data, settings, delivery history, and the Windows encrypted credential", {
   skip: process.platform !== "win32" ? "Windows current-account encryption is required." : false,
 }, async () => {
@@ -277,7 +299,11 @@ test("one sibling supplies data, settings, delivery history, and the Windows enc
     assert.equal(status.credentialStatus, "configured");
     assert.equal(status.credentialConfigured, true);
     assert.equal(status.reminderMigration.outcome, "restored");
-    assert.equal(status.scheduler.needsMigration, true);
+    // This fixture deliberately has no scheduler inspection helper. Preserved
+    // settings and an old path cannot prove that a live task needs updating.
+    assert.equal(status.scheduler.needsMigration, false);
+    assert.equal(status.scheduler.status, "unknown");
+    assert.equal(status.scheduler.installed, false);
     assert.equal(status.state.lastSuccessfulSendAt, "2026-09-01T08:01:00.000Z");
 
     const migratedData = JSON.parse(await readFile(join(newDataRoot, "anthropology-canteen-data.json"), "utf8"));
@@ -449,6 +475,43 @@ test("an ambiguous backfill source is reported and does not copy reminder files"
     assert.equal(status.reminderMigration.reason, "ambiguous-source");
     await assert.rejects(readFile(join(targetDataRoot, "anthropology-canteen-reminder-state.json")), { code: "ENOENT" });
     await assert.rejects(readFile(join(targetDataRoot, "anthropology-canteen-reminder-secret.json")), { code: "ENOENT" });
+  } finally {
+    if (server) await new Promise((resolve) => server.close(resolve));
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("automatic main-data migration preserves nonempty current settings, secret and delivery history", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "canteen-migration-current-"));
+  const oldRoot = join(parent, "old");
+  const targetRoot = join(parent, "current");
+  let server;
+  try {
+    await preparePortableRoot(targetRoot);
+    const source = join(oldRoot, "data");
+    const target = join(targetRoot, "data");
+    await writeJson(join(source, "anthropology-canteen-data.json"), data("Source Scholar"));
+    await writeJson(join(source, "anthropology-canteen-settings.json"), { version: 3, reminders: reminderConfig("old-source-identity") });
+    await writeJson(join(source, "anthropology-canteen-reminder-state.json"), reminderState());
+    await writeJson(join(target, "anthropology-canteen-data.json"), blankData());
+    const protectedFiles = {
+      "anthropology-canteen-settings.json": { version: 3, openAlexApiKey: "synthetic-current-key", reminders: reminderConfig("current-user-identity") },
+      "anthropology-canteen-reminder-state.json": { ...reminderState(), lastSuccessfulSendAt: "2026-09-27T08:00:00.000Z" },
+      "anthropology-canteen-reminder-secret.json": { version: 1, ciphertext: "synthetic-existing-ciphertext" },
+    };
+    const before = new Map();
+    for (const [name, value] of Object.entries(protectedFiles)) {
+      await writeJson(join(target, name), value);
+      before.set(name, await readFile(join(target, name)));
+    }
+    const sourceBefore = await readFile(join(source, "anthropology-canteen-data.json"));
+    const running = await startPortableServer(targetRoot);
+    server = running.server;
+    const response = await fetch(`${running.baseUrl}/api/local-data`, { headers: running.headers });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).subscriptions.scholar[0].label, "Source Scholar");
+    for (const [name, bytes] of before) assert.deepEqual(await readFile(join(target, name)), bytes);
+    assert.deepEqual(await readFile(join(source, "anthropology-canteen-data.json")), sourceBefore);
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
     await rm(parent, { recursive: true, force: true });

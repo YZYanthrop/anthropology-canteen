@@ -303,7 +303,7 @@ export async function installFileTransaction(files, options = {}) {
       const id = randomUUID();
       prepared.push({ ...file, original, index,
         temporary: `${file.destination}.migration-${id}`,
-        backup: original === null ? "" : `${file.destination}.backup-migration-${id}.json`,
+        backup: original === null ? "" : `${file.destination.replace(/\.json$/i, "")}.backup-migration-${id}.json`,
         restoreTemporary: `${file.destination}.restore-${id}`,
       });
     }

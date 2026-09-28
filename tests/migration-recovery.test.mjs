@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { installFileTransaction, migrationRecoveryStatus, writeJsonAtomic } from "../reminder-utils.mjs";
+import { lockWindowsFixtureFile } from "./helpers/windows-files.mjs";
 
 // Written before Slice B implementation. Execution belongs to unified verification.
 for (const stage of ["write", "sync", "close", "backup", "replace"]) {
@@ -94,5 +95,93 @@ test("handle write failure after creation cleans its registered temporary", asyn
       },
     }), /disk full/);
     assert.deepEqual(await readdir(directory), []);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+for (const restorationBlocked of [false, true]) {
+  test(`Windows native file sharing prevents unsafe replacement (rollback blocked=${restorationBlocked})`, { skip: process.platform !== "win32" }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "canteen-migration-native-"));
+    const first = join(directory, "first.json");
+    const second = join(directory, "second.json");
+    await writeFile(first, "old-first");
+    await writeFile(second, "old-second");
+    let release;
+    try {
+      if (!restorationBlocked) release = await lockWindowsFixtureFile(directory, first);
+      await assert.rejects(installFileTransaction([
+        { destination: first, bytes: Buffer.from("new-first") },
+        { destination: second, bytes: Buffer.from("new-second") },
+      ], { checkpoint: async (event, index) => {
+        if (restorationBlocked && event === "replace" && index === 1) {
+          release = await lockWindowsFixtureFile(directory, first);
+          throw new Error("interrupt after first replacement");
+        }
+      } }), (error) => error.recovery === (restorationBlocked ? "incomplete" : "restored"));
+      assert.equal(await readFile(first, "utf8"), restorationBlocked ? "new-first" : "old-first");
+      assert.equal(await readFile(second, "utf8"), "old-second");
+      await release(); release = undefined;
+      assert.equal((await migrationRecoveryStatus(directory)).blocked, restorationBlocked);
+      if (restorationBlocked) {
+        const backup = (await readdir(directory)).find((name) => name.startsWith("first.backup-"));
+        assert.equal(await readFile(join(directory, backup), "utf8"), "old-first");
+        await assert.rejects(writeJsonAtomic(first, {}), /恢复未完成/);
+      }
+    } finally { if (release) await release(); await rm(directory, { recursive: true, force: true }); }
+  });
+}
+
+for (const operation of ["sync", "close"]) {
+  test(`actual temporary handle ${operation} rejection leaves originals intact`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "canteen-migration-handle-"));
+    const destination = join(directory, "record.json");
+    await writeFile(destination, "original");
+    try {
+      await assert.rejects(installFileTransaction([{ destination, bytes: Buffer.from("new") }], {
+        openFile: async (...args) => {
+          const handle = await open(...args);
+          return {
+            writeFile: (bytes) => handle.writeFile(bytes),
+            sync: async () => { if (operation === "sync") throw new Error("handle sync failed"); await handle.sync(); },
+            close: async () => { await handle.close(); if (operation === "close") throw new Error("handle close failed"); },
+          };
+        },
+      }), (error) => error.recovery === "restored");
+      assert.equal(await readFile(destination, "utf8"), "original");
+      assert.deepEqual(await readdir(directory), ["record.json"]);
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+}
+
+test("rollback never overwrites newer external bytes and retains original backup", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "canteen-migration-concurrent-"));
+  const first = join(directory, "first.json");
+  const second = join(directory, "second.json");
+  await writeFile(first, "original");
+  try {
+    await assert.rejects(installFileTransaction([
+      { destination: first, bytes: Buffer.from("migrated") },
+      { destination: second, bytes: Buffer.from("second") },
+    ], { checkpoint: async (event, index) => {
+      if (event === "replace" && index === 1) { await writeFile(first, "new-user-data"); throw new Error("interrupted"); }
+    } }), (error) => error.recovery === "incomplete");
+    assert.equal(await readFile(first, "utf8"), "new-user-data");
+    const backup = (await readdir(directory)).find((name) => name.startsWith("first.backup-"));
+    assert.equal(await readFile(join(directory, backup), "utf8"), "original");
+    assert.equal((await migrationRecoveryStatus(directory)).blocked, true);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("committed cleanup failure preserves completed data and blocks another migration", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "canteen-migration-committed-"));
+  const destination = join(directory, "record.json");
+  await writeFile(destination, "original");
+  try {
+    await assert.rejects(installFileTransaction([{ destination, bytes: Buffer.from("completed") }], {
+      checkpoint: async (event) => { if (event === "cleanup") throw new Error("cleanup denied"); },
+    }), (error) => error.code === "MIGRATION_CLEANUP_REQUIRED" && error.recovery === "committed");
+    assert.equal(await readFile(destination, "utf8"), "completed");
+    assert.equal((await migrationRecoveryStatus(directory)).cleanupPending, true);
+    await assert.rejects(installFileTransaction([{ destination, bytes: Buffer.from("again") }]), { code: "MIGRATION_CLEANUP_REQUIRED" });
+    assert.equal(await readFile(destination, "utf8"), "completed");
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

@@ -219,6 +219,7 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     const inactiveStatus = structuredClone(savedReminderStatus);
     inactiveStatus.config.enabled = false;
     inactiveStatus.scheduler.installed = false;
+    inactiveStatus.scheduler.status = "missing";
     inactiveStatus.scheduler.stalePath = "";
     installApi({ reminderStatus: inactiveStatus, failEnable: true });
     render(<Home />);
@@ -439,7 +440,7 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/reminders/enable")).toBe(false);
   });
 
-  test.each(["write-failed", "recovery-incomplete", "cleanup-failed"])("migration %s does not claim complete restoration", async (reason) => {
+  test.each(["write-failed", "recovery-incomplete", "cleanup-failed", "source-scan-failed", "source-scan-incomplete"])("migration %s does not claim complete restoration", async (reason) => {
     const user = userEvent.setup();
     const status = structuredClone(savedReminderStatus);
     status.reminderMigration = { outcome: "manual-import-required", reason };
@@ -447,6 +448,34 @@ describe("Slice C reminder state, accessibility, and narrow layout", () => {
     render(<Home />);
     await user.click(await screen.findByRole("button", { name: "邮件提醒已开" }));
     expect(await screen.findByRole("alert")).not.toHaveTextContent("当前资料已恢复");
+    if (reason.startsWith("source-scan")) expect(screen.getByRole("alert")).toHaveTextContent("不能确认是否存在旧资料");
+  });
+
+  test("only confirmed rollback reports that current data was restored", async () => {
+    const user = userEvent.setup();
+    const value = structuredClone(savedReminderStatus);
+    value.reminderMigration = { outcome: "manual-import-required", reason: "write-failed-restored" };
+    installApi({ reminderStatus: value });
+    render(<Home />);
+    await user.click(await screen.findByRole("button", { name: "邮件提醒已开" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("当前资料已恢复");
+  });
+
+  test("read-only status refresh keeps unsaved reminder edits and never enables a task", async () => {
+    const user = userEvent.setup();
+    const value = structuredClone(savedReminderStatus);
+    value.scheduler.status = "unknown";
+    value.scheduler.installed = false;
+    const { fetchMock } = installApi({ reminderStatus: value });
+    render(<Home />);
+    await user.click(await screen.findByRole("button", { name: "邮件提醒" }));
+    const recipient = screen.getByRole("textbox", { name: "收件邮箱（常用邮箱）" });
+    await user.clear(recipient);
+    await user.type(recipient, "unsaved@example.test");
+    await user.click(screen.getByRole("button", { name: "重新核对后台提醒" }));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/reminders/status").length).toBe(2));
+    expect(recipient).toHaveValue("unsaved@example.test");
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/reminders/enable")).toBe(false);
   });
 
   test.each(["disabled", "unknown", "missing", "stale"] as const)("live %s status has truthful label and explicit action", async (status) => {

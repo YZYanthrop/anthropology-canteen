@@ -23,6 +23,7 @@ $Roots = @((Join-Path $TestRoot 'old'), (Join-Path $TestRoot 'new'))
 $Events = New-Object System.Collections.Generic.List[string]
 $global:SliceAReadCount = 0
 $global:SliceAFault = ''
+$FixtureTime = (Get-Date).AddMinutes(20).ToString('HH:mm')
 
 # Faults surround the real native cmdlets; no mock substitutes for the task
 # registration, export, enabled state, or restore assertions in this harness.
@@ -44,17 +45,18 @@ function Register-ScheduledTask {
   if (-not $Xml -and $global:SliceAFault -eq 'register') { throw 'INJECTED_POST_REGISTRATION_FAILURE' }
 }
 function Invoke-FixtureHelper {
-  param([string]$Root, [string]$Name = $TaskName, [string]$Fault = '', [string]$Mode = 'Register', [string]$Snapshot = '', [string]$Result = '')
+  param([string]$Root, [string]$Name = $TaskName, [string]$Fault = '', [string]$Mode = 'Register', [string]$Snapshot = '', [string]$Result = '', [switch]$Reenable)
   $global:SliceAReadCount = 0
   $global:SliceAFault = $Fault
   $Arguments = @{
     TaskName = $Name; NodePath = (Join-Path $Root 'runtime\node.exe')
     WorkerPath = (Join-Path $Root 'reminder-worker.mjs'); RootPath = $Root
-    Time = (Get-Date).AddMinutes(20).ToString('HH:mm'); OriginalUserSid = $OriginalUserSid
+    Time = $FixtureTime; OriginalUserSid = $OriginalUserSid
     Mode = $Mode
   }
   if ($Snapshot) { $Arguments.TransactionPath = $Snapshot }
   if ($Result) { $Arguments.ResultPath = $Result }
+  if ($Reenable) { $Arguments.Reenable = $true }
   $global:LASTEXITCODE = 0
   $PreviousErrorWriter = [Console]::Error
   $CapturedError = New-Object IO.StringWriter
@@ -82,7 +84,7 @@ try {
   foreach ($Root in $Roots) {
     New-Item -ItemType Directory -Path (Join-Path $Root 'runtime'), (Join-Path $Root 'tools'), (Join-Path $Root 'data') -Force | Out-Null
     New-Item -ItemType HardLink -Path (Join-Path $Root 'runtime\node.exe') -Value $NodePath | Out-Null
-    [IO.File]::WriteAllText((Join-Path $Root 'reminder-worker.mjs'), '// Native fixture: no network, credentials, mail, or checks.' + "`n")
+    [IO.File]::WriteAllText((Join-Path $Root 'reminder-worker.mjs'), 'import { writeFileSync } from "node:fs"; writeFileSync(new URL("worker-ran", import.meta.url), "unexpected invocation");' + "`n")
     foreach ($Script in @('register-windows-reminder.ps1', 'windows-reminder-task-common.ps1')) {
       Copy-Item -LiteralPath (Join-Path $ProductRoot ('tools\' + $Script)) -Destination (Join-Path $Root ('tools\' + $Script))
     }
@@ -119,6 +121,12 @@ try {
     }
     ScheduledTasks\Set-ScheduledTask -TaskName $TaskName -TaskPath '\' -Settings $Old.Settings -Trigger @($Old.Triggers) | Out-Null
     $Original = ScheduledTasks\Export-ScheduledTask -TaskName $TaskName -TaskPath '\'
+    $Inspection = Get-ReminderTaskInspection -TaskName $TaskName -NodePath (Join-Path $Roots[0] 'runtime\node.exe') `
+      -WorkerPath (Join-Path $Roots[0] 'reminder-worker.mjs') -RootPath $Roots[0] -Time $FixtureTime -ExpectedUserSid $OriginalUserSid
+    $ExpectedStatus = if ($State.Enabled -and $State.Daily -and $State.Logon) { 'current' } else { 'disabled' }
+    if ($Inspection.status -ne $ExpectedStatus -or $Inspection.installed -ne ($ExpectedStatus -eq 'current')) { throw 'Live native enabled state was hidden' }
+    Assert-Original $Original
+    $Events.Add('read-only live status ' + $ExpectedStatus + ' daily=' + $State.Daily + ' logon=' + $State.Logon)
     foreach ($Fault in @('inspection', 'validation', 'register', 'restore', 'result')) {
       $Snapshot = Join-Path $Roots[1] ('data\.scheduler-task-' + [guid]::NewGuid().ToString('N') + '.json')
       $Result = ''
@@ -152,12 +160,27 @@ try {
     Assert-ReminderPreviousTask $Task $OriginalUserSid
     $Events.Add('repeat update preserves disabled state')
   }
+  $DisabledOriginal = ScheduledTasks\Export-ScheduledTask -TaskName $TaskName -TaskPath '\'
+  $FailedReenable = Invoke-FixtureHelper -Root $Roots[1] -Reenable -Fault inspection
+  if ($FailedReenable.Exit -eq 0) { throw 'Injected re-enable failure unexpectedly succeeded' }
+  Assert-Original $DisabledOriginal
+  $Events.Add('failed explicit re-enable restores disabled task and triggers')
+  $Reenabled = Invoke-FixtureHelper -Root $Roots[1] -Reenable
+  if ($Reenabled.Exit -ne 0) { throw ('Explicit re-enable failed: ' + $Reenabled.Output) }
+  $Inspection = Get-ReminderTaskInspection -TaskName $TaskName -NodePath (Join-Path $Roots[1] 'runtime\node.exe') `
+    -WorkerPath (Join-Path $Roots[1] 'reminder-worker.mjs') -RootPath $Roots[1] -Time $FixtureTime -ExpectedUserSid $OriginalUserSid
+  if ($Inspection.status -ne 'current' -or -not $Inspection.installed) { throw 'Explicit re-enable did not enable every trigger' }
+  $Events.Add('explicit re-enable enables task and both triggers')
   ScheduledTasks\Unregister-ScheduledTask -TaskName $TaskName -TaskPath '\' -Confirm:$false
   $NewFailure = Invoke-FixtureHelper -Root $Roots[1] -Fault inspection
   if ($NewFailure.Exit -eq 0) { throw 'New-task fault unexpectedly succeeded' }
   if (@(ScheduledTasks\Get-ScheduledTask | Where-Object TaskName -eq $TaskName).Count -ne 0) { throw 'Failed new task was not removed' }
   if (@(ScheduledTasks\Get-ScheduledTask | Where-Object TaskName -eq $OtherTaskName).Count -ne 1) { throw 'Unrelated temporary task was changed' }
   $Events.Add('new-task cleanup leaves unrelated task intact')
+  foreach ($Root in $Roots) {
+    if (Test-Path -LiteralPath (Join-Path $Root 'worker-ran')) { throw 'Update or recovery ran the worker' }
+  }
+  $Events.Add('no worker invocation during update or recovery')
 } finally {
   $global:SliceAFault = ''
   foreach ($Name in @($TaskName, $OtherTaskName)) {

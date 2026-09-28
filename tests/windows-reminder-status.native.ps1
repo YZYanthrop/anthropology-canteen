@@ -27,3 +27,28 @@ foreach ($Case in @('current', 'task-disabled', 'daily-disabled', 'logon-disable
     throw ('Disabled condition was hidden: ' + $Case)
   }
 }
+$OriginalTriggers = @($Task.Triggers)
+foreach ($Case in @('missing-daily', 'missing-logon', 'old-path', 'permission', 'missing')) {
+  $Task.Settings.Enabled = $true
+  $Task.Triggers = @($OriginalTriggers)
+  foreach ($Trigger in $Task.Triggers) { $Trigger.Enabled = $true }
+  $Task.Actions[0].WorkingDirectory = $FixtureRoot
+  if ($Case -eq 'missing-daily') { $Task.Triggers = @($OriginalTriggers[1]) }
+  if ($Case -eq 'missing-logon') { $Task.Triggers = @($OriginalTriggers[0]) }
+  if ($Case -eq 'old-path') { $Task.Actions[0].WorkingDirectory = Join-Path $FixtureRoot 'old' }
+  function Get-ScheduledTask {
+    [CmdletBinding()]param()
+    if ($Case -eq 'permission') { throw [UnauthorizedAccessException]::new('Synthetic access denied') }
+    if ($Case -ne 'missing') { return $Task }
+  }
+  if ($Case -eq 'permission') {
+    $Rejected = $false
+    try { Get-ReminderTaskInspection @Arguments | Out-Null } catch [UnauthorizedAccessException] { $Rejected = $true }
+    if (-not $Rejected) { throw 'Permission failure was hidden' }
+  } else {
+    $Result = Get-ReminderTaskInspection @Arguments
+    $Expected = if ($Case -eq 'missing') { 'missing' } else { 'stale' }
+    if ($Result.status -ne $Expected -or $Result.installed) { throw ('Incorrect inspection: ' + $Case) }
+  }
+}
+Write-Output '9 synthetic Windows inspection cases passed; no OS tasks modified.'

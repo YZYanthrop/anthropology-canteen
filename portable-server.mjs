@@ -4,7 +4,6 @@ import {
   mkdir,
   readFile,
   readdir,
-  rm,
   stat,
   unlink,
   writeFile,
@@ -1153,6 +1152,7 @@ async function ensureSiblingMigration(options = {}) {
       const identity = reminderIdentity(targetSettings.value);
       if (!identity) return;
       const matches = [];
+      let identityScanIncomplete = false;
       for (const possible of candidates) {
         try {
           const sourceSettings = await readMigrationJson(
@@ -1164,7 +1164,12 @@ async function ensureSiblingMigration(options = {}) {
           }
         } catch {
           // A damaged candidate cannot establish a unique identity.
+          identityScanIncomplete = true;
         }
+      }
+      if (identityScanIncomplete) {
+        recordReminderMigration("manual-import-required", "source-scan-incomplete");
+        return;
       }
       if (matches.length !== 1) {
         recordReminderMigration("manual-import-required", matches.length > 1 ? "ambiguous-source" : "source-not-found");
