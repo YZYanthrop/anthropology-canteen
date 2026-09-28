@@ -4,6 +4,9 @@ Anthropology Canteen 是在自己电脑上运行的人类学研究追踪工具�
 
 当前正式版本是 [Anthropology Canteen v1.3.3 Release（正式下载页）](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3)。
 
+v1.3.4 正在制作未发布候选包，尚未全部 Verified；Mac 候选版为实验性版本。
+范围与未验证限制见[候选说明及发布草稿](docs/releases/v1.3.4-draft.md)，现有正式下载不变。
+
 ## 第一次使用：4 步开始
 
 1. 打开 [v1.3.3 正式下载页](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3)。

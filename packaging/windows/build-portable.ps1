@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-  [string]$OutputDirectory
+  [string]$OutputDirectory,
+  [switch]$Candidate
 )
 
 Set-StrictMode -Version Latest
@@ -39,6 +40,7 @@ if ($ProductVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
 }
 
 $RootName = "Anthropology-Canteen-Windows-x64-v$ProductVersion"
+if ($Candidate) { $RootName += '-candidate' }
 $StageRoot = Join-Path $OutputDirectory $RootName
 $ZipPath = Join-Path $OutputDirectory "$RootName.zip"
 $ShaPath = "$ZipPath.sha256"
@@ -211,6 +213,13 @@ try {
   Write-Utf8WithoutBom -Path (Join-Path $StageRoot "README-Windows.txt") `
     -Value $Readme
 
+  if ($Candidate) {
+    $SourceCommit = (& git -C $RepositoryRoot rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $SourceCommit -notmatch '^[a-f0-9]{40}$') { throw 'Candidate source commit unavailable' }
+    Copy-Item -LiteralPath (Join-Path $RepositoryRoot 'packaging\shared\CANDIDATE-NOTICE.txt') -Destination $StageRoot
+    $Manifest = [ordered]@{ version = $ProductVersion; sourceCommit = $SourceCommit; platform = 'win32'; arch = 'x64'; status = 'unpublished-candidate'; fullyVerified = $false }
+    Write-Utf8WithoutBom -Path (Join-Path $StageRoot 'candidate.json') -Value ($Manifest | ConvertTo-Json)
+  }
   Assert-BlankPortableTree -Root $StageRoot
   Compress-Archive -LiteralPath $StageRoot -DestinationPath $ZipPath `
     -CompressionLevel Optimal
@@ -222,6 +231,7 @@ try {
   Write-Output "Created $ShaPath"
 } finally {
   if (Test-Path -LiteralPath $WorkRoot) {
+    Assert-ChildPath -Parent ([System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())) -Child ([System.IO.Path]::GetFullPath($WorkRoot))
     Remove-Item -LiteralPath $WorkRoot -Recurse -Force
   }
 }

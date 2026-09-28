@@ -16,8 +16,12 @@ macOS native and remaining Windows identity/permission combinations are pending;
 see the [verification report](handoffs/v1.3.4-validation.md). A's historical
 results are retained separately from this combined revision's evidence.
 The original checkout's dirty documents remain preserved. v1.4.0 is not started.
-Merge, push, tags, packaging and publication are not authorized. Product metadata
-stays at 1.3.3 until a separately authorized version freeze; schemas remain 8/2/3.
+The subsequent candidate task authorizes local main merge, version 1.3.4 freeze,
+and three unpublished portable candidates. Schemas remain 8/2/3. Original dirty
+documents stay on `codex/preserve-local-planning-v1.3.4`. Cloud Mac builds require
+separate minimal branch-push/dispatch authorization; no tags or publication.
+See the [candidate handoff](handoffs/v1.3.4-candidates.md). Build success does not
+close native verification gaps or make this version fully Verified.
 
 ## Stable baseline
 

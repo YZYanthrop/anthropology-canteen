@@ -2,6 +2,15 @@
 
 ## Support matrix
 
+v1.3.4 candidates are unpublished and not fully Verified. Windows x64 and both
+Mac architectures share one frozen source commit recorded in `candidate.json`.
+Mac candidates are experimental: native reminder scheduling, migration and
+failure recovery remain unverified for this version. Limited final-ZIP checks
+cover direct server startup and synthetic persistence, not OS launcher UI or
+scheduled reminders. See [candidate handoff](handoffs/v1.3.4-candidates.md).
+
+macOS 版为实验性版本，尚未完成 v1.3.4 的 macOS 原生验收，后台提醒、资料迁移及失败恢复仍存在未验证风险。升级前请保留旧版文件夹和资料备份。
+
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
 | Windows x64 | v1.3.3 released; native package and reminder smoke passed | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |

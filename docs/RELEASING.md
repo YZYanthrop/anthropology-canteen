@@ -2,6 +2,22 @@
 
 ## 核心原则
 
+### v1.3.4 未发布候选制作的限定授权
+
+本次用户批准在仍有原生待验证项时合并本地 main、冻结 1.3.4 并制作候选包，
+不代表通过正式发布门槛。保留 691a749 的基础回归结果，不重复整套测试。
+Windows 使用 `build-portable.ps1 -Candidate`；Mac 使用 `build-portable.sh <arch> <output> --candidate`。
+三个包必须记录同一冻结提交于 `candidate.json`，带候选后缀和 `CANDIDATE-NOTICE.txt`。
+每个最终 ZIP 只生成一次 SHA-256 sidecar；有限检查读取 ZIP/CRC，不重算 SHA。
+`candidate-smoke.py` 仅检查结构、空白资料、隐私、原生运行时、服务启动和合成状态重启持久化。
+不调用提醒、凭据、迁移验收或真实服务；不能替代完整原生验收。
+
+流程新增 `candidate_packages_only=true`，只接受手动完整 `candidate_sha`，禁止标签模式。
+该模式跳过共享全套回归、Windows 云端包、源码包与完整原生 smoke，只运行两种 Mac 架构的
+构建和有限检查并保存 30 天临时 artifacts。只有另行授权后才推送候选分支并 dispatch；
+不推送 main、不建标签或 Release。常规标签/完整验证模式保持原流程。
+实际结果入口见[候选交接](handoffs/v1.3.4-candidates.md)，Mac 风险说明见[发布草稿](releases/v1.3.4-draft.md)。
+
 - `main` 始终保持可发布；每个明确目标使用短期分支。
 - Windows 与 macOS 只维护一套共同源码，不建立永久平台分支。
 - 正常公开版本的所有平台文件必须来自同一个 Git 提交和同一个标签。

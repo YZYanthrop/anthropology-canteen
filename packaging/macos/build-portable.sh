@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
 TARGET_ARCH="${1:-}"
 OUTPUT_DIR="${2:-$REPO_ROOT/outputs}"
+CANDIDATE="${3:-}"
+if [[ -n "$CANDIDATE" && "$CANDIDATE" != "--candidate" ]]; then exit 2; fi
 
 case "$TARGET_ARCH" in
   arm64)
@@ -40,6 +42,7 @@ fi
 
 PRODUCT_VERSION="$(cd "$REPO_ROOT" && node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
 ROOT_NAME="Anthropology-Canteen-macOS-${DISPLAY_ARCH}-v${PRODUCT_VERSION}"
+if [[ "$CANDIDATE" == "--candidate" ]]; then ROOT_NAME="${ROOT_NAME}-candidate"; fi
 ZIP_NAME="${ROOT_NAME}.zip"
 SHA_NAME="${ZIP_NAME}.sha256"
 STAGE_ROOT="$OUTPUT_DIR/$ROOT_NAME"
@@ -109,6 +112,14 @@ fi
   -framework Security \
   -o "$STAGE_ROOT/tools/anthropology-canteen-keychain"
 /bin/chmod 755 "$STAGE_ROOT/tools/anthropology-canteen-keychain"
+
+if [[ "$CANDIDATE" == "--candidate" ]]; then
+  SOURCE_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]] || exit 1
+  /bin/cp "$REPO_ROOT/packaging/shared/CANDIDATE-NOTICE.txt" "$STAGE_ROOT/CANDIDATE-NOTICE.txt"
+  node -e 'require("fs").writeFileSync(process.argv[1],JSON.stringify({version:process.argv[2],sourceCommit:process.argv[3],platform:"darwin",arch:process.argv[4],status:"unpublished-candidate",fullyVerified:false},null,2))' \
+    "$STAGE_ROOT/candidate.json" "$PRODUCT_VERSION" "$SOURCE_COMMIT" "$TARGET_ARCH"
+fi
 
 SYMLINK_PATH="$(/usr/bin/find "$STAGE_ROOT" -type l -print -quit)"
 if [[ -n "$SYMLINK_PATH" ]]; then

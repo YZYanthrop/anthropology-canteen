@@ -1,5 +1,7 @@
 Anthropology Canteen @PRODUCT_VERSION@ — unsigned macOS portable edition
 
+macOS 版为实验性版本，尚未完成 v1.3.4 的 macOS 原生验收，后台提醒、资料迁移及失败恢复仍存在未验证风险。升级前请保留旧版文件夹和资料备份。
+
 System requirement: macOS 13.5 or newer. The bundled Node.js 24.14.0 runtime
 does not support older macOS releases.
 

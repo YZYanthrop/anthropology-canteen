@@ -14,6 +14,11 @@ on:
         description: Full 40-character commit SHA for a pre-tag native candidate build
         required: false
         type: string
+      candidate_packages_only:
+        description: Mac candidate packages only; limited ZIP/startup checks, no full regression or scheduler tests
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -29,6 +34,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ inputs.tag || '' }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha || '' }}
+      CANDIDATE_PACKAGES_ONLY: ${{ inputs.candidate_packages_only || false }}
     outputs:
       source_sha: ${{ steps.metadata.outputs.source_sha }}
       version: ${{ steps.metadata.outputs.version }}
@@ -53,6 +59,10 @@ jobs:
         id: metadata
         shell: bash
         run: |
+          if [[ "$CANDIDATE_PACKAGES_ONLY" == "true" && ( "$GITHUB_EVENT_NAME" != "workflow_dispatch" || -z "$CANDIDATE_SHA" || -n "$RELEASE_TAG" ) ]]; then
+            echo "Limited packages require a manual candidate_sha, never a release tag." >&2
+            exit 1
+          fi
           if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
             RELEASE_TAG="$GITHUB_REF_NAME"
           fi
@@ -90,6 +100,7 @@ jobs:
 
   verify-shared:
     name: Verify shared application
+    if: ${{ !inputs.candidate_packages_only }}
     needs: validate-tag
     runs-on: windows-latest
     steps:
@@ -121,6 +132,7 @@ jobs:
 
   windows-package:
     name: Windows x64 native package and smoke test
+    if: ${{ !inputs.candidate_packages_only }}
     needs: [validate-tag, verify-shared]
     runs-on: windows-latest
     steps:
@@ -175,6 +187,7 @@ jobs:
   macos-package:
     name: ${{ matrix.label }} native package and smoke test
     needs: [validate-tag, verify-shared]
+    if: ${{ !cancelled() && needs.validate-tag.result == 'success' && (needs.verify-shared.result == 'success' || inputs.candidate_packages_only) }}
     strategy:
       fail-fast: false
       matrix:
@@ -219,26 +232,36 @@ jobs:
 
       - name: Build native portable ZIP
         shell: bash
-        run: bash packaging/macos/build-portable.sh "${{ matrix.arch }}"
+        run: bash packaging/macos/build-portable.sh "${{ matrix.arch }}" "$GITHUB_WORKSPACE/outputs" "${{ inputs.candidate_packages_only && '--candidate' || '' }}"
 
       - name: Run native package, persistence, import, shutdown, and privacy smoke tests
+        if: ${{ !inputs.candidate_packages_only }}
         shell: bash
         run: |
           ROOT="outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}"
           bash packaging/macos/smoke-test.sh "$ROOT" "$ROOT.zip" "${{ matrix.arch }}"
 
+      - name: Limited final candidate ZIP checks
+        if: ${{ inputs.candidate_packages_only }}
+        shell: bash
+        run: |
+          ROOT="outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}-candidate"
+          python3 packaging/shared/candidate-smoke.py "$ROOT.zip" --platform darwin --arch "${{ matrix.arch }}" --source-sha "${{ needs.validate-tag.outputs.source_sha }}" --report "$ROOT.checks.json"
+
       - name: Upload macOS release-candidate artifact
         uses: actions/upload-artifact@v6
         with:
-          name: Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}
+          name: Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}${{ inputs.candidate_packages_only && '-candidate' || '' }}
           path: |
-            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}.zip
-            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}.zip.sha256
+            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}${{ inputs.candidate_packages_only && '-candidate' || '' }}.zip
+            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}${{ inputs.candidate_packages_only && '-candidate' || '' }}.zip.sha256
+            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}-candidate.checks.json
           if-no-files-found: error
           retention-days: 30
 
   source-package:
     name: Source archive from the validated tag
+    if: ${{ !inputs.candidate_packages_only }}
     needs: [validate-tag, verify-shared]
     runs-on: ubuntu-latest
     steps:
