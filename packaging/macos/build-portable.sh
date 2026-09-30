@@ -8,7 +8,7 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
 TARGET_ARCH="${1:-}"
 OUTPUT_DIR="${2:-$REPO_ROOT/outputs}"
 CANDIDATE="${3:-}"
-if [[ -n "$CANDIDATE" && "$CANDIDATE" != "--candidate" ]]; then exit 2; fi
+if [[ -n "$CANDIDATE" && "$CANDIDATE" != "--candidate" && "$CANDIDATE" != "--release" ]]; then exit 2; fi
 
 case "$TARGET_ARCH" in
   arm64)
@@ -119,6 +119,13 @@ if [[ "$CANDIDATE" == "--candidate" ]]; then
   /bin/cp "$REPO_ROOT/packaging/shared/CANDIDATE-NOTICE.txt" "$STAGE_ROOT/CANDIDATE-NOTICE.txt"
   node -e 'require("fs").writeFileSync(process.argv[1],JSON.stringify({version:process.argv[2],sourceCommit:process.argv[3],platform:"darwin",arch:process.argv[4],status:"unpublished-candidate",fullyVerified:false},null,2))' \
     "$STAGE_ROOT/candidate.json" "$PRODUCT_VERSION" "$SOURCE_COMMIT" "$TARGET_ARCH"
+fi
+
+if [[ "$CANDIDATE" == "--release" ]]; then
+  SOURCE_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]] || exit 1
+  /bin/cp "$REPO_ROOT/packaging/shared/RELEASE-NOTICE.txt" "$STAGE_ROOT/RELEASE-NOTICE.txt"
+  node -e 'require("fs").writeFileSync(process.argv[1],JSON.stringify({version:process.argv[2],sourceCommit:process.argv[3],platform:"darwin",arch:process.argv[4],status:"published-with-limitations",fullyVerified:false},null,2))' "$STAGE_ROOT/release.json" "$PRODUCT_VERSION" "$SOURCE_COMMIT" "$TARGET_ARCH"
 fi
 
 SYMLINK_PATH="$(/usr/bin/find "$STAGE_ROOT" -type l -print -quit)"

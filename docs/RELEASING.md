@@ -1,5 +1,14 @@
 # 版本与发布流程
 
+## v1.3.4 明确批准的发布例外（2026-09-30）
+
+用户已接受记录中的原生验证缺口并批准公开发布，不标全部 Verified。
+本次按 [发布交接](handoffs/v1.3.4-release.md) 操作，覆盖下方历史完整验证/标签重建要求。
+最终包使用 release.json 与 RELEASE-NOTICE.txt；仅 v1.3.4 标签排除自动重复构建。
+本次 main 发布提交使用 [skip ci] 避免重复整套基础回归，不关闭整体 CI 或降低安全保护。
+手动 release_packages=true 与 candidate_packages_only=true 构建两个 Mac 包并做有限检查。
+Windows 重新封装不变产品文件；发布后文档归档不重建产品。每个最终 ZIP 只生成一次 SHA。
+
 ## 核心原则
 
 ### v1.3.4 未发布候选制作的限定授权

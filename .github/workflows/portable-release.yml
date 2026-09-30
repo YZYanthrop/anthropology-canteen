@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*.*.*"
+      # v1.3.4 uses one explicitly approved pre-tag build; never rebuild on tag push.
+      - "!v1.3.4"
   workflow_dispatch:
     inputs:
       tag:
@@ -16,6 +18,12 @@ on:
         type: string
       candidate_packages_only:
         description: Mac candidate packages only; limited ZIP/startup checks, no full regression or scheduler tests
+        required: false
+        default: false
+        type: boolean
+
+      release_packages:
+        description: v1.3.4 release markers with accepted verification limitations (requires candidate_packages_only)
         required: false
         default: false
         type: boolean
@@ -34,6 +42,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ inputs.tag || '' }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha || '' }}
+      RELEASE_PACKAGES: ${{ inputs.release_packages || false }}
       CANDIDATE_PACKAGES_ONLY: ${{ inputs.candidate_packages_only || false }}
     outputs:
       source_sha: ${{ steps.metadata.outputs.source_sha }}
@@ -59,6 +68,10 @@ jobs:
         id: metadata
         shell: bash
         run: |
+          if [[ "$RELEASE_PACKAGES" == "true" && "$CANDIDATE_PACKAGES_ONLY" != "true" ]]; then
+            echo "release_packages requires limited manual package mode." >&2
+            exit 1
+          fi
           if [[ "$CANDIDATE_PACKAGES_ONLY" == "true" && ( "$GITHUB_EVENT_NAME" != "workflow_dispatch" || -z "$CANDIDATE_SHA" || -n "$RELEASE_TAG" ) ]]; then
             echo "Limited packages require a manual candidate_sha, never a release tag." >&2
             exit 1
@@ -90,6 +103,10 @@ jobs:
           VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
           if [[ -n "$RELEASE_TAG" && "$RELEASE_TAG" != "v${VERSION}" ]]; then
             echo "Tag $RELEASE_TAG does not match package.json version $VERSION." >&2
+            exit 1
+          fi
+          if [[ "$RELEASE_PACKAGES" == "true" && "$VERSION" != "1.3.4" ]]; then
+            echo "This release exception is scoped to 1.3.4." >&2
             exit 1
           fi
           SOURCE_SHA="$(git rev-parse HEAD)"
@@ -232,7 +249,7 @@ jobs:
 
       - name: Build native portable ZIP
         shell: bash
-        run: bash packaging/macos/build-portable.sh "${{ matrix.arch }}" "$GITHUB_WORKSPACE/outputs" "${{ inputs.candidate_packages_only && '--candidate' || '' }}"
+        run: bash packaging/macos/build-portable.sh "${{ matrix.arch }}" "$GITHUB_WORKSPACE/outputs" "${{ inputs.release_packages && '--release' || inputs.candidate_packages_only && '--candidate' || '' }}"
 
       - name: Run native package, persistence, import, shutdown, and privacy smoke tests
         if: ${{ !inputs.candidate_packages_only }}
@@ -245,17 +262,17 @@ jobs:
         if: ${{ inputs.candidate_packages_only }}
         shell: bash
         run: |
-          ROOT="outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}-candidate"
-          python3 packaging/shared/candidate-smoke.py "$ROOT.zip" --platform darwin --arch "${{ matrix.arch }}" --source-sha "${{ needs.validate-tag.outputs.source_sha }}" --report "$ROOT.checks.json"
+          ROOT="outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}${{ !inputs.release_packages && '-candidate' || '' }}"
+          python3 packaging/shared/candidate-smoke.py "$ROOT.zip" --platform darwin --arch "${{ matrix.arch }}" --source-sha "${{ needs.validate-tag.outputs.source_sha }}" --report "$ROOT.checks.json" ${{ inputs.release_packages && '--release' || '' }}
 
       - name: Upload macOS release-candidate artifact
         uses: actions/upload-artifact@v6
         with:
-          name: Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}${{ inputs.candidate_packages_only && '-candidate' || '' }}
+          name: Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}${{ inputs.candidate_packages_only && !inputs.release_packages && '-candidate' || '' }}
           path: |
-            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}${{ inputs.candidate_packages_only && '-candidate' || '' }}.zip
-            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}${{ inputs.candidate_packages_only && '-candidate' || '' }}.zip.sha256
-            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}-candidate.checks.json
+            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}${{ inputs.candidate_packages_only && !inputs.release_packages && '-candidate' || '' }}.zip
+            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}${{ inputs.candidate_packages_only && !inputs.release_packages && '-candidate' || '' }}.zip.sha256
+            outputs/Anthropology-Canteen-macOS-${{ matrix.artifact_arch }}-v${{ needs.validate-tag.outputs.version }}${{ inputs.candidate_packages_only && !inputs.release_packages && '-candidate' || '' }}.checks.json
           if-no-files-found: error
           retention-days: 30
 

@@ -29,6 +29,7 @@ def main():
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--inspect-only", action="store_true")
+    parser.add_argument("--release", action="store_true", help="Check published-with-limitations release markers")
     args = parser.parse_args()
     require(re.fullmatch(r"[0-9a-f]{40}", args.source_sha), "Invalid source commit")
     checks = []
@@ -66,10 +67,12 @@ def main():
                 if os.name != "nt":
                     target.chmod((entry.external_attr >> 16) & 0o777 or 0o644)
         root = destination / next(iter(roots))
-        metadata = json.loads((root / "candidate.json").read_text(encoding="utf-8-sig"))
-        for key, value in {"version": "1.3.4", "sourceCommit": args.source_sha, "platform": args.platform, "arch": args.arch, "status": "unpublished-candidate", "fullyVerified": False}.items():
+        metadata = json.loads((root / ("release.json" if args.release else "candidate.json")).read_text(encoding="utf-8-sig"))
+        for key, value in {"version": "1.3.4", "sourceCommit": args.source_sha, "platform": args.platform, "arch": args.arch, "status": "published-with-limitations" if args.release else "unpublished-candidate", "fullyVerified": False}.items():
             require(metadata.get(key) == value, "Candidate metadata mismatch: " + key)
-        require(WARNING in (root / "CANDIDATE-NOTICE.txt").read_text(encoding="utf-8-sig"), "Missing experimental warning")
+        require(WARNING in (root / ("RELEASE-NOTICE.txt" if args.release else "CANDIDATE-NOTICE.txt")).read_text(encoding="utf-8-sig"), "Missing experimental warning")
+        if args.release:
+            require(not (root / "candidate.json").exists() and not (root / "CANDIDATE-NOTICE.txt").exists() and not root.name.endswith("-candidate"), "Stale candidate markers")
         node = root / ("runtime/node.exe" if args.platform == "win32" else "runtime/bin/node")
         required = [node, root / "portable-server.mjs", root / "dist/server/index.js", root / "reminder-worker.mjs", root / "tools/import-data.mjs", root / "LICENSE"]
         if args.platform == "darwin":

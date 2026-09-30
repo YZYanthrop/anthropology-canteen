@@ -30,6 +30,13 @@ document router below.
   output, or scheduler state.
 - Windows and both macOS builds remain one shared product and version.
 
+## 当前发布授权（2026-09-30）
+
+v1.3.4 已获明确发布授权，正在准备最终包与发布，未全部 Verified。
+允许 main 推送、不可变标签、Release 与六个附件；保留已接受缺口，不重复整套回归。
+发布分支 codex/v1.3.4-release，详见 [发布交接](handoffs/v1.3.4-release.md)。
+下方候选阶段权限是历史记录，本次授权优先。
+
 ## Active work
 
 - [v1.3.4 提醒与迁移安全修复](plans/v1.3.4-reminder-and-migration-safety.md) Slice A–D

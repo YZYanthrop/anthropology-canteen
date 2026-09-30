@@ -24,6 +24,13 @@ v1.3.3 A–E 已纳入同一标签。Windows x64、macOS Apple Silicon arm64、m
 通过候选与正式标签原生验证，公开 ZIP 重新下载后与校验文件一致。详见
 [版本记录](../../CHANGELOG.md)和[正式下载页](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3)。
 
+## 当前发布授权（2026-09-30）
+
+v1.3.4 已获明确发布授权，正在准备最终包与发布，未全部 Verified。
+允许 main 推送、不可变标签、Release 与六个附件；保留已接受缺口，不重复整套回归。
+发布分支 codex/v1.3.4-release，详见 [发布交接](../handoffs/v1.3.4-release.md)。
+下方候选阶段权限是历史记录，本次授权优先。
+
 ## 下一步边界
 
 最新授权覆盖此前“仅收尾、不合并、不打包”：允许本地合并、版本冻结、三平台未发布候选包。
