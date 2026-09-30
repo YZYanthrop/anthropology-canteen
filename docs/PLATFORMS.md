@@ -2,20 +2,24 @@
 
 ## Support matrix
 
-v1.3.4 candidates are unpublished and not fully Verified. Windows x64 and both
-Mac architectures share one frozen source commit recorded in `candidate.json`.
-Mac candidates are experimental: native reminder scheduling, migration and
-failure recovery remain unverified for this version. Limited final-ZIP checks
-cover direct server startup and synthetic persistence, not OS launcher UI or
-scheduled reminders. See [candidate handoff](handoffs/v1.3.4-candidates.md).
+v1.3.4 已发布，但未全部 Verified；用户明确接受本次验证例外。
+不可变标签 v1.3.4 指向 `bb78dd9431a61617c3198b087ac556759ef85333`，三个最终包的 release.json 同源。
+[公开发布页](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.4)；[发布交接](handoffs/v1.3.4-release.md)。
+最终 Windows 包及两个原生 Mac 包的结构、空白资料、隐私、服务启动、静态资源和合成状态重启持久化检查通过。
+既有 691a749 的 lint/build、Node 132/132、UI 39/39 及已执行 Windows 原生结果保留，未重复整套回归。
 
 macOS 版为实验性版本，尚未完成 v1.3.4 的 macOS 原生验收，后台提醒、资料迁移及失败恢复仍存在未验证风险。升级前请保留旧版文件夹和资料备份。
 
+Windows 另一管理员身份、真实任务读取权限拒绝及已有任务取消场景仍未验证。
+启动器人工交互与真实邮件/服务不在本次有限检查范围内，不声称完整原生验收。
+格式保持 8/2/3；v1.4.0 仍为 Proposed、未批准实施。
+原主目录两项修改和三项未跟踪文档保留在 codex/preserve-local-planning-v1.3.4，未覆盖或提交。
+
 | Target | Status | Runtime | Launcher | Data location |
 | --- | --- | --- | --- | --- |
-| Windows x64 | v1.3.3 released; native package and reminder smoke passed | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
-| macOS Apple Silicon | v1.3.3 released; unsigned native package and reminder smoke passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
-| macOS Intel | v1.3.3 released; unsigned native package and reminder smoke passed | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| Windows x64 | v1.3.4 released; limited final-ZIP checks passed; not fully Verified | bundled `node.exe` | VBS, with CMD diagnostics | extracted folder `data/` |
+| macOS Apple Silicon | v1.3.4 experimental; unsigned; limited final-ZIP checks passed | bundled `darwin-arm64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
+| macOS Intel | v1.3.4 experimental; unsigned; limited final-ZIP checks passed | bundled `darwin-x64` Node.js 24.14.0 | Finder command launcher and diagnostics | extracted folder `data/` |
 
 The v1.3.3 tag run [#36212646270](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/36212646270)
 passed Windows and both native macOS package smoke tests from one commit. Public ZIPs were

@@ -1,32 +1,26 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-09-28
+Last updated: 2026-09-30
 
-## Current implementation
+## Current release
 
-[v1.3.4 A–D](plans/v1.3.4-reminder-and-migration-safety.md) implementation and
-regression test code are locally committed on `codex/v1.3.4-slice-a`, based on
-`f88bc46` in the existing isolated worktree. A: `0809a1b` / `c8d68db`; B:
-`dd07d9d`; C: `f15b63c`; D: `5ae4aee`; static-review fixes: `08641db`.
-The packet remains In progress, not Verified. Unified verification fixed backup
-naming and incomplete reminder-identity discovery in `691a749`. Lint/build,
-132 Node tests and 39 UI tests passed. Windows native task checks (31), actual
-UAC cancellation and temporary filesystem permission/locking cases passed.
-macOS native and remaining Windows identity/permission combinations are pending;
-see the [verification report](handoffs/v1.3.4-validation.md). A's historical
-results are retained separately from this combined revision's evidence.
-The original checkout's dirty documents remain preserved. v1.4.0 is not started.
-The subsequent candidate task authorizes local main merge, version 1.3.4 freeze,
-and three unpublished portable candidates. Schemas remain 8/2/3. Original dirty
-documents stay on `codex/preserve-local-planning-v1.3.4`. Cloud Mac builds require
-separate minimal branch-push/dispatch authorization; no tags or publication.
-See the [candidate handoff](handoffs/v1.3.4-candidates.md). Build success does not
-close native verification gaps or make this version fully Verified.
+v1.3.4 已发布，但未全部 Verified；用户明确接受本次验证例外。
+不可变标签 v1.3.4 指向 `bb78dd9431a61617c3198b087ac556759ef85333`，三个最终包的 release.json 同源。
+[公开发布页](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.4)；[发布交接](handoffs/v1.3.4-release.md)。
+最终 Windows 包及两个原生 Mac 包的结构、空白资料、隐私、服务启动、静态资源和合成状态重启持久化检查通过。
+既有 691a749 的 lint/build、Node 132/132、UI 39/39 及已执行 Windows 原生结果保留，未重复整套回归。
+
+macOS 版为实验性版本，尚未完成 v1.3.4 的 macOS 原生验收，后台提醒、资料迁移及失败恢复仍存在未验证风险。升级前请保留旧版文件夹和资料备份。
+
+Windows 另一管理员身份、真实任务读取权限拒绝及已有任务取消场景仍未验证。
+启动器人工交互与真实邮件/服务不在本次有限检查范围内，不声称完整原生验收。
+格式保持 8/2/3；v1.4.0 仍为 Proposed、未批准实施。
+原主目录两项修改和三项未跟踪文档保留在 codex/preserve-local-planning-v1.3.4，未覆盖或提交。
 
 ## Stable baseline
 
-- Current public product version: `v1.3.3`.
-- Stable Git tag: `v1.3.3`; Windows x64, macOS arm64, and macOS x64 artifacts
+- Current public product version: `v1.3.4`.
+- Stable Git tag: `v1.3.4`; Windows x64, macOS arm64, and macOS x64 artifacts
   are built from that one immutable tag.
 - Local data schema: version 8; v1.3.0 public packages used version 7.
 - Local API-key and reminder settings schema: version 3; the main research data
@@ -35,7 +29,7 @@ close native verification gaps or make this version fully Verified.
   IDs are quarantined while subscriptions and user states are preserved.
 - Current published distributions: Windows x64 plus unsigned macOS Apple
   Silicon arm64 and Intel x64 portable ZIPs in one
-  [v1.3.3 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3).
+  [v1.3.4 Release](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.4).
 - macOS bootstrap tag: `macos-v1.1.1-beta.1` at the validated build commit
   `c2ec6d1`; its GitHub Pre-release is
   [published here](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/macos-v1.1.1-beta.1).
@@ -45,7 +39,7 @@ close native verification gaps or make this version fully Verified.
   Windows share package pins Node.js 24.14.0.
 
 The `v1.1.1`, `macos-v1.1.1-beta.1`, `v1.2.0`, `v1.3.0`, `v1.3.1`,
-`v1.3.2`, and `v1.3.3` tags are immutable.
+`v1.3.2`, `v1.3.3`, and `v1.3.4` tags are immutable.
 
 ## v1.3.3 release baseline
 

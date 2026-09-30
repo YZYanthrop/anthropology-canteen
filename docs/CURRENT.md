@@ -1,6 +1,6 @@
 # Current project snapshot
 
-Last updated: 2026-09-28
+Last updated: 2026-09-30
 
 This is the lightweight entry point for a new Codex task. Chat history is not
 required. Read this file and `docs/work/ACTIVE.md` first, then follow the
@@ -8,8 +8,8 @@ document router below.
 
 ## Stable product
 
-- Public version and immutable tag: `v1.3.3` at
-  `a853e712a84156b5cc5575a828d2295298b35beb`.
+- Public version and immutable tag: `v1.3.4` at
+  `bb78dd9431a61617c3198b087ac556759ef85333`; released with accepted limits, not fully Verified.
 - Targets: Windows x64, macOS arm64, and macOS x64 from one source tag.
 - Main local-data schema: version 8.
 - Reminder-state schema: version 2.
@@ -30,34 +30,21 @@ document router below.
   output, or scheduler state.
 - Windows and both macOS builds remain one shared product and version.
 
-## 当前发布授权（2026-09-30）
+## Current release
 
-v1.3.4 已获明确发布授权，正在准备最终包与发布，未全部 Verified。
-允许 main 推送、不可变标签、Release 与六个附件；保留已接受缺口，不重复整套回归。
-发布分支 codex/v1.3.4-release，详见 [发布交接](handoffs/v1.3.4-release.md)。
-下方候选阶段权限是历史记录，本次授权优先。
+v1.3.4 已发布，但未全部 Verified；用户明确接受本次验证例外。
+不可变标签 v1.3.4 指向 `bb78dd9431a61617c3198b087ac556759ef85333`，三个最终包的 release.json 同源。
+[公开发布页](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.4)；[发布交接](handoffs/v1.3.4-release.md)。
+最终 Windows 包及两个原生 Mac 包的结构、空白资料、隐私、服务启动、静态资源和合成状态重启持久化检查通过。
+既有 691a749 的 lint/build、Node 132/132、UI 39/39 及已执行 Windows 原生结果保留，未重复整套回归。
 
-## Active work
+macOS 版为实验性版本，尚未完成 v1.3.4 的 macOS 原生验收，后台提醒、资料迁移及失败恢复仍存在未验证风险。升级前请保留旧版文件夹和资料备份。
 
-- [v1.3.4 提醒与迁移安全修复](plans/v1.3.4-reminder-and-migration-safety.md) Slice A–D
-  已批准实施，状态 `In progress`，沿用隔离分支 `codex/v1.3.4-slice-a`，基线 `f88bc46`。
-  A–D 实现、回归测试代码和文档已完成本地提交；B dd07d9d、C f15b63c、D 5ae4aee，静态审阅修正 08641db。
-  统一验证修复提交 `691a749`：lint/build 通过，Node 132/132、UI 39/39 通过；Windows
-  真实任务 31 项、真实 UAC 取消和临时文件权限/占用检查通过，详见[验证报告](handoffs/v1.3.4-validation.md)。
-  收尾结论：**实现及本轮可执行验证完成**，既有通过结果保留。
-  macOS 原生、另一管理员身份、真实任务读取权限拒绝及已有任务取消场景明确未验证；
-  不标为全部 Verified 或可发布。最新授权：本地 main 合并、版本统一为 1.3.4、三平台未发布候选包。
-  不重复整套基础回归；仅构建及最终包必要检查，不追加 UAC、测试账户、虚拟机或提醒/迁移原生验收。
-  原主目录未提交文档保留在 `codex/preserve-local-planning-v1.3.4`；候选准备分支 `codex/v1.3.4-candidate`。
-  云端 Mac 构建须单独取得最小推送/运行授权；不打标签、不发布。详见[候选包交接](handoffs/v1.3.4-candidates.md)。
-- v1.3.3 A–E 已从同一标签提交正式发布：[三个平台的便携包](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3)。
-  候选与标签运行的三平台原生检查均通过；公开附件重新下载后与同名校验文件一致。
-- 升级可保留同一旧版文件夹中的邮件设置、发送记录和 Windows 加密授权码；Windows
-  后台提醒任务在必要时只提升任务小工具。同一身份重复更新不增加任务，来源不明的旧任务不自动删除。
-- 主数据格式 8、提醒状态 2、设置 3 不变。实际触摸/混合设备、屏幕阅读器和真实高倍缩放
-  仍需后续人工验收；自动化通过不等于没有缺陷。
-- [v1.4.0 路线图](plans/v1.4.0-roadmap.md) 仍为 `Proposed`，尚未批准实施。
-- 已发布标签和附件不可改写；本地试用包及候选包不是正式发布文件。
+Windows 另一管理员身份、真实任务读取权限拒绝及已有任务取消场景仍未验证。
+启动器人工交互与真实邮件/服务不在本次有限检查范围内，不声称完整原生验收。
+格式保持 8/2/3；v1.4.0 仍为 Proposed、未批准实施。
+原主目录两项修改和三项未跟踪文档保留在 codex/preserve-local-planning-v1.3.4，未覆盖或提交。
+
 ## Read only what the task needs
 
 - Every task: `AGENTS.md`, this file, and `docs/work/ACTIVE.md`.

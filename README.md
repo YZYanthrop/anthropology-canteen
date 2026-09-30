@@ -2,14 +2,15 @@
 
 Anthropology Canteen 是在自己电脑上运行的人类学研究追踪工具。它不需要账号、云数据库，也不需要单独安装 Node.js（便携包自带的运行环境）；关注记录和设置保存在解压后的程序文件夹内。Windows 64 位、macOS Apple Silicon 和 macOS Intel 均有便携包。
 
-当前正式版本是 [Anthropology Canteen v1.3.3 Release（正式下载页）](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3)。
+当前正式版本是 [Anthropology Canteen v1.3.4 Release（正式下载页）](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.4)。
 
-v1.3.4 正在制作未发布候选包，尚未全部 Verified；Mac 候选版为实验性版本。
-范围与未验证限制见[候选说明及发布草稿](docs/releases/v1.3.4-draft.md)，现有正式下载不变。
+v1.3.4 已发布，但未全部 Verified。macOS 版为实验性版本，尚未完成 v1.3.4 的 macOS 原生验收，后台提醒、资料迁移及失败恢复仍存在未验证风险。升级前请保留旧版文件夹和资料备份。
+
+Windows 另一管理员身份、真实任务读取权限拒绝及已有任务取消场景仍未验证。 详见[发布说明](docs/releases/v1.3.4.md)。
 
 ## 第一次使用：4 步开始
 
-1. 打开 [v1.3.3 正式下载页](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.3)。
+1. 打开 [v1.3.4 正式下载页](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.4)。
 2. 根据电脑类型下载下方三个 ZIP（压缩包）之一。
 3. 在文件管理器中把 ZIP 完整解压到一个独立文件夹。
 4. 运行对应系统的推荐启动器：
@@ -18,23 +19,23 @@ v1.3.4 正在制作未发布候选包，尚未全部 Verified；Mac 候选版为
 
 不要在 ZIP 预览窗口内双击启动文件。不要只复制其中一个启动文件；运行时需要保留完整的解压文件夹。
 
-## 选择正确的 v1.3.3 下载包
+## 选择正确的 v1.3.4 下载包
 
 ### Windows 64 位电脑
 
-下载：`Anthropology-Canteen-Windows-x64-v1.3.3.zip`
+下载：`Anthropology-Canteen-Windows-x64-v1.3.4.zip`
 
 这是面向 64 位 Windows 的便携包。
 
 ### M1、M2、M3、M4 等 Apple 芯片 Mac
 
-下载：`Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.3.3.zip`
+下载：`Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.3.4.zip`
 
 这类 Mac 在“关于本机”中会显示 Apple M 系列“芯片”。
 
 ### Intel 处理器 Mac
 
-下载：`Anthropology-Canteen-macOS-Intel-x64-v1.3.3.zip`
+下载：`Anthropology-Canteen-macOS-Intel-x64-v1.3.4.zip`
 
 如果不确定 Mac 类型，请打开“ → 关于本机”。看到“芯片：Apple M…”时选择 Apple Silicon arm64；看到“处理器：Intel…”时选择 Intel x64。
 
@@ -70,7 +71,7 @@ Windows 便携包支持 64 位 Windows 10 或更新版本。
 
 ## macOS：启动与诊断
 
-v1.3.3 的 macOS 便携包最低支持 macOS 13.5。Apple Silicon 和 Intel 包都未签名、未公证。
+v1.3.4 的 macOS 便携包最低支持 macOS 13.5。Apple Silicon 和 Intel 包都未签名、未公证。
 
 ### 正常启动
 
@@ -94,12 +95,12 @@ Terminal 可能短暂出现；浏览器打开后不需要一直保留它。如�
 
 关闭所有 Anthropology Canteen 浏览器页面后，后台程序通常会在约 8 秒内停止。下次使用时，重新运行所属平台的推荐启动器即可。
 
-## v1.3.3 有什么新变化
+## v1.3.4 有什么新变化
 
-- 更新情况改用更容易理解的中文，区分检查完成、部分来源暂时无法查询和未能检查。
-- 桌面关注栏可以独立滚动；触摸设备直接显示取消关注操作。
-- 自动升级会保留同一旧版文件夹中的邮件设置、发送记录和 Windows 加密授权码；不会自动发送邮件。
-- Windows 更新后台提醒时只在必要时提升任务小工具；同一提醒身份重复更新不会增加计划任务。
+- 后台提醒更新失败时恢复原任务及记录；恢复未完成会明确提示。
+- 资料迁移失败时区分已恢复与恢复未完成，保留备份和恢复材料。
+- 后台状态区分已开启、已停用、需要更新、任务不存在和无法核对，不自动重新开启停用任务。
+- 寻找旧版本失败不影响读取当前正常资料，不用空白文件覆盖已有资料。
 
 完整版本记录见 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -119,7 +120,7 @@ Terminal 可能短暂出现；浏览器打开后不需要一直保留它。如�
 
 1. 关闭旧版的全部 Anthropology Canteen 页面。
 2. 等待约 10 秒，让旧版后台程序退出。
-3. 把 v1.3.3 ZIP 解压到新的独立文件夹，不要覆盖旧版文件夹。
+3. 把 v1.3.4 ZIP 解压到新的独立文件夹，不要覆盖旧版文件夹。
 4. 启动新版，让它优先尝试从旁边的旧版文件夹自动迁移数据。
 5. 核对关注项、收藏、忽略状态、翻译、API Key、邮件提醒设置、授权码状态和上次发送记录。
 6. 确认新版数据完整后，再决定是否删除旧版文件夹。
@@ -146,7 +147,7 @@ Terminal 可能短暂出现；浏览器打开后不需要一直保留它。如�
 
 ## 重要：保护自己的数据
 
-> 从 v1.3.3 Release 下载的三个正式便携包 ZIP 都是空白分享包，不含个人关注记录、API Key、邮件地址、提醒状态或授权码。分享给别人时，请发送原始便携包 ZIP，不要发送自己已经运行过的文件夹。
+> 从 v1.3.4 Release 下载的三个正式便携包 ZIP 都是空白分享包，不含个人关注记录、API Key、邮件地址、提醒状态或授权码。分享给别人时，请发送原始便携包 ZIP，不要发送自己已经运行过的文件夹。
 
 - 第一次运行后，解压文件夹中会出现 `data/`。它可能包含关注记录、收藏、忽略状态、翻译、API Key、邮件提醒设置和提醒历史。
 - Windows 的 `data/` 还可能包含由 DPAPI 加密的邮件授权码。DPAPI 是 Windows 自带的、与用户账户绑定的加密方式；其密文不能当作可在任意 Windows 账户或电脑上直接使用的密码备份。
@@ -169,7 +170,7 @@ Terminal 可能短暂出现；浏览器打开后不需要一直保留它。如�
 
 ### 浏览器打开了旧版本
 
-关闭所有 Anthropology Canteen 页面，等待约 10 秒，然后从 v1.3.3 的新文件夹重新启动。启动器会核对程序文件夹，并在旧副本仍占用端口时尝试其他本地端口；若仍不正确，请运行所属平台的诊断启动器。
+关闭所有 Anthropology Canteen 页面，等待约 10 秒，然后从 v1.3.4 的新文件夹重新启动。启动器会核对程序文件夹，并在旧副本仍占用端口时尝试其他本地端口；若仍不正确，请运行所属平台的诊断启动器。
 
 ### macOS 提示无法验证开发者
 
@@ -208,9 +209,9 @@ SMTP 是邮箱的发信服务器设置。邮件提醒是可选的本机功能：
 
 普通使用者不需要直接打开或编辑这些文件。它们位于解压文件夹的 `data/` 中；下方的 schema 指数据文件的格式版本：
 
-- `anthropology-canteen-data.json`：关注、文章状态、翻译和缓存；v1.3.3 使用主数据格式 8。
-- `anthropology-canteen-settings.json`：API Key 和提醒配置；v1.3.3 使用设置格式 3。
-- `anthropology-canteen-reminder-state.json`：提醒基线、待发送记录和发送历史；v1.3.3 使用提醒状态格式 2。
+- `anthropology-canteen-data.json`：关注、文章状态、翻译和缓存；v1.3.4 使用主数据格式 8。
+- `anthropology-canteen-settings.json`：API Key 和提醒配置；v1.3.4 使用设置格式 3。
+- `anthropology-canteen-reminder-state.json`：提醒基线、待发送记录和发送历史；v1.3.4 使用提醒状态格式 2。
 - `anthropology-canteen-reminder-secret.json`：仅 Windows 使用的 DPAPI 加密授权码文件。
 
 自动迁移和事务式导入会验证受支持的数据格式，并尽量保留关注日期、收藏、已读、忽略、翻译、API Key、提醒设置、提醒发送记录和 Windows 加密授权码。自动迁移只从同一个旧版文件夹取这些资料，不会把多个旧版本拼在一起。请在确认新版内容无误之前保留旧版文件夹。
@@ -222,14 +223,14 @@ SHA-256 是文件的数字摘要，可用于检查下载是否完整。每个正
 Windows PowerShell 示例：
 
 ```powershell
-Get-FileHash ".\Anthropology-Canteen-Windows-x64-v1.3.3.zip" -Algorithm SHA256
+Get-FileHash ".\Anthropology-Canteen-Windows-x64-v1.3.4.zip" -Algorithm SHA256
 ```
 
 macOS Terminal 示例：
 
 ```bash
-shasum -a 256 "Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.3.3.zip"
-shasum -a 256 "Anthropology-Canteen-macOS-Intel-x64-v1.3.3.zip"
+shasum -a 256 "Anthropology-Canteen-macOS-Apple-Silicon-arm64-v1.3.4.zip"
+shasum -a 256 "Anthropology-Canteen-macOS-Intel-x64-v1.3.4.zip"
 ```
 
 把命令显示的 64 位摘要与相应 `.sha256` 文件中的摘要比较即可。
