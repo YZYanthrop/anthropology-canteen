@@ -1,5 +1,13 @@
 # 版本与发布流程
 
+## 已发布 v1.3.4 的独立有限验收（2026-10-02）
+
+[本轮验收计划](plans/v1.3.4-macos-limited-acceptance.md)仅下载不可变正式包，不构建或打包。
+macos-v134-acceptance.yml 只由 codex/v1.3.4-macos-acceptance 的脚本变更 push 触发，
+首次运行无需合并 main；contents:read，仅两种 Mac runner，报告保留 30 天。
+推送/执行须本任务单独授权；历史发布授权不延续。任何产品缺陷转交后续版本，不更换发布资产。
+原 portable-release 工作流、main、标签、ZIP、SHA256 文件和 Release 不变。
+
 ## v1.3.4 明确批准的发布例外（2026-09-30）
 
 用户已接受记录中的原生验证缺口并批准公开发布，不标全部 Verified。

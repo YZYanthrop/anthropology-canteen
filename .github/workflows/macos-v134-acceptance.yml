@@ -1,0 +1,76 @@
+name: Published v1.3.4 macOS limited acceptance
+
+# First branch push can run this workflow without merging into main.
+on:
+  push:
+    branches: [codex/v1.3.4-macos-acceptance]
+    paths:
+      - .github/workflows/macos-v134-acceptance.yml
+      - packaging/macos/acceptance-v134/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-v134-acceptance
+  cancel-in-progress: false
+
+jobs:
+  accept:
+    if: github.repository == 'YZYanthrop/anthropology-canteen' && github.ref == 'refs/heads/codex/v1.3.4-macos-acceptance'
+    name: Published ZIP acceptance (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    env:
+      PRODUCT_SHA: bb78dd9431a61617c3198b087ac556759ef85333
+      TEST_ARCH: ${{ matrix.arch }}
+      ACCEPTANCE_PLAYWRIGHT_MODULE: ${{ runner.temp }}/canteen-acceptance-tools/node_modules/playwright-core/index.mjs
+    steps:
+      - name: Check out acceptance scripts
+        uses: actions/checkout@v6
+        with:
+          path: acceptance
+          persist-credentials: false
+
+      - name: Check out immutable published source (fault injection only)
+        uses: actions/checkout@v6
+        with:
+          ref: bb78dd9431a61617c3198b087ac556759ef85333
+          path: published-source
+          persist-credentials: false
+
+      - name: Install test-only browser client (no product dependencies or build)
+        run: npm install --prefix "$RUNNER_TEMP/canteen-acceptance-tools" --ignore-scripts --no-audit --no-fund playwright-core@1.63.0
+
+      - name: Download published ZIP, verify baseline, run separated acceptance
+        run: |
+          python3 acceptance/packaging/macos/acceptance-v134/run.py \
+            --arch "$TEST_ARCH" --source "$GITHUB_WORKSPACE/published-source" \
+            --scratch "$RUNNER_TEMP/canteen-v134-$GITHUB_RUN_ID-$TEST_ARCH" \
+            --reports "$GITHUB_WORKSPACE/reports"
+
+      - name: Verify cleanup of exact registered test identities
+        if: always()
+        run: |
+          python3 acceptance/packaging/macos/acceptance-v134/run.py --cleanup \
+            --arch "$TEST_ARCH" --source "$GITHUB_WORKSPACE/published-source" \
+            --scratch "$RUNNER_TEMP/canteen-v134-$GITHUB_RUN_ID-$TEST_ARCH" \
+            --reports "$GITHUB_WORKSPACE/reports"
+
+      - name: Retain reports, logs and synthetic fault evidence only
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: v1.3.4-macos-acceptance-${{ matrix.arch }}-${{ github.sha }}
+          path: reports/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 30

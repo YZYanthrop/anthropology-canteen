@@ -1,6 +1,6 @@
 # Current project snapshot
 
-Last updated: 2026-09-30
+Last updated: 2026-10-02
 
 This is the lightweight entry point for a new Codex task. Chat history is not
 required. Read this file and `docs/work/ACTIVE.md` first, then follow the
@@ -29,6 +29,12 @@ document router below.
 - Never commit or package `data/`, credentials, personal paths, caches, build
   output, or scheduler state.
 - Windows and both macOS builds remain one shared product and version.
+
+## Current work
+
+已批准已发布 v1.3.4 的 macOS 有限验收；独立分支 codex/v1.3.4-macos-acceptance，状态 In progress。
+[验收计划](plans/v1.3.4-macos-limited-acceptance.md) · [验收记录](handoffs/v1.3.4-macos-limited-acceptance.md)。
+当前只完成脚本准备；本轮云端推送/运行待单独授权，各项仍待验证。产品保持已发布但未全部 Verified。
 
 ## Current release
 

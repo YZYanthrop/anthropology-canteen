@@ -1,5 +1,13 @@
 # Platform support
 
+## 2026-10-02 macOS limited acceptance
+
+A separate acceptance branch is preparing tests of the immutable published v1.3.4 ZIPs.
+See [scope and evidence categories](plans/v1.3.4-macos-limited-acceptance.md) and
+[per-architecture results](handoffs/v1.3.4-macos-limited-acceptance.md). Cloud execution
+still requires this task's explicit authorization; current native results are pending.
+This does not change platform support, rebuild packages, or remove the experimental warning.
+
 ## Support matrix
 
 v1.3.4 已发布，但未全部 Verified；用户明确接受本次验证例外。

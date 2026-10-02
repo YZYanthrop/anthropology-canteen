@@ -1,12 +1,12 @@
 # Active work packet
 
-Last updated: 2026-09-30
+Last updated: 2026-10-02
 
-- Status: Released — not fully Verified（已发布，但未全部 Verified）
+- Status: In progress — 已发布 v1.3.4 的 macOS 有限验收；产品仍 not fully Verified
 - Target version: v1.3.4
-- Task disposition: closed — 已完成授权发布及公开核对
-- Plan: [提醒与迁移安全修复](../plans/v1.3.4-reminder-and-migration-safety.md)
-- Handoff: [发布交接](../handoffs/v1.3.4-release.md)
+- Task disposition: 本地脚本准备已批准；新的分支推送和两架构云端执行待单独授权
+- Plan: [macOS 有限验收](../plans/v1.3.4-macos-limited-acceptance.md)；原 A–D 实现计划已归档
+- Handoff: [本轮验收记录](../handoffs/v1.3.4-macos-limited-acceptance.md)；分支 codex/v1.3.4-macos-acceptance
 - Verification: [原验证记录](../handoffs/v1.3.4-validation.md)；不以有限包检查替代未验证项目
 
 v1.3.4 已发布，但未全部 Verified；用户明确接受本次验证例外。
