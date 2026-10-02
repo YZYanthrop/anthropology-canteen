@@ -32,7 +32,6 @@ jobs:
     env:
       PRODUCT_SHA: bb78dd9431a61617c3198b087ac556759ef85333
       TEST_ARCH: ${{ matrix.arch }}
-      ACCEPTANCE_PLAYWRIGHT_MODULE: ${{ runner.temp }}/canteen-acceptance-tools/node_modules/playwright-core/index.mjs
     steps:
       - name: Check out acceptance scripts
         uses: actions/checkout@v6
@@ -51,6 +50,8 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/canteen-acceptance-tools" --ignore-scripts --no-audit --no-fund playwright-core@1.63.0
 
       - name: Download published ZIP, verify baseline, run separated acceptance
+        env:
+          ACCEPTANCE_PLAYWRIGHT_MODULE: ${{ runner.temp }}/canteen-acceptance-tools/node_modules/playwright-core/index.mjs
         run: |
           python3 acceptance/packaging/macos/acceptance-v134/run.py \
             --arch "$TEST_ARCH" --source "$GITHUB_WORKSPACE/published-source" \

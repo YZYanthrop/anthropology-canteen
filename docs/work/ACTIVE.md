@@ -4,7 +4,7 @@ Last updated: 2026-10-02
 
 - Status: In progress — 已发布 v1.3.4 的 macOS 有限验收；产品仍 not fully Verified
 - Target version: v1.3.4
-- Task disposition: 本地脚本准备已批准；新的分支推送和两架构云端执行待单独授权
+- Task disposition: 本任务最小分支推送、两架构云端验收及必要脚本修正重验已获批准
 - Plan: [macOS 有限验收](../plans/v1.3.4-macos-limited-acceptance.md)；原 A–D 实现计划已归档
 - Handoff: [本轮验收记录](../handoffs/v1.3.4-macos-limited-acceptance.md)；分支 codex/v1.3.4-macos-acceptance
 - Verification: [原验证记录](../handoffs/v1.3.4-validation.md)；不以有限包检查替代未验证项目
