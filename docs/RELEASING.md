@@ -7,6 +7,9 @@ macos-v134-acceptance.yml 只由 codex/v1.3.4-macos-acceptance 的脚本变更 p
 首次运行无需合并 main；contents:read，仅两种 Mac runner，报告保留 30 天。
 推送/执行须本任务单独授权；历史发布授权不延续。任何产品缺陷转交后续版本，不更换发布资产。
 原 portable-release 工作流、main、标签、ZIP、SHA256 文件和 Release 不变。
+2026-10-03：[执行已完成](handoffs/v1.3.4-macos-limited-acceptance.md)，两架构各 58 通过 / 8 失败 / 1 待验证。
+已确认 A/C 产品缺陷，后续版本另行处理，不标 Verified；最终结果文档仅本地提交。
+当前验收工作流限定为受影响的 12 项 scheduler + 7 项 UI；如需全套重验，应显式审阅选择后另行安排。
 
 ## v1.3.4 明确批准的发布例外（2026-09-30）
 

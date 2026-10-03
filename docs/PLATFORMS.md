@@ -1,12 +1,17 @@
 # Platform support
 
-## 2026-10-02 macOS limited acceptance
+## 2026-10-03 macOS limited acceptance
 
-A separate acceptance branch is preparing tests of the immutable published v1.3.4 ZIPs.
-See [scope and evidence categories](plans/v1.3.4-macos-limited-acceptance.md) and
-[per-architecture results](handoffs/v1.3.4-macos-limited-acceptance.md). Cloud execution
-was separately authorized; the first native run and affected-only retests are recorded there.
-This does not change platform support, rebuild packages, or remove the experimental warning.
+Acceptance of the immutable v1.3.4 ZIPs has finished on macOS 15.7.9 arm64 and x64.
+Each architecture has 58 passing, 8 failing and 1 pending checks; the package remains not fully Verified.
+The published scheduler misreads launchctl enabled/disabled output: a loaded disabled job can appear
+current, and updating it can unload the original job without restoring it.
+See [results and evidence boundaries](handoffs/v1.3.4-macos-limited-acceptance.md) and
+[unfixed defect / minimal reproduction](handoffs/v1.3.4-macos-disabled-state-defect.md).
+Published-package startup/persistence, B/D, synthetic UI states and an offline calendar trigger passed.
+Each retest runner retained 12 enabled overrides after its jobs/plists/processes were removed;
+the first run's override cleanup claim is unreliable. Product files and release assets are unchanged.
+The acceptance branch is intentionally retained unmerged; final reports are committed locally only.
 
 ## Support matrix
 
@@ -177,7 +182,7 @@ browser. Repeating the update after moving the portable folder keeps one task
 and changes its action to the current folder. Product-shaped tasks with other
 identity suffixes are reported but never removed by a prefix match.
 
-## v1.3.4 Slice A implementation (not released)
+## v1.3.4 Slice A implementation and verification limits
 
 Current combined verification: [A–D report](handoffs/v1.3.4-validation.md).
 Windows native task checks (31) and real UAC cancellation with no prior task
@@ -196,8 +201,9 @@ it uses unique temporary tasks and a no-op worker and cleans its exact tasks.
 The shared transaction also snapshots macOS plist bytes and loaded/disabled
 state. Bootstrap uses `RunAtLoad=false` during update/restoration, then restores
 the on-disk login behavior without an immediate worker run. Disabled or unloaded
-existing jobs stay that way. Deterministic tests cover these paths; macOS native
-validation remains pending. UAC cancellation and alternate-admin credentials
+existing jobs are intended to stay that way. Native macOS acceptance found that the
+boolean-only disabled parser breaks this guarantee for loaded disabled jobs; see the defect above.
+UAC cancellation and alternate-admin credentials
 need separately recorded native evidence for each covered scenario; simulated tests do not
 prove those user interactions. See the Slice A handoff for current results.
 
@@ -206,12 +212,12 @@ LaunchAgent loaded/disabled state. A denied query or missing inspection helper
 is unknown, never healthy based on an old marker. Only the explicit re-enable
 action changes disabled state; it uses the existing recovery transaction and
 does not launch the worker. Current Windows evidence and remaining native gaps
-are recorded in the unified A–D verification report; macOS native is pending.
+are recorded in the unified A–D report; native macOS results and the confirmed A/C defect are linked above.
 
-For a macOS job that is both loaded and disabled, updating its loaded definition
-temporarily allows bootstrap after bootout, then restores disabled. The bootstrap
-definition suppresses RunAtLoad. Exact state restoration and absence of worker
-execution need native validation; this is not a verified platform claim.
+For a macOS job that is both loaded and disabled, the intended temporary enable/restore
+path is bypassed when the published parser misreads the native disabled value.
+The two-architecture native acceptance reproduced bootstrap and recovery failure, with no
+worker execution. Exact state restoration failed; this remains an unfixed product defect.
 
 ## macOS layer
 

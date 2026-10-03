@@ -1,13 +1,16 @@
 # Active work packet
 
-Last updated: 2026-10-02
+Last updated: 2026-10-03
 
-- Status: In progress — 已发布 v1.3.4 的 macOS 有限验收；产品仍 not fully Verified
+- Status: In progress — macOS 有限验收执行完毕，待用户验收；A/C 有未修复缺陷，未标 Verified
 - Target version: v1.3.4
-- Task disposition: 本任务最小分支推送、两架构云端验收及必要脚本修正重验已获批准
+- Task disposition: 已完成两架构运行、受影响项重验和本地报告提交；不自动继续修复或运行
 - Plan: [macOS 有限验收](../plans/v1.3.4-macos-limited-acceptance.md)；原 A–D 实现计划已归档
 - Handoff: [本轮验收记录](../handoffs/v1.3.4-macos-limited-acceptance.md)；分支 codex/v1.3.4-macos-acceptance
-- Verification: [原验证记录](../handoffs/v1.3.4-validation.md)；不以有限包检查替代未验证项目
+- Verification: 两架构各 58 通过 / 8 失败 / 1 待验证；[逐项清单](../handoffs/v1.3.4-macos-limited-acceptance-cases.md)
+- Known defect: [停用状态识别及更新恢复](../handoffs/v1.3.4-macos-disabled-state-defect.md)，后续版本另行批准
+- Branch disposition: 有意保留未合并；远端测试 SHA 79d0efa，最终报告本地提交；保留其他工作区修改
+- Cleanup: 定向重验各 12 个任务/plist/进程已清理，12 条 enabled override 留存；首轮 override 清理结论不可靠
 
 v1.3.4 已发布，但未全部 Verified；用户明确接受本次验证例外。
 不可变标签 v1.3.4 指向 `bb78dd9431a61617c3198b087ac556759ef85333`，三个最终包的 release.json 同源。

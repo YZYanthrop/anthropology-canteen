@@ -1,6 +1,17 @@
 # Anthropology Canteen project state
 
-Last updated: 2026-09-30
+Last updated: 2026-10-03
+
+## Published v1.3.4 macOS limited acceptance
+
+2026-10-03: execution complete, awaiting user review; not Verified. Native macOS 15.7.9
+arm64 and x64 each report 58 pass / 8 fail / 1 pending. The published scheduler misreads
+native enabled/disabled output, affecting disabled status and loaded-disabled update recovery.
+[Acceptance and remaining limits](handoffs/v1.3.4-macos-limited-acceptance.md) and
+[unfixed defect handoff](handoffs/v1.3.4-macos-disabled-state-defect.md) supersede only the
+historical lack of macOS evidence below, not the release warning or Windows pending items.
+No product or release asset changed. The acceptance branch is intentionally retained unmerged;
+final reports are local commits. Any product fix requires a separately approved task/version.
 
 ## Current release
 

@@ -1,6 +1,6 @@
 # Current project snapshot
 
-Last updated: 2026-10-02
+Last updated: 2026-10-03
 
 This is the lightweight entry point for a new Codex task. Chat history is not
 required. Read this file and `docs/work/ACTIVE.md` first, then follow the
@@ -32,9 +32,13 @@ document router below.
 
 ## Current work
 
-已批准已发布 v1.3.4 的 macOS 有限验收；独立分支 codex/v1.3.4-macos-acceptance，状态 In progress。
-[验收计划](plans/v1.3.4-macos-limited-acceptance.md) · [验收记录](handoffs/v1.3.4-macos-limited-acceptance.md)。
-本轮云端运行已获批；正式包、B/D与定时首轮通过，A/C停用场景及UI正定向重验。产品保持已发布但未全部 Verified。
+macOS 有限验收执行完成，待用户验收；工作包保持 In progress，未标 Verified。
+两架构各 58 通过 / 8 失败 / 1 待验证：正式包、B/D、合成 UI 和离线定时通过；
+A/C 确认停用状态识别错误，已加载且停用任务更新后恢复失败，产品未修复。
+[验收报告](handoffs/v1.3.4-macos-limited-acceptance.md) · [缺陷复现](handoffs/v1.3.4-macos-disabled-state-defect.md) · [计划](plans/v1.3.4-macos-limited-acceptance.md)。
+独立分支 codex/v1.3.4-macos-acceptance 有意保留未合并；测试提交已按授权推送，最终报告仅本地提交。
+任务/plist/进程/测试 Keychain 已清理；定向重验各留下 12 条 enabled override，首轮该覆盖项清理结论不可靠。
+后续修复和发布需另行批准，不自动继续；产品保持已发布但未全部 Verified。
 
 ## Current release
 
