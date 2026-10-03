@@ -5,7 +5,7 @@
 A separate acceptance branch is preparing tests of the immutable published v1.3.4 ZIPs.
 See [scope and evidence categories](plans/v1.3.4-macos-limited-acceptance.md) and
 [per-architecture results](handoffs/v1.3.4-macos-limited-acceptance.md). Cloud execution
-still requires this task's explicit authorization; current native results are pending.
+was separately authorized; the first native run and affected-only retests are recorded there.
 This does not change platform support, rebuild packages, or remove the experimental warning.
 
 ## Support matrix

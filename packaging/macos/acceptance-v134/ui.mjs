@@ -186,11 +186,13 @@ async function cleanup() {
 }
 
 async function exercise(scenario, baseUrl) {
+  const localOrigin = new URL(baseUrl);
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: "block" });
   const page = await context.newPage();
   page.setDefaultTimeout(15_000);
   const requests = [];
   const blockedExternal = [];
+  const blockedLoopbackHttpsAssets = [];
   const blockedMutations = [];
   const unexpectedApi = [];
   const pageErrors = [];
@@ -199,6 +201,17 @@ async function exercise(scenario, baseUrl) {
   await context.route("**/*", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
+    if (url.protocol === "https:" && localOrigin.hostname === "127.0.0.1" &&
+        url.hostname === localOrigin.hostname && url.port === localOrigin.port &&
+        !url.username && !url.password && url.pathname === "/favicon.svg" && request.method() === "GET") {
+      // app/layout.tsx defaults metadataBase to HTTPS when forwarded protocol
+      // is absent. This is still the same loopback endpoint, not external
+      // traffic. Keep the original package unchanged and abort, never forward
+      // or rewrite this request; favicon loading is outside these status cases.
+      blockedLoopbackHttpsAssets.push({ url: url.href, action: "aborted", reason: "same-loopback-host-and-port-https-favicon" });
+      await route.abort("blockedbyclient");
+      return;
+    }
     if (url.origin !== baseUrl) {
       blockedExternal.push(url.origin + url.pathname);
       await route.abort("blockedbyclient");
@@ -280,7 +293,7 @@ async function exercise(scenario, baseUrl) {
   report.cases.push({
     id: scenario.id, category: CATEGORY, status: failure ? "fail" : "pass",
     details: { ...(failure ? { error: failure } : {}), syntheticSchedulerStatus: scenario.status, syntheticReasonCodes: scenario.reasons || [],
-      expectedTitle: scenario.title, buttonStates, reminderReads, requests, blockedExternal, blockedMutations, unexpectedApi, pageErrors,
+      expectedTitle: scenario.title, buttonStates, reminderReads, requests, blockedExternal, blockedLoopbackHttpsAssets, blockedMutations, unexpectedApi, pageErrors,
       nativeSchedulerOrCredentialOperation: false },
   });
 }

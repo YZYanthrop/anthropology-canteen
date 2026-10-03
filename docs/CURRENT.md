@@ -34,7 +34,7 @@ document router below.
 
 已批准已发布 v1.3.4 的 macOS 有限验收；独立分支 codex/v1.3.4-macos-acceptance，状态 In progress。
 [验收计划](plans/v1.3.4-macos-limited-acceptance.md) · [验收记录](handoffs/v1.3.4-macos-limited-acceptance.md)。
-本轮最小推送和云端运行已单独获批；首次解析错误已定位并修正，原生项目仍待验证。产品保持已发布但未全部 Verified。
+本轮云端运行已获批；正式包、B/D与定时首轮通过，A/C停用场景及UI正定向重验。产品保持已发布但未全部 Verified。
 
 ## Current release
 

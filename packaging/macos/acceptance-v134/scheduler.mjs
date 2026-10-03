@@ -12,10 +12,20 @@ import { pathToFileURL } from "node:url";
 
 const RELEASE_SHA = "bb78dd9431a61617c3198b087ac556759ef85333";
 const STATES = ["loaded", "unloaded", "disabled", "loaded-disabled"];
+const FAULTS = ["none", "marker-write", "settings-write", "post-registration-query", "recovery-obstruction"];
+const CASE_IDS = new Set([
+  ...[...STATES, "absent"].flatMap((state) => FAULTS.map((fault) => `A-${state}-${fault}`)),
+  ...["loaded", "loaded-disabled", "disabled", "unloaded", "absent"].map((state) => `C-${state}`),
+  "C-native-plist-read-denied", "C-injected-launchctl-query-failure", "C-native-launchctl-query-denied",
+  "scheduler-real-calendar-trigger", "environment-keychain",
+]);
 const flags = process.argv.slice(2);
 const cleanupOnly = flags.includes("--cleanup");
-const selectedCase = flags.includes("--case") ? flags[flags.indexOf("--case") + 1] : null;
-if (flags.includes("--case") && (!selectedCase || selectedCase.startsWith("--"))) throw new Error("--case requires one exact ID");
+const caseArgument = flags.includes("--case") ? flags[flags.indexOf("--case") + 1] : null;
+if (flags.includes("--case") && (!caseArgument || caseArgument.startsWith("--"))) throw new Error("--case requires exact IDs separated by commas");
+const selectedCases = caseArgument === null ? null : new Set(caseArgument.split(",").map((id) => id.trim()));
+if (selectedCases && [...selectedCases].some((id) => !CASE_IDS.has(id))) throw new Error("Unknown --case ID: " + [...selectedCases].filter((id) => !CASE_IDS.has(id)).join(","));
+const selected = (id) => selectedCases === null || selectedCases.has(id);
 const argument = (name) => {
   const index = flags.indexOf(name);
   if (index < 0 || !flags[index + 1] || flags[index + 1].startsWith("--")) throw new Error(`Missing ${name}`);
@@ -28,10 +38,12 @@ const manifestFile = join(scratch, "scheduler-owned.json");
 const controller = new AbortController();
 const report = {
   productSha: RELEASE_SHA,
+  requestedCases: selectedCases === null ? "all" : [...selectedCases],
   cases: [],
   environment: { platform: process.platform, architecture: process.arch, node: process.version },
   cleanup: { status: "pending", jobs: [], keychains: [], remainingProcesses: [] },
   commandLog: [],
+  overrideObservations: [],
   limitations: [
     "Source-native results exercise the unchanged release scheduler with synthetic worker fixtures; they are not published-ZIP black-box results.",
     "Injected failures are explicitly named; no simulated launchctl success or output is used.",
@@ -57,6 +69,16 @@ function inside(path) {
 function safeText(value) {
   return String(value || "").replaceAll(scratch, "<scratch>").replaceAll(source, "<release-source>")
     .replace(/\/Users\/[^/\s]+/g, "/Users/<user>").slice(0, 1800);
+}
+function productError(error, depth = 0) {
+  if (!error) return null;
+  if (depth > 4) return { message: "nested causes truncated after depth 4" };
+  return {
+    name: error.name, code: error.code, message: safeText(error.message),
+    ...(error.userMessage ? { userMessage: safeText(error.userMessage) } : {}),
+    ...(error.cause ? { cause: productError(error.cause, depth + 1) } : {}),
+    ...(Array.isArray(error.errors) ? { aggregateCauses: error.errors.slice(0, 8).map((item) => productError(item, depth + 1)) } : {}),
+  };
 }
 function note(id, category, status, details) {
   const item = { id, category, status, details };
@@ -100,10 +122,28 @@ async function loaded(job, cleanup = false) {
 }
 async function override(job, cleanup = false) {
   const result = await run("/bin/launchctl", ["print-disabled", `gui/${manifest.uid}`], { cleanup });
+  // Keep only this manifest-owned label's lines, never unrelated user jobs.
+  const rawLines = result.split(/\r?\n/).filter((line) => line.includes(job.label));
+  const observation = { at: new Date().toISOString(), label: job.label, phase: cleanup ? "cleanup" : "acceptance", rawLines };
+  report.overrideObservations.push(observation);
+  job.overrideObservations ||= [];
+  job.overrideObservations.push(observation);
+  try {
+    const parsed = parseOwnedOverride(result, job.label);
+    observation.parsed = parsed;
+    return parsed;
+  } catch (error) { observation.error = safeText(error.message); throw error; }
+}
+function parseOwnedOverride(result, ownLabel) {
   assert.match(result, /\{[\s\S]*\}/, "launchd disabled query must return a parseable object");
-  const label = job.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = result.match(new RegExp(`"${label}"\\s*=>\\s*(true|false)`));
-  return { disabled: match?.[1] === "true", entry: match ? match[1] : "absent" };
+  const lines = result.split(/\r?\n/).filter((line) => line.includes(ownLabel));
+  if (lines.length === 0) return { disabled: false, entry: "absent", rawLine: null };
+  assert.equal(lines.length, 1, "owned launchd label has multiple disabled entries");
+  const escaped = ownLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = lines[0].match(new RegExp(`^\\s*"${escaped}"\\s*=>\\s*(true|false|enabled|disabled)\\s*[,;]?\\s*$`, "i"));
+  assert.ok(match, "owned launchd disabled entry uses an unrecognized format: " + lines[0]);
+  const entry = match[1].toLowerCase();
+  return { disabled: ["true", "disabled"].includes(entry), entry, rawLine: lines[0] };
 }
 async function workerRuns(job) {
   let count = 0;
@@ -124,7 +164,7 @@ async function snapshot(job) {
   const live = await loaded(job);
   const disabled = await override(job);
   const bytes = await optionalBytes(job.plist);
-  return { loaded: live.loaded, disabled: disabled.disabled, bytes, liveText: live.text };
+  return { loaded: live.loaded, disabled: disabled.disabled, disabledOracle: disabled, bytes, liveText: live.text };
 }
 function xml(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"); }
 function hourMinute(date) { return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; }
@@ -211,11 +251,15 @@ async function assertRestored(job) {
   return { loaded: after.loaded, disabled: after.disabled, exactOriginalPlist: true, exactSettingsAndMarker: true, workerExecutions: 0 };
 }
 async function caseRun(id, category, action) {
-  if (selectedCase && selectedCase !== id) return;
+  if (!selected(id)) return;
   if (controller.signal.aborted) throw controller.signal.reason;
   let item;
   try { const details = await action(); item = note(id, category, "pass", details); }
   catch (error) { item = note(id, category, "fail", { error: safeText(error.stack || error) }); }
+  const job = manifest.jobs.findLast((entry) => entry.id === id);
+  if (job?.productOperation) item.details.productOperation = job.productOperation;
+  if (job?.productStatus) item.details.productStatus = job.productStatus;
+  if (job?.productPreparedSnapshot) item.details.productPreparedSnapshot = job.productPreparedSnapshot;
   try { item.details.evidence = await saveCaseEvidence(id); }
   catch (error) { item.status = "fail"; item.details.evidenceError = safeText(error.message); }
   await saveJson(reportFile, report);
@@ -226,7 +270,7 @@ async function saveCaseEvidence(id) {
   const directory = join(dirname(reportFile), "evidence", "scheduler", id);
   await mkdir(directory, { recursive: true });
   if (job.initial?.bytes) await writeFile(join(directory, "original.plist"), job.initial.bytes);
-  const description = { productSha: RELEASE_SHA, case: id, initialState: job.state, ...(job.initial ? { initialLoaded: job.initial.loaded, initialDisabled: job.initial.disabled } : {}), replay: "Run this harness from its recorded test SHA against the immutable product SHA; fixtures always generate fresh unique labels and paths." };
+  const description = { productSha: RELEASE_SHA, case: id, initialState: job.state, ...(job.initial ? { initialLoaded: job.initial.loaded, initialDisabled: job.initial.disabled, initialDisabledOracle: job.initial.disabledOracle } : {}), overrideObservations: job.overrideObservations || [], productStatus: job.productStatus, productOperation: job.productOperation, productPreparedSnapshot: job.productPreparedSnapshot, replay: "Run this harness from its recorded test SHA against the immutable product SHA with --case " + id + "; fixtures always generate fresh unique labels and paths." };
   try {
     const current = await optionalBytes(job.plist);
     if (current) await writeFile(join(directory, "observed.plist"), current);
@@ -250,6 +294,7 @@ async function cleanupJob(job) {
   try {
     if ((await loaded(job, true)).loaded) await run("/bin/launchctl", ["bootout", `gui/${manifest.uid}/${job.label}`], { cleanup: true });
     const initialOverride = await override(job, true);
+    result.initialDisabledOracle = initialOverride;
     if (initialOverride.disabled) await run("/bin/launchctl", ["enable", `gui/${manifest.uid}/${job.label}`], { cleanup: true });
     // Only this manifest-owned plist can be a synthetic obstruction directory.
     await chmod(dirname(job.plist), 0o700).catch(() => {});
@@ -260,6 +305,7 @@ async function cleanupJob(job) {
     result.plistExists = await exists(job.plist);
     result.disabled = finalOverride.disabled;
     result.overrideEntry = finalOverride.entry;
+    result.finalDisabledOracle = finalOverride;
     result.workerExecutions = await workerRuns(job);
     if (job.id !== "real-calendar-trigger") assert.equal(result.workerExecutions.count, 0, "late unexpected worker execution observed during final cleanup");
     assert.equal(result.loaded, false);
@@ -355,7 +401,7 @@ async function checkKeychain() {
 
 async function updateCases() {
   for (const state of [...STATES, "absent"]) {
-    for (const fault of ["none", "marker-write", "settings-write", "post-registration-query", "recovery-obstruction"]) {
+    for (const fault of FAULTS) {
       const id = `A-${state}-${fault}`;
       await caseRun(id, fault === "none" ? "source-native" : "source-injection-native-observer", async () => {
         const job = await fixture(id, state);
@@ -363,6 +409,10 @@ async function updateCases() {
         let injected = false;
         const options = schedulerOptions(job, {
           runCommand: async (command, args) => {
+            if (command === "/bin/launchctl" && ["bootout", "bootstrap", "enable", "disable"].includes(args[0]) && !job.productPreparedSnapshot) {
+              const journal = JSON.parse(await readFile(join(job.newRoot, "data", ".scheduler-update.json"), "utf8"));
+              if (journal.mac) job.productPreparedSnapshot = journal.mac;
+            }
             if (command === "/bin/launchctl" && args[0] === "print") {
               printCount++;
               if (fault === "post-registration-query" && printCount === 2) { injected = true; throw new Error("Injected post-registration launchctl query error; all other commands are native"); }
@@ -370,6 +420,9 @@ async function updateCases() {
             return run(command, args);
           },
           writeMarker: async (file, value) => {
+            // Preserve the product's own unnormalized snapshot for comparison
+            // with the independent native oracle. Never correct product input.
+            job.productPreparedSnapshot = JSON.parse(await readFile(join(job.newRoot, "data", ".scheduler-update.json"), "utf8")).mac;
             await utilities.writeJsonAtomic(file, value);
             if (fault === "marker-write") { injected = true; throw new Error("Injected marker write acknowledgement failure"); }
             if (fault === "recovery-obstruction") {
@@ -388,6 +441,11 @@ async function updateCases() {
             if (fault === "settings-write") { injected = true; throw new Error("Injected settings write acknowledgement failure"); }
           }, options);
         } catch (failure) { error = failure; }
+        job.productOperation = { requestedFault: fault, injected, ...(error ? { error: productError(error) } : { completed: true }) };
+        // An earlier native failure may stop the product before our injection
+        // point. Record it verbatim, including causes, instead of labelling it
+        // only as a harness failure to reach the requested hook.
+        job.productStatus = await scheduler.getSchedulerStatus(job.newRoot, job.config, schedulerOptions(job));
         if (fault === "none") {
           assert.equal(error, undefined);
           const after = await snapshot(job);
@@ -432,6 +490,7 @@ async function statusCases() {
       const job = await fixture(`C-${state}`, state, { currentRoot: true });
       const before = await snapshot(job);
       const status = await scheduler.getSchedulerStatus(job.newRoot, job.config, schedulerOptions(job));
+      job.productStatus = status;
       assert.equal(status.status, expected);
       assert.equal(status.installed, expected === "current");
       if (state === "unloaded") assert.ok(status.reasonCodes.includes("job-unloaded"));
@@ -473,7 +532,7 @@ async function statusCases() {
     await assertNoExecution(job);
     return { actualStatus: status, injection: "launchctl print failure only", realTaskUnchanged: true, workerExecutions: 0 };
   });
-  if (!selectedCase || selectedCase === "C-native-launchctl-query-denied") note("C-native-launchctl-query-denied", "source-native-system-fault", "pending", { reason: "No safe way to deny this user's launchd query to one owned job without changing session permissions. Plist EACCES and explicitly injected query failure are recorded separately." });
+  if (selected("C-native-launchctl-query-denied")) note("C-native-launchctl-query-denied", "source-native-system-fault", "pending", { reason: "No safe way to deny this user's launchd query to one owned job without changing session permissions. Plist EACCES and explicitly injected query failure are recorded separately." });
 }
 
 async function timedCase() {
@@ -534,7 +593,8 @@ async function main() {
   report.environment.osVersion = await run("/usr/bin/sw_vers", ["-productVersion"]);
   report.environment.osBuild = await run("/usr/bin/sw_vers", ["-buildVersion"]);
   report.environment.machineArchitecture = await run("/usr/bin/uname", ["-m"]);
-  await checkKeychain();
+  if (selected("environment-keychain")) await checkKeychain();
+  else report.environment.keychain = "not requested in this targeted rerun; prior evidence is not repeated";
   let guiAvailable = false;
   try {
     await run("/bin/launchctl", ["print", `gui/${manifest.uid}`]);
@@ -551,7 +611,10 @@ async function main() {
   await updateCases();
   await statusCases();
   await timedCase();
-  if (selectedCase && !report.cases.some((item) => item.id === selectedCase)) throw new Error("Unknown or unreached selected case: " + selectedCase);
+  if (selectedCases) {
+    const unreached = [...selectedCases].filter((id) => !report.cases.some((item) => item.id === id));
+    assert.deepEqual(unreached, [], "selected cases were not reached");
+  }
 }
 
 try { await main(); }

@@ -56,7 +56,9 @@ jobs:
           python3 acceptance/packaging/macos/acceptance-v134/run.py \
             --arch "$TEST_ARCH" --source "$GITHUB_WORKSPACE/published-source" \
             --scratch "$RUNNER_TEMP/canteen-v134-$GITHUB_RUN_ID-$TEST_ARCH" \
-            --reports "$GITHUB_WORKSPACE/reports"
+            --reports "$GITHUB_WORKSPACE/reports" \
+            --suites scheduler ui \
+            --scheduler-cases "A-disabled-none,A-disabled-marker-write,A-disabled-settings-write,A-disabled-post-registration-query,A-disabled-recovery-obstruction,A-loaded-disabled-none,A-loaded-disabled-marker-write,A-loaded-disabled-settings-write,A-loaded-disabled-post-registration-query,A-loaded-disabled-recovery-obstruction,C-loaded-disabled,C-disabled"
 
       - name: Verify cleanup of exact registered test identities
         if: always()

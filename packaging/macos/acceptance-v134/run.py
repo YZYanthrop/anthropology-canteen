@@ -128,9 +128,11 @@ def main():
     parser.add_argument("--reports", type=Path, required=True)
     parser.add_argument("--cleanup", action="store_true")
     parser.add_argument("--suites", nargs="+", choices=["black-box", "scheduler", "migration", "ui"], default=["black-box", "scheduler", "migration", "ui"])
+    parser.add_argument("--scheduler-cases", help="Comma-separated scheduler case IDs for an affected-only rerun")
     parser.add_argument("--case", help="One exact case in one selected native/UI suite; for affected-only reruns")
     args = parser.parse_args()
     require(not args.case or (len(args.suites) == 1 and args.suites[0] != "black-box"), "--case requires exactly one native/UI suite")
+    require(not args.scheduler_cases or ("scheduler" in args.suites and not args.case), "--scheduler-cases requires scheduler suite and excludes --case")
     source, scratch, reports = (item.resolve() for item in (args.source, args.scratch, args.reports))
     reports.mkdir(parents=True, exist_ok=True)
     if args.cleanup:
@@ -142,7 +144,7 @@ def main():
     scratch.mkdir(parents=True)
     result = {"productSHA": PRODUCT_SHA, "testSHA": os.environ.get("GITHUB_SHA"), "architecture": args.arch, "runURL": f"https://github.com/{REPO}/actions/runs/{os.environ.get('GITHUB_RUN_ID')}", "environment": {"uname": platform.uname()._asdict(), "macOS": platform.mac_ver()[0], "uid": os.getuid(), "runnerImage": os.environ.get("ImageVersion")}, "cases": [], "fullyVerified": False, "notCovered": ["Finder double-click / Gatekeeper dialogs", "Real login/logout, sleep/wake, full OS reboot", "Real email or providers", "Full three-platform regression"]}
     node = shutil.which("node") or "node"
-    result["selection"] = {"suites": args.suites, "case": args.case}
+    result["selection"] = {"suites": args.suites, "case": args.case, "schedulerCases": args.scheduler_cases}
     prepared = False
     try:
         sha = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
@@ -179,8 +181,9 @@ def main():
             if suite not in args.suites:
                 continue
             params = ["--package", package] if suite == "ui" else ["--source", source]
-            if args.case:
-                params += ["--case", args.case]
+            selected_case = args.case or (args.scheduler_cases if suite == "scheduler" else None)
+            if selected_case:
+                params += ["--case", selected_case]
             code = command([node, HERE / (suite + ".mjs"), *params, "--scratch", scratch / suite, "--report", reports / (suite + ".json")], reports / (suite + ".log"), timeout)
             child = read_report(reports / (suite + ".json"), suite, code)
             result["cases"].extend(child["cases"])
