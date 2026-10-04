@@ -1,7 +1,7 @@
 {
-  "mode": "build",
-  "productSHA": "self",
-  "candidateRunId": null,
+  "mode": "reuse",
+  "productSHA": "f1bacdcd939ce1df8aeb5c813c652d55d2d7c138",
+  "candidateRunId": "37189726148",
   "suites": [
     "black-box",
     "scheduler",

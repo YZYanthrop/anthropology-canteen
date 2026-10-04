@@ -35,8 +35,8 @@ document router below.
 [基于 v1.3.4 的 macOS 基本可用内部修复与验收](plans/v1.3.4-macos-basic-internal.md)，In progress。
 用户 2026-10-04 要求产品版本保持 1.3.4，取代此前 v1.3.5 安排；独立分支 codex/v1.3.4-macos-basic。
 已有 macOS 停用解析修复和本地回归通过结果保留；已撤回版本升级并调整内部候选入口；定向 Node/Python 各 7/7、定向 lint 和 build 通过。
-[交接与实际结果](handoffs/v1.3.4-macos-basic-internal.md)。最终内部包云端验证尚未执行，不宣称基本可用通过。
-内部修改/构建/测试已批准；按原第三节，分支推送仍需准备最终冻结 SHA 后取得限定授权。
+[交接与实际结果](handoffs/v1.3.4-macos-basic-internal.md)。产品 f1bacdc 的双架构内部包已构建；R1 测试入口失败，修正后复用原包验收，不宣称基本可用通过。
+本次限定分支推送与双架构内部验收已获明确批准，范围及 Actions 链接见交接。
 旧版验收证据、旧分支和其他工作区修改保留；不改变正式 v1.3.4 标签、ZIP、校验或 Release。
 完成有限验收后交付用户，不自动合并或发布，不标整个版本 Verified。
 

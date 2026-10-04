@@ -109,13 +109,15 @@ jobs:
           set -euo pipefail
           ARCHIVES=("$GITHUB_WORKSPACE"/candidate/*.zip)
           test "${#ARCHIVES[@]}" = 1
-          EXTRA=()
-          if [[ -n "$SCHEDULER_CASES" ]]; then EXTRA+=(--scheduler-cases "$SCHEDULER_CASES"); fi
+          # Bash 3.2 treats an empty array as unset under nounset. Positional
+          # arguments remain valid with zero optional arguments.
+          set --
+          if [[ -n "$SCHEDULER_CASES" ]]; then set -- --scheduler-cases "$SCHEDULER_CASES"; fi
           read -r -a SUITES <<< "$TEST_SUITES"
           python3 acceptance/packaging/macos/basic-acceptance/run.py \
             --arch "$TEST_ARCH" --source "$GITHUB_WORKSPACE/product" --product-sha "$SOURCE_SHA" \
             --candidate "${ARCHIVES[0]}" --scratch "$RUNNER_TEMP/canteen-basic-$GITHUB_RUN_ID-$TEST_ARCH" \
-            --reports "$GITHUB_WORKSPACE/reports" --suites "${SUITES[@]}" "${EXTRA[@]}"
+            --reports "$GITHUB_WORKSPACE/reports" --suites "${SUITES[@]}" "$@"
 
       - name: Always verify cleanup of only manifest-owned identities
         if: always() && steps.execution.outcome == 'success'
