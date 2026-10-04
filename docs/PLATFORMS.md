@@ -1,10 +1,9 @@
 # Platform support
 
-## v1.3.4 internal Mac candidate work in progress
+## v1.3.4 internal Mac candidate accepted within limited scope
 
 A separate codex/v1.3.4-macos-basic branch repairs only the confirmed disabled-state
-parsing defect. Both Mac candidate architectures must pass the approved basic-usability
-gate; no candidate has been built or accepted yet. This is not full macOS certification.
+parsing defect. Internal candidate f1bacdc passed 46 required checks on each macOS 15.7.9 architecture using R2 plus the affected R3 retest. This is not full macOS certification or a change to published ZIPs.
 The real API-to-page case uses a uniquely named loaded+disabled offline task; its
 external worker deliberately makes definitionValid=false. It verifies truthful disabled
 status through the unchanged candidate service and page, not current/mail integration.

@@ -2,19 +2,18 @@
 
 Last updated: 2026-10-04
 
-- Status: In progress — v1.3.4 基线的 macOS 基本可用内部修复与验收
-- Product version: 1.3.4 保持不变；内部候选用准确 SHA 区分，非正式资产替换
-- Approved: 必要修复、测试、文档、本地提交及内部构建/测试；限定分支推送与双架构内部验收已获用户明确批准
-- Branch: codex/v1.3.4-macos-basic；复用隔离 worktree macos-v135-fix
-- Plan: [当前批准计划](../plans/v1.3.4-macos-basic-internal.md)
-- Baseline: 正式 bb78dd9431a61617c3198b087ac556759ef85333；验收 fbaa63f；必要修复 2936d8a
-- Handoff: [准确提交与验证记录](../handoffs/v1.3.4-macos-basic-internal.md)
-- Verification: 既有 lint/build、Node 164/164、提醒 UI 22/22、工具补测保留；本次定向 Node 7/7、Python 7/7、定向 lint 和恢复版本后的 build 已通过
-- Product SHA: f1bacdcd939ce1df8aeb5c813c652d55d2d7c138；内部包已构建，原包不重建
-- Cloud: R1 37189726148 在 Bash 空参数数组展开处失败；修正测试入口后复用原包验收。旧 v1.3.5 请求不再适用
-- Completion: 两架构必需项全部通过才判“macOS 基本可用验收通过（有限范围）”；不标版本 Verified
+- Status: In progress（本轮执行完成，待用户验收；未合并未发布，版本未标 Verified）
+- Outcome: macOS 基本可用验收通过（有限范围）；两架构各 46 项必需通过
+- Product version: 1.3.4 保持不变，仅内部候选，不替换正式资产
+- Product SHA: f1bacdcd939ce1df8aeb5c813c652d55d2d7c138
+- Test SHAs: R2 b397de0fa0570e5e7c6fcb604840e6b26b3e19d5；R3 ca4e7622b3773b5c6cbdebdc3c4e6c5fd2d8586b
+- Branch: codex/v1.3.4-macos-basic；隔离 worktree macos-v135-fix 保留
+- Plan: [批准范围与完成标准](../plans/v1.3.4-macos-basic-internal.md)
+- Handoff: [结果、包、校验、Actions 与清理](../handoffs/v1.3.4-macos-basic-internal.md) / [逐项清单](../handoffs/v1.3.4-macos-basic-internal-cases.md)
+- Authorization: 本次限定分支推送、双架构内部构建/验收及必要测试脚本修正已执行；不授权发布
+- Next: 已停止，等待用户验收；分支不自动合并，最终文档仅本地提交
 
-仅修已确认 macOS 停用识别和由此导致的更新/恢复，8/2/3、邮箱、平台和启动器不变。
-原 v1.3.4 验收、v1.3.5 本地分支及其他工作区修改保留；不以旧主目录作为产品基线。
-只用合成资料和唯一临时任务，不读取个人授权码、不连接真实邮箱、不发信。
-交付验收后停止；不自动合并、不推送 main、不打标签、不发布、不覆盖已有标签或正式 ZIP。
+真实定时各一次、更新/恢复零意外执行；临时任务/plist/进程清理完成，enabled override 残留见报告。
+Finder/Gatekeeper、登录注销、睡眠唤醒、整机重启、隔离不可行查询 ACL、真实邮箱未覆盖，不冒充通过。
+只用合成资料/临时任务，未读取个人授权码、连接真实邮箱或发信。8/2/3、邮箱、平台、启动器及 v1.4.0 边界不变。
+原主目录五项文档修改、旧验收工作区和旧分支保留；main、正式标签、ZIP、校验和 Release 未改写。

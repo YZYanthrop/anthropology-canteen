@@ -8,7 +8,7 @@ values or duplicate entries throw instead of implying a healthy task. The existi
 status boundary converts this to unknown; updates stop before task mutation when
 the original state cannot be captured. A valid dictionary without this label means
 no disabled override. The existing snapshot/restore transaction remains unchanged.
-Native candidate acceptance is pending; see the [approved plan](plans/v1.3.4-macos-basic-internal.md).
+The version-preserving internal candidate f1bacdc passed the two-architecture limited basic-usability acceptance; see the [report](handoffs/v1.3.4-macos-basic-internal.md). This does not change the published bb78dd9 assets.
 
 
 ## One product, multiple packaging layers

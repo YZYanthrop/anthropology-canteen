@@ -2,14 +2,13 @@
 
 ## v1.3.4 macOS basic-usability repair
 
-Implementation and local verification are authorized on codex/v1.3.4-macos-basic,
-using the bb78dd9 baseline via fbaa63f and local repair 2936d8a. Internal builds/tests are approved; the final branch push still requires scoped authorization.
+Execution is complete on codex/v1.3.4-macos-basic, awaiting user acceptance. Product f1bacdc preserves version 1.3.4 and passes the limited basic-usability gate on both Mac architectures. Authorized branch pushes/builds/tests completed; no merge or publication occurred.
 The user keeps product version 1.3.4 for internal validation; the existing public tag and assets remain immutable. Only the macOS disabled parser changes product behavior;
 8/2/3, launchers, mailbox integration and the v1.4.0 boundary remain unchanged.
 [Plan](plans/v1.3.4-macos-basic-internal.md) / [handoff](handoffs/v1.3.4-macos-basic-internal.md).
 
 
-Last updated: 2026-10-03
+Last updated: 2026-10-04
 
 ## Published v1.3.4 macOS limited acceptance
 
