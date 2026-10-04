@@ -30,8 +30,10 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--inspect-only", action="store_true")
     parser.add_argument("--release", action="store_true", help="Check published-with-limitations release markers")
-    parser.add_argument("--version", choices=["1.3.4", "1.3.5"], default="1.3.4")
+    parser.add_argument("--version", choices=["1.3.4"], default="1.3.4")
+    parser.add_argument("--internal-validation", action="store_true", help="Check unpublished internal candidate, never release assets")
     args = parser.parse_args()
+    require(not (args.internal_validation and args.release), "Internal validation cannot check or impersonate a release")
     require(not args.release or args.version == "1.3.4", "Release exception is scoped to v1.3.4")
     require(re.fullmatch(r"[0-9a-f]{40}", args.source_sha), "Invalid source commit")
     checks = []
@@ -72,8 +74,11 @@ def main():
         metadata = json.loads((root / ("release.json" if args.release else "candidate.json")).read_text(encoding="utf-8-sig"))
         for key, value in {"version": args.version, "sourceCommit": args.source_sha, "platform": args.platform, "arch": args.arch, "status": "published-with-limitations" if args.release else "unpublished-candidate", "fullyVerified": False}.items():
             require(metadata.get(key) == value, "Candidate metadata mismatch: " + key)
-        warning = WARNING if args.version == "1.3.4" else "macOS 候选版仅按本轮报告进行有限范围验收，尚未宣称完整原生认证或整个版本 Verified。升级前请保留旧版文件夹和资料备份。"
+        warning = WARNING if not args.internal_validation else "macOS 候选版仅按本轮报告进行有限范围验收，尚未宣称完整原生认证或整个版本 Verified。升级前请保留旧版文件夹和资料备份。"
         require(warning in (root / ("RELEASE-NOTICE.txt" if args.release else "CANDIDATE-NOTICE.txt")).read_text(encoding="utf-8-sig"), "Missing experimental warning")
+        if args.internal_validation:
+            require("INTERNAL VALIDATION ONLY" in (root / "CANDIDATE-NOTICE.txt").read_text(encoding="utf-8-sig"), "Missing internal-only marker")
+            require(not (root / "release.json").exists() and not (root / "RELEASE-NOTICE.txt").exists(), "Internal candidate contains release markers")
         if args.release:
             require(not (root / "candidate.json").exists() and not (root / "CANDIDATE-NOTICE.txt").exists() and not root.name.endswith("-candidate"), "Stale candidate markers")
         node = root / ("runtime/node.exe" if args.platform == "win32" else "runtime/bin/node")

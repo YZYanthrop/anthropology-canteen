@@ -9,7 +9,7 @@ import sys
 import unittest
 import zipfile
 
-spec = importlib.util.spec_from_file_location("acceptance135", Path(__file__).with_name("run.py"))
+spec = importlib.util.spec_from_file_location("basic_acceptance", Path(__file__).with_name("run.py"))
 a = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(a)
 SHA = "a" * 40
@@ -43,9 +43,9 @@ class CandidateHarnessTests(unittest.TestCase):
                 a.verify_zip(file, "arm64")
 
     def test_metadata_rejects_different_source_or_release(self):
-        good = {"version": "1.3.5", "sourceCommit": SHA, "platform": "darwin", "arch": "arm64", "fullyVerified": False, "status": "unpublished-candidate"}
+        good = {"version": "1.3.4", "sourceCommit": SHA, "platform": "darwin", "arch": "arm64", "fullyVerified": False, "status": "unpublished-candidate"}
         a.verify_metadata(good, "arm64", SHA)
-        for key, bad in (("version", "1.3.4"), ("sourceCommit", "b" * 40), ("arch", "x64"), ("fullyVerified", True), ("status", "published-with-limitations")):
+        for key, bad in (("version", "1.3.5"), ("sourceCommit", "b" * 40), ("arch", "x64"), ("fullyVerified", True), ("status", "published-with-limitations")):
             with self.subTest(key=key), self.assertRaises(RuntimeError):
                 a.verify_metadata({**good, key: bad}, "arm64", SHA)
 
@@ -80,11 +80,11 @@ class CandidateHarnessTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 a.extract_zip(file,Path(tmp)/"target")
 
-    def test_shared_smoke_inspects_v135_candidate_without_executing_it(self):
+    def test_shared_smoke_inspects_internal_candidate_without_executing_it(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp); archive=root/a.package_name("arm64")
             notice=(Path(__file__).resolve().parents[2]/"shared/CANDIDATE-NOTICE.txt").read_text(encoding="utf-8")
-            metadata={"version":"1.3.5","sourceCommit":SHA,"platform":"darwin","arch":"arm64","fullyVerified":False,"status":"unpublished-candidate"}
+            metadata={"version":"1.3.4","sourceCommit":SHA,"platform":"darwin","arch":"arm64","fullyVerified":False,"status":"unpublished-candidate"}
             def make(extra=None):
                 files={"candidate.json":json.dumps(metadata),"CANDIDATE-NOTICE.txt":notice,
                     "runtime/bin/node":"synthetic runtime never executed", "portable-server.mjs":"synthetic", "dist/server/index.js":"synthetic", "reminder-worker.mjs":"synthetic", "tools/import-data.mjs":"synthetic", "LICENSE":"synthetic", "Anthropology Canteen.command":"synthetic", "tools/anthropology-canteen-keychain":"synthetic"}
@@ -95,9 +95,15 @@ class CandidateHarnessTests(unittest.TestCase):
                         z.writestr(info,value)
                 Path(str(archive)+".sha256").write_text(hashlib.sha256(archive.read_bytes()).hexdigest()+"  "+archive.name)
             smoke=Path(__file__).resolve().parents[2]/"shared/candidate-smoke.py"
-            args=[sys.executable,str(smoke),str(archive),"--inspect-only","--version","1.3.5","--platform","darwin","--arch","arm64","--source-sha",SHA,"--report",str(root/"report.json")]
+            args=[sys.executable,str(smoke),str(archive),"--inspect-only","--internal-validation","--version","1.3.4","--platform","darwin","--arch","arm64","--source-sha",SHA,"--report",str(root/"report.json")]
             make(); result=subprocess.run(args,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
+            # Same displayed version must not let an internal candidate pass as a release.
+            result=subprocess.run(args+["--release"],capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            make({"CANDIDATE-NOTICE.txt":notice.replace("INTERNAL VALIDATION ONLY", "unmarked")})
+            result=subprocess.run(args,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
             make({"data/anthropology-canteen-data.json":"{}"});result=subprocess.run(args,capture_output=True,text=True)
             self.assertNotEqual(result.returncode,0)
 

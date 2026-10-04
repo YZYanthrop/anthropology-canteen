@@ -1,13 +1,12 @@
 # Anthropology Canteen project state
 
-## v1.3.5 macOS basic-usability repair
+## v1.3.4 macOS basic-usability repair
 
-Implementation and local verification are authorized on codex/v1.3.5-macos-basic,
-starting at fbaa63f; cloud push/build/acceptance requires a new explicit authorization.
-The version was unused in live remote tags, releases (including drafts), and matching
-branches on 2026-10-03. Only the macOS disabled parser changes product behavior;
+Implementation and local verification are authorized on codex/v1.3.4-macos-basic,
+using the bb78dd9 baseline via fbaa63f and local repair 2936d8a. Internal builds/tests are approved; the final branch push still requires scoped authorization.
+The user keeps product version 1.3.4 for internal validation; the existing public tag and assets remain immutable. Only the macOS disabled parser changes product behavior;
 8/2/3, launchers, mailbox integration and the v1.4.0 boundary remain unchanged.
-[Plan](plans/v1.3.5-macos-basic-usability.md) / [handoff](handoffs/v1.3.5-macos-basic-usability.md).
+[Plan](plans/v1.3.4-macos-basic-internal.md) / [handoff](handoffs/v1.3.4-macos-basic-internal.md).
 
 
 Last updated: 2026-10-03

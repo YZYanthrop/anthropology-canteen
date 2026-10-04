@@ -1,8 +1,8 @@
-name: v1.3.5 macOS basic usability candidate
+name: v1.3.4 internal macOS basic usability validation
 
 on:
   push:
-    branches: [codex/v1.3.5-macos-basic]
+    branches: [codex/v1.3.4-macos-basic]
     paths-ignore:
       - docs/**
       - CHANGELOG.md
@@ -12,12 +12,12 @@ permissions:
   actions: read
 
 concurrency:
-  group: macos-v135-basic
+  group: macos-basic-validation
   cancel-in-progress: false
 
 jobs:
   candidate:
-    if: github.repository == 'YZYanthrop/anthropology-canteen' && github.ref == 'refs/heads/codex/v1.3.5-macos-basic'
+    if: github.repository == 'YZYanthrop/anthropology-canteen' && github.ref == 'refs/heads/codex/v1.3.4-macos-basic'
     name: Mac candidate and acceptance (${{ matrix.arch }})
     strategy:
       fail-fast: false
@@ -37,7 +37,7 @@ jobs:
 
       - name: Validate exact branch and candidate execution selection
         id: execution
-        run: python3 acceptance/packaging/macos/acceptance-v135/run.py --workflow-config acceptance/packaging/macos/acceptance-v135/execution.json
+        run: python3 acceptance/packaging/macos/basic-acceptance/run.py --workflow-config acceptance/packaging/macos/basic-acceptance/execution.json
 
       - name: Check out frozen product source
         uses: actions/checkout@v6
@@ -65,7 +65,7 @@ jobs:
           SOURCE_SHA: ${{ steps.execution.outputs.product_sha }}
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          test "$(node -p 'require("./package.json").version')" = "1.3.5"
+          test "$(node -p 'require("./package.json").version')" = "1.3.4"
           pnpm install --frozen-lockfile
           pnpm build
           bash packaging/macos/build-portable.sh "$TEST_ARCH" "$GITHUB_WORKSPACE/candidate" --candidate
@@ -75,7 +75,7 @@ jobs:
         if: steps.execution.outputs.mode == 'build'
         uses: actions/upload-artifact@v7
         with:
-          name: v1.3.5-macos-candidate-${{ matrix.arch }}-${{ steps.execution.outputs.product_sha }}
+          name: v1.3.4-internal-macos-candidate-${{ matrix.arch }}-${{ steps.execution.outputs.product_sha }}
           path: |
             candidate/*.zip
             candidate/*.zip.sha256
@@ -92,11 +92,11 @@ jobs:
           TEST_ARCH: ${{ matrix.arch }}
         run: |
           test "$(gh api "repos/$GH_REPO/actions/runs/$CANDIDATE_RUN" --jq .head_sha)" = "$SOURCE_SHA"
-          test "$(gh api "repos/$GH_REPO/actions/runs/$CANDIDATE_RUN" --jq .head_branch)" = "codex/v1.3.5-macos-basic"
-          gh run download "$CANDIDATE_RUN" --name "v1.3.5-macos-candidate-$TEST_ARCH-$SOURCE_SHA" --dir candidate
+          test "$(gh api "repos/$GH_REPO/actions/runs/$CANDIDATE_RUN" --jq .head_branch)" = "codex/v1.3.4-macos-basic"
+          gh run download "$CANDIDATE_RUN" --name "v1.3.4-internal-macos-candidate-$TEST_ARCH-$SOURCE_SHA" --dir candidate
 
       - name: Install test-only browser client
-        run: npm install --prefix "$RUNNER_TEMP/canteen-v135-tools" --ignore-scripts --no-audit --no-fund playwright-core@1.63.0
+        run: npm install --prefix "$RUNNER_TEMP/canteen-basic-tools" --ignore-scripts --no-audit --no-fund playwright-core@1.63.0
 
       - name: Verify final candidate and run separated acceptance
         env:
@@ -104,7 +104,7 @@ jobs:
           SOURCE_SHA: ${{ steps.execution.outputs.product_sha }}
           TEST_SUITES: ${{ steps.execution.outputs.suites }}
           SCHEDULER_CASES: ${{ steps.execution.outputs.scheduler_cases }}
-          ACCEPTANCE_PLAYWRIGHT_MODULE: ${{ runner.temp }}/canteen-v135-tools/node_modules/playwright-core/index.mjs
+          ACCEPTANCE_PLAYWRIGHT_MODULE: ${{ runner.temp }}/canteen-basic-tools/node_modules/playwright-core/index.mjs
         run: |
           set -euo pipefail
           ARCHIVES=("$GITHUB_WORKSPACE"/candidate/*.zip)
@@ -112,9 +112,9 @@ jobs:
           EXTRA=()
           if [[ -n "$SCHEDULER_CASES" ]]; then EXTRA+=(--scheduler-cases "$SCHEDULER_CASES"); fi
           read -r -a SUITES <<< "$TEST_SUITES"
-          python3 acceptance/packaging/macos/acceptance-v135/run.py \
+          python3 acceptance/packaging/macos/basic-acceptance/run.py \
             --arch "$TEST_ARCH" --source "$GITHUB_WORKSPACE/product" --product-sha "$SOURCE_SHA" \
-            --candidate "${ARCHIVES[0]}" --scratch "$RUNNER_TEMP/canteen-v135-$GITHUB_RUN_ID-$TEST_ARCH" \
+            --candidate "${ARCHIVES[0]}" --scratch "$RUNNER_TEMP/canteen-basic-$GITHUB_RUN_ID-$TEST_ARCH" \
             --reports "$GITHUB_WORKSPACE/reports" --suites "${SUITES[@]}" "${EXTRA[@]}"
 
       - name: Always verify cleanup of only manifest-owned identities
@@ -123,15 +123,15 @@ jobs:
           TEST_ARCH: ${{ matrix.arch }}
           SOURCE_SHA: ${{ steps.execution.outputs.product_sha }}
         run: |
-          python3 acceptance/packaging/macos/acceptance-v135/run.py --cleanup \
+          python3 acceptance/packaging/macos/basic-acceptance/run.py --cleanup \
             --arch "$TEST_ARCH" --source "$GITHUB_WORKSPACE/product" --product-sha "$SOURCE_SHA" \
-            --scratch "$RUNNER_TEMP/canteen-v135-$GITHUB_RUN_ID-$TEST_ARCH" --reports "$GITHUB_WORKSPACE/reports"
+            --scratch "$RUNNER_TEMP/canteen-basic-$GITHUB_RUN_ID-$TEST_ARCH" --reports "$GITHUB_WORKSPACE/reports"
 
       - name: Retain separate results and synthetic failure evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: v1.3.5-macos-basic-${{ matrix.arch }}-${{ github.sha }}
+          name: v1.3.4-internal-macos-basic-${{ matrix.arch }}-${{ github.sha }}
           path: reports/
           if-no-files-found: warn
           include-hidden-files: false

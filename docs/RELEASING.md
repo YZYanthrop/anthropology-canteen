@@ -1,13 +1,13 @@
 # 版本与发布流程
 
-## v1.3.5 未发布 Mac 候选与基本可用验收
+## v1.3.4 未发布 Mac 候选与基本可用验收
 
-本轮只准备 codex/v1.3.5-macos-basic 的独立 macos-v135-basic.yml；必须获得本次单独推送及云端授权后执行。
+本轮只准备 codex/v1.3.4-macos-basic 的独立 macos-basic-validation.yml；必须获得本次单独推送及云端授权后执行。
 首次分支 push 即可运行，不依赖 main 合并。两个原生 runner 从同一冻结 SHA 构建 candidate.json 标识的候选包，
 候选 ZIP/原校验文件及分层验收报告保留 30 天。只读 contents/actions 权限，不发布、不创建标签。
 execution.json 初始 build/self 模式要求全套必需门槛；后续测试工具修正可选择 reuse 模式，
 核对原 run 的分支/产品 SHA 后下载同一候选 artifact，只重验受影响项，不重建或替换原 ZIP。
-尚未执行云端。具体门槛及不覆盖项见[计划](plans/v1.3.5-macos-basic-usability.md)。
+尚未执行云端。具体门槛及不覆盖项见[计划](plans/v1.3.4-macos-basic-internal.md)。
 
 
 ## 已发布 v1.3.4 的独立有限验收（2026-10-02）

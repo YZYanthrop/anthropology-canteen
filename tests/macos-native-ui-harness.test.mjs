@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyBrowserRequest, parseDisabledState, validateOwnedManifest, offlineWorkerSource } from "../packaging/macos/acceptance-v135/native-ui.mjs";
+import { classifyBrowserRequest, parseDisabledState, validateOwnedManifest, offlineWorkerSource } from "../packaging/macos/basic-acceptance/native-ui.mjs";
 
 const label = "org.anthropology-canteen.reminder.nativeui0123456789abcdef";
 
@@ -29,12 +29,12 @@ test("native UI network guard permits real same-origin GET only and never rerout
 });
 
 test("cleanup ownership rejects path escapes, identity mismatches and unsafe process signatures", () => {
-  const scratch = "/tmp/canteen-v135-native-ui";
+  const scratch = "/tmp/canteen-basic-native-ui";
   const workRoot = `${scratch}/native-ui-123abc`;
   const home = "/Users/runner";
   const sourceSHA = "a".repeat(40);
   const manifest = {
-    version: 1, kind: "v135-native-ui", uid: 501, sourceSHA, scratch, workRoot,
+    version: 1, kind: "basic-native-ui", uid: 501, sourceSHA, scratch, workRoot,
     installationId: "nativeui0123456789abcdef", label,
     credentialRef: "native-ui-01234567-89ab-4cde-8fab-0123456789ab",
     productRoot: `${workRoot}/candidate-product`,

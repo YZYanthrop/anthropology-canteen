@@ -1,6 +1,7 @@
-Anthropology Canteen v1.3.5 — 未发布候选包 / UNPUBLISHED CANDIDATE
+Anthropology Canteen v1.3.4 — 内部验证包 / INTERNAL VALIDATION ONLY
 
-本包用于候选试用，不是正式发布版本，未标为全部 Verified。
+本包保留 1.3.4 产品版本号，含正式发布后必要修复；只用于内部验证，不是现有正式 ZIP，未标为全部 Verified。
+请以 candidate.json 的 sourceCommit 和本轮测试报告识别准确代码；不得替换正式 Release 附件。
 本轮两种 Mac 架构从 candidate.json 所记录的同一源码提交制作；构建成功不等于验证通过。
 
 macOS 候选版仅按本轮报告进行有限范围验收，尚未宣称完整原生认证或整个版本 Verified。升级前请保留旧版文件夹和资料备份。

@@ -1,14 +1,14 @@
 # Platform support
 
-## v1.3.5 Mac candidate work in progress
+## v1.3.4 internal Mac candidate work in progress
 
-A separate codex/v1.3.5-macos-basic branch repairs only the confirmed disabled-state
+A separate codex/v1.3.4-macos-basic branch repairs only the confirmed disabled-state
 parsing defect. Both Mac candidate architectures must pass the approved basic-usability
 gate; no candidate has been built or accepted yet. This is not full macOS certification.
 The real API-to-page case uses a uniquely named loaded+disabled offline task; its
 external worker deliberately makes definitionValid=false. It verifies truthful disabled
 status through the unchanged candidate service and page, not current/mail integration.
-See the [plan](plans/v1.3.5-macos-basic-usability.md) and [handoff](handoffs/v1.3.5-macos-basic-usability.md).
+See the [plan](plans/v1.3.4-macos-basic-internal.md) and [handoff](handoffs/v1.3.4-macos-basic-internal.md).
 
 
 ## 2026-10-03 macOS limited acceptance

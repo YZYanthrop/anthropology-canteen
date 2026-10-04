@@ -312,7 +312,7 @@ try {
     assert.equal(await exists(path.join(packageRoot, "data")), false, "UI input must be a fresh candidate ZIP extraction without data");
     const release = JSON.parse(await readFile(path.join(packageRoot, "candidate.json"), "utf8"));
     assert.equal(release.sourceCommit, PRODUCT_SHA);
-    assert.equal(release.version, "1.3.5");
+    assert.equal(release.version, "1.3.4");
     assert.equal(release.status, "unpublished-candidate");
     assert.equal(release.fullyVerified, false);
     assert.equal(release.platform, "darwin");

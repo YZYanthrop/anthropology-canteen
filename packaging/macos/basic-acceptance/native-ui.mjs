@@ -50,7 +50,7 @@ export function validateOwnedManifest(m, { scratch, home, uid, sourceSHA }) {
   const p = path.posix;
   const normalize = (s) => String(s).replaceAll("\\", "/");
   scratch = normalize(scratch); home = normalize(home);
-  assert.equal(m.version, 1); assert.equal(m.kind, "v135-native-ui");
+  assert.equal(m.version, 1); assert.equal(m.kind, "basic-native-ui");
   assert.equal(m.uid, uid); assert.ok(uid > 0); assert.equal(m.sourceSHA, sourceSHA);
   assert.equal(normalize(m.scratch), scratch);
   assert.equal(p.dirname(normalize(m.workRoot)), scratch);
@@ -157,12 +157,12 @@ async function main() {
     const packageRoot = await realpath(arg("--package"));
     assert.equal(await exists(path.join(packageRoot, "data")), false);
     const meta = JSON.parse(await readFile(path.join(packageRoot, "candidate.json"), "utf8"));
-    assert.equal(meta.version, "1.3.5"); assert.equal(meta.sourceCommit, sourceSHA); assert.equal(meta.arch, process.arch); assert.equal(meta.status, "unpublished-candidate");
+    assert.equal(meta.version, "1.3.4"); assert.equal(meta.sourceCommit, sourceSHA); assert.equal(meta.arch, process.arch); assert.equal(meta.status, "unpublished-candidate");
     await mkdir(scratch, { recursive: true });
     const workRoot = await mkdtemp(path.join(scratch, "native-ui-"));
     const installationId = "nativeui" + randomBytes(8).toString("hex");
     const label = `org.anthropology-canteen.reminder.${installationId}`;
-    const proposed = { version: 1, kind: "v135-native-ui", sourceSHA, uid: process.getuid(), scratch, workRoot, installationId, label, credentialRef: "native-ui-" + randomUUID(), productRoot: path.join(workRoot, "candidate-product"), worker: path.join(workRoot, "offline-worker.mjs"), executionLog: path.join(workRoot, "offline-executions.jsonl"), plist: path.join(os.homedir(), "Library/LaunchAgents", label + ".plist"), processes: [] };
+    const proposed = { version: 1, kind: "basic-native-ui", sourceSHA, uid: process.getuid(), scratch, workRoot, installationId, label, credentialRef: "native-ui-" + randomUUID(), productRoot: path.join(workRoot, "candidate-product"), worker: path.join(workRoot, "offline-worker.mjs"), executionLog: path.join(workRoot, "offline-executions.jsonl"), plist: path.join(os.homedir(), "Library/LaunchAgents", label + ".plist"), processes: [] };
     validateOwnedManifest(proposed, opts);
     assert.equal(await exists(proposed.plist), false); assert.equal(await jobLoaded(proposed), false); assert.equal((await disabledState(proposed)).entry, "absent");
     // Ownership is committed only after absence checks, before any task mutation.

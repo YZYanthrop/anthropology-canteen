@@ -1,4 +1,4 @@
-"""v1.3.5 candidate acceptance; immutable ZIP and source, separated evidence."""
+"""v1.3.4 candidate acceptance; immutable ZIP and source, separated evidence."""
 import argparse
 import hashlib
 import importlib.util
@@ -18,7 +18,7 @@ spec.loader.exec_module(old)
 require, save, command = old.require, old.save, old.command
 extract_zip, read_report = old.extract_zip, old.read_report
 REPO = "YZYanthrop/anthropology-canteen"
-BRANCH = "refs/heads/codex/v1.3.5-macos-basic"
+BRANCH = "refs/heads/codex/v1.3.4-macos-basic"
 STATES = ["loaded", "unloaded", "disabled", "loaded-disabled", "absent"]
 FAULTS = ["none", "marker-write", "settings-write", "post-registration-query", "recovery-obstruction"]
 SCHEDULER_IDS = {f"A-{state}-{fault}" for state in STATES for fault in FAULTS} | {
@@ -33,7 +33,7 @@ REUSE_FILES = ["reminder-mail.mjs", "reminder-worker.mjs", "reminder-utils.mjs",
 
 def package_name(arch):
     display = {"arm64": "Apple-Silicon-arm64", "x64": "Intel-x64"}[arch]
-    return f"Anthropology-Canteen-macOS-{display}-v1.3.5-candidate.zip"
+    return f"Anthropology-Canteen-macOS-{display}-v1.3.4-candidate.zip"
 
 
 def validate_execution(value, test_sha):
@@ -66,7 +66,7 @@ def verify_zip(path, arch):
 
 
 def verify_metadata(metadata, arch, sha):
-    for key, value in {"version": "1.3.5", "sourceCommit": sha, "platform": "darwin", "arch": arch, "fullyVerified": False, "status": "unpublished-candidate"}.items():
+    for key, value in {"version": "1.3.4", "sourceCommit": sha, "platform": "darwin", "arch": arch, "fullyVerified": False, "status": "unpublished-candidate"}.items():
         require(metadata.get(key) == value, "Candidate metadata mismatch: " + key)
 
 
@@ -135,7 +135,7 @@ def main():
     require(os.environ.get("GITHUB_REF") == BRANCH and os.environ.get("GITHUB_REPOSITORY") == REPO, "Wrong acceptance branch/repository")
     require(args.candidate and not scratch.exists(), "Candidate ZIP and fresh scratch required")
     scratch.mkdir(parents=True)
-    report = {"productSHA": args.product_sha, "testSHA": os.environ.get("GITHUB_SHA"), "version": "1.3.5", "architecture": args.arch, "runURL": f"https://github.com/{REPO}/actions/runs/{os.environ.get('GITHUB_RUN_ID')}", "environment": {"uname": platform.uname()._asdict(), "macOS": platform.mac_ver()[0], "uid": os.getuid(), "runnerImage": os.environ.get("ImageVersion")}, "selection": {"suites": args.suites, "schedulerCases": args.scheduler_cases}, "cases": [], "fullyVerified": False, "notCovered": ["Finder/Gatekeeper", "Real login/logout, sleep/wake and full reboot", "Isolated native launchctl query ACL denial", "Real email or providers", "Complete three-platform certification"]}
+    report = {"productSHA": args.product_sha, "testSHA": os.environ.get("GITHUB_SHA"), "version": "1.3.4", "internalValidation": True, "architecture": args.arch, "runURL": f"https://github.com/{REPO}/actions/runs/{os.environ.get('GITHUB_RUN_ID')}", "environment": {"uname": platform.uname()._asdict(), "macOS": platform.mac_ver()[0], "uid": os.getuid(), "runnerImage": os.environ.get("ImageVersion")}, "selection": {"suites": args.suites, "schedulerCases": args.scheduler_cases}, "cases": [], "fullyVerified": False, "notCovered": ["Finder/Gatekeeper", "Real login/logout, sleep/wake and full reboot", "Isolated native launchctl query ACL denial", "Real email or providers", "Complete three-platform certification"]}
     node = shutil.which("node") or "node"
     try:
         actual = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
@@ -161,7 +161,7 @@ def main():
             require((package / module).read_bytes() == (source / module).read_bytes(), "Candidate/source mismatch: " + module)
         report["cases"].append({"id":"candidate.baseline", "category":"candidate-black-box", "status":"pass", "details":{"archive":archive.name,"size":archive.stat().st_size,"sha256":digest,"metadata":metadata,"runtime":runtime}})
         if "black-box" in args.suites:
-            code = command([sys.executable, HERE.parents[1] / "shared/candidate-smoke.py", archive, "--version", "1.3.5", "--platform", "darwin", "--arch", args.arch, "--source-sha", args.product_sha, "--report", reports / "candidate-black-box.json"], reports / "candidate-black-box.log", 240)
+            code = command([sys.executable, HERE.parents[1] / "shared/candidate-smoke.py", archive, "--internal-validation", "--version", "1.3.4", "--platform", "darwin", "--arch", args.arch, "--source-sha", args.product_sha, "--report", reports / "candidate-black-box.json"], reports / "candidate-black-box.log", 240)
             report["cases"].append({"id":"candidate.start-page-save-restart", "category":"candidate-black-box", "status":"pass" if code == 0 and (reports / "candidate-black-box.json").exists() else "fail", "details":"Original candidate ZIP, no module replacement or credentials; see candidate-black-box.json/log"})
         for suite in ["scheduler", "ui", "native-ui"]:
             if suite not in args.suites:
@@ -188,7 +188,7 @@ def main():
         report["basicUsabilityPassed"] = report["selectedRequirementsPassed"] and set(args.suites) == set(SUITES) and not args.scheduler_cases
         report["counts"] = {s:sum(c["status"]==s for c in report["cases"]) for s in ["pass","fail","pending"]}
         save(reports / "summary.json", report)
-        lines=[f"# macOS {args.arch} v1.3.5 basic usability", "", f"Product: {args.product_sha}; tests: {report['testSHA']}", report["runURL"], "", "| Case | Category | Result |", "| --- | --- | --- |"]
+        lines=[f"# macOS {args.arch} v1.3.4 basic usability", "", f"Product: {args.product_sha}; tests: {report['testSHA']}", report["runURL"], "", "| Case | Category | Result |", "| --- | --- | --- |"]
         lines += [f"| {c['id']} | {c['category']} | {c['status']} |" for c in report["cases"]]
         lines += ["", "Required checks: " + ("passed" if report["selectedRequirementsPassed"] else "not satisfied"), "Not fully Verified; see source evidence, cleanup residue and excluded scenarios."]
         (reports / "SUMMARY.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
