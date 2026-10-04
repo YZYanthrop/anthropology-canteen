@@ -8,7 +8,7 @@ document router below.
 
 ## Stable product
 
-- Public version and immutable tag: `v1.3.4` at
+- Public version and preserved tag: `v1.3.4` at
   `bb78dd9431a61617c3198b087ac556759ef85333`; released with accepted limits, not fully Verified.
 - Targets: Windows x64, macOS arm64, and macOS x64 from one source tag.
 - Main local-data schema: version 8.
@@ -32,18 +32,19 @@ document router below.
 
 ## Current work
 
-[基于 v1.3.4 的 macOS 基本可用内部修复与验收](plans/v1.3.4-macos-basic-internal.md)执行完成，待用户验收。
-结论：**macOS 基本可用验收通过（有限范围）**；产品版本保持 1.3.4，内部产品 SHA f1bacdc。
-两个架构各 46 项必需检查通过；R2 完整执行与 R3 真实 API/UI/清理定向重验的分层证据见[交接](handoffs/v1.3.4-macos-basic-internal.md)。
-真实定时各一次，更新/恢复无意外执行；任务/plist/进程已清理，enabled 覆盖记录残留如实列明。
-B/D 与 Keychain 按共享依赖未变证明复用原证据；完整限制、内部 ZIP/校验、准确产品/测试 SHA 和 Actions 均已记录。
-本结论不代表正式 bb78dd9 ZIP 已修复，也不标整个版本 Verified；已有正式标签、ZIP 和 Release 不变。
-独立 codex/v1.3.4-macos-basic 分支保留；执行已停止待用户验收，不自动合并或发布。
+[三平台统一重新发行 v1.3.4（r1）方案](plans/v1.3.4-three-platform-reissue.md)：**Proposed，批准实施 no**。
+本轮只形成方案和完整原版归档；未构建、推送、改标签或写 Release。
+实时 API：原 Release immutable=false，仓库未启用不可变发布、无规则集；项目不改写标签约定仍有效。
+优先评估保留原发布入口；新三包从同一未来冻结 SHA 全新构建并验收后，才请求一次具体替换/标签授权。
+若不能复用，使用 v1.3.4-r1；程序内仍为 1.3.4。新的推送及云端构建须另行授权。
+[原标签、发布说明和旧六资产完整归档](handoffs/v1.3.4-original-release-archive.md)已校验，独立本地副本保留。
+规划分支 codex/v1.3.4-reissue-plan；旧内部 Mac 修复分支与[有限验收报告](handoffs/v1.3.4-macos-basic-internal.md)保留。
+内部 f1bacdc 的通过不等于新发行通过；新源未冻结，所有新构建和测试待执行。
 
 ## Current release
 
 v1.3.4 已发布，但未全部 Verified；用户明确接受本次验证例外。
-不可变标签 v1.3.4 指向 `bb78dd9431a61617c3198b087ac556759ef85333`，三个最终包的 release.json 同源。
+按项目约定保留的标签 v1.3.4 指向 `bb78dd9431a61617c3198b087ac556759ef85333`，三个最终包的 release.json 同源。
 [公开发布页](https://github.com/YZYanthrop/anthropology-canteen/releases/tag/v1.3.4)；[发布交接](handoffs/v1.3.4-release.md)。
 最终 Windows 包及两个原生 Mac 包的结构、空白资料、隐私、服务启动、静态资源和合成状态重启持久化检查通过。
 既有 691a749 的 lint/build、Node 132/132、UI 39/39 及已执行 Windows 原生结果保留，未重复整套回归。

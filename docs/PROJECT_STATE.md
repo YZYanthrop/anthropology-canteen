@@ -1,5 +1,12 @@
 # Anthropology Canteen project state
 
+## v1.3.4 三平台修订发行规划
+
+2026-10-04：当前工作转为[重新发行方案](plans/v1.3.4-three-platform-reissue.md)，Proposed、批准实施 no。
+原 Release/标签/三个 ZIP 与校验已完整双副本[归档](handoffs/v1.3.4-original-release-archive.md)，未修改远端。
+实际 GitHub 未启用 immutable 保护；项目的不改写约定继续有效，任何原标签例外仍待新包验收后的明确授权。
+产品仍 1.3.4，拟修订 r1；新产品 SHA 尚未冻结，未进行新构建/验证，不套用以下旧结果。
+
 ## v1.3.4 macOS basic-usability repair
 
 Execution is complete on codex/v1.3.4-macos-basic, awaiting user acceptance. Product f1bacdc preserves version 1.3.4 and passes the limited basic-usability gate on both Mac architectures. Authorized branch pushes/builds/tests completed; no merge or publication occurred.
