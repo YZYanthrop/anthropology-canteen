@@ -1,6 +1,6 @@
 # Current project snapshot
 
-Last updated: 2026-10-03
+Last updated: 2026-10-04
 
 This is the lightweight entry point for a new Codex task. Chat history is not
 required. Read this file and `docs/work/ACTIVE.md` first, then follow the
@@ -36,7 +36,8 @@ v1.3.5 macOS 基本可用修复与验收已批准实施，状态 In progress。
 [计划](plans/v1.3.5-macos-basic-usability.md)：只修 macOS 停用识别和由此导致的更新/恢复问题，保持 8/2/3。
 独立分支 codex/v1.3.5-macos-basic，从验收报告 fbaa63f 创建；现有验收证据和其他修改保留。
 先补回归后修复已完成；lint/build 通过、Node 164/164、提醒 UI 22/22；工具补测另见[交接](handoffs/v1.3.5-macos-basic-usability.md)。
-两架构云端候选构建/验收须本次单独授权，尚未执行，不能判基本可用通过。
+候选源码及测试已冻结为 2936d8ab6f945beadf766608f2678f84d9a0eafc。
+两架构云端授权已请求、待答复；尚未推送或执行，不能判基本可用通过。
 目标为“macOS 基本可用验收通过（有限范围）”，不等于版本完全 Verified；不合并/发布。
 旧版问题与原生证据见 [v1.3.4 验收](handoffs/v1.3.4-macos-limited-acceptance.md)。
 
