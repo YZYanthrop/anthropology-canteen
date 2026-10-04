@@ -427,10 +427,20 @@ async function macJobLoaded(uid, label, runCommand) {
 
 async function macJobDisabled(uid, label, runCommand) {
   const result = await runCommand("/bin/launchctl", ["print-disabled", `gui/${uid}`]);
-  if (!/\{[\s\S]*\}/.test(result)) throw new Error("无法可靠核对 macOS 后台提醒的停用状态。");
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const value = result.match(new RegExp(`"${escaped}"\\s*=>\\s*(true|false)`));
-  return value?.[1] === "true";
+  const unreliable = () => new Error("无法可靠核对 macOS 后台提醒的停用状态。");
+  // Current launchctl uses enabled/disabled; older output uses booleans.
+  // Absence means no override only after the entire dictionary was parsed.
+  const dictionary = String(result).trim().match(/^(?:disabled services\s*=\s*)?\{([\s\S]*)\}$/);
+  if (!dictionary) throw unreliable();
+  const values = new Map();
+  let rest = dictionary[1].trim();
+  while (rest) {
+    const entry = rest.match(/^"([^"\r\n]+)"\s*=>\s*(enabled|disabled|true|false)(?=\s|$)/);
+    if (!entry || values.has(entry[1])) throw unreliable();
+    values.set(entry[1], entry[2] === "disabled" || entry[2] === "true");
+    rest = rest.slice(entry[0].length).trim();
+  }
+  return values.get(label) ?? false;
 }
 
 function withoutRunAtLoad(bytes) {

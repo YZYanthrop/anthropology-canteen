@@ -124,8 +124,8 @@ async function fixture(id) {
   await writeFile(join(root, "reminder-worker.mjs"), `import { appendFile } from 'node:fs/promises'; import { fileURLToPath } from 'node:url'; import { resolve } from 'node:path';
 export async function runReminderOnce(){ await appendFile(${JSON.stringify(workerLog)}, JSON.stringify({at:new Date().toISOString(),count:1})+'\\n'); throw new Error('Offline fixture worker must not run during migration'); }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await runReminderOnce();`);
-  const module = await import(pathToFileURL(join(root, "portable-server.mjs")).href);
-  const f = { parent, root, data, module, file: join(data, "anthropology-canteen-data.json"), workerLog };
+  const productModule = await import(pathToFileURL(join(root, "portable-server.mjs")).href);
+  const f = { parent, root, data, module: productModule, file: join(data, "anthropology-canteen-data.json"), workerLog };
   await noWorker(f);
   return f;
 }

@@ -1,0 +1,12 @@
+{
+  "mode": "build",
+  "productSHA": "self",
+  "candidateRunId": null,
+  "suites": [
+    "black-box",
+    "scheduler",
+    "ui",
+    "native-ui"
+  ],
+  "schedulerCases": null
+}

@@ -71,12 +71,13 @@ for (const state of ["loaded", "loaded-disabled", "unloaded", "disabled", "absen
           if (!loaded) throw new Error("Could not find service");
           return "loaded";
         }
-        if (args[0] === "print-disabled") return `{ "${label}" => ${disabled} }`;
+        if (args[0] === "print-disabled") return `disabled services = {\n"${label}" => ${disabled ? "disabled" : "enabled"}\n}`;
         mutations.push(args[0]);
         if (args[0] === "enable") { disabled = false; return ""; }
         if (args[0] === "disable") { disabled = true; return ""; }
         if (args[0] === "bootout") { loaded = false; return ""; }
         if (args[0] === "bootstrap") {
+          assert.equal(disabled, false, "native launchd refuses bootstrap while disabled");
           const bytes = await readFile(plist, "utf8");
           assert.match(bytes, /<key>RunAtLoad<\/key>\s*<false\s*\/>/);
           bootstrapDefinitions.push(bytes);
@@ -89,6 +90,9 @@ for (const state of ["loaded", "loaded-disabled", "unloaded", "disabled", "absen
         const operation = installScheduler(root, config, {
           platform: "darwin", uid: "501", plistPath: plist, runCommand,
           writeMarker: async (path, marker) => {
+            const journal = JSON.parse(await readFile(join(root, "data", ".scheduler-update.json"), "utf8"));
+            assert.equal(journal.mac.disabled, initialDisabled, "snapshot must preserve the actual disabled state");
+            assert.equal(journal.mac.loaded, initialLoaded);
             await writeJsonAtomic(path, marker);
             if (fails) throw new Error("injected marker failure");
           },

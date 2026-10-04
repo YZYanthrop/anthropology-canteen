@@ -32,13 +32,13 @@ document router below.
 
 ## Current work
 
-macOS 有限验收执行完成，待用户验收；工作包保持 In progress，未标 Verified。
-两架构各 58 通过 / 8 失败 / 1 待验证：正式包、B/D、合成 UI 和离线定时通过；
-A/C 确认停用状态识别错误，已加载且停用任务更新后恢复失败，产品未修复。
-[验收报告](handoffs/v1.3.4-macos-limited-acceptance.md) · [缺陷复现](handoffs/v1.3.4-macos-disabled-state-defect.md) · [计划](plans/v1.3.4-macos-limited-acceptance.md)。
-独立分支 codex/v1.3.4-macos-acceptance 有意保留未合并；测试提交已按授权推送，最终报告仅本地提交。
-任务/plist/进程/测试 Keychain 已清理；定向重验各留下 12 条 enabled override，首轮该覆盖项清理结论不可靠。
-后续修复和发布需另行批准，不自动继续；产品保持已发布但未全部 Verified。
+v1.3.5 macOS 基本可用修复与验收已批准实施，状态 In progress。
+[计划](plans/v1.3.5-macos-basic-usability.md)：只修 macOS 停用识别和由此导致的更新/恢复问题，保持 8/2/3。
+独立分支 codex/v1.3.5-macos-basic，从验收报告 fbaa63f 创建；现有验收证据和其他修改保留。
+先补回归后修复已完成；lint/build 通过、Node 164/164、提醒 UI 22/22；工具补测另见[交接](handoffs/v1.3.5-macos-basic-usability.md)。
+两架构云端候选构建/验收须本次单独授权，尚未执行，不能判基本可用通过。
+目标为“macOS 基本可用验收通过（有限范围）”，不等于版本完全 Verified；不合并/发布。
+旧版问题与原生证据见 [v1.3.4 验收](handoffs/v1.3.4-macos-limited-acceptance.md)。
 
 ## Current release
 

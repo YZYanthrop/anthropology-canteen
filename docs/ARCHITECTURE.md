@@ -1,5 +1,16 @@
 # Architecture
 
+## v1.3.5 macOS disabled inspection
+
+The macOS disabled reader now validates the whole launchctl dictionary and accepts
+native enabled/disabled alongside legacy true/false. Empty command output, unknown
+values or duplicate entries throw instead of implying a healthy task. The existing
+status boundary converts this to unknown; updates stop before task mutation when
+the original state cannot be captured. A valid dictionary without this label means
+no disabled override. The existing snapshot/restore transaction remains unchanged.
+Native candidate acceptance is pending; see the [approved plan](plans/v1.3.5-macos-basic-usability.md).
+
+
 ## One product, multiple packaging layers
 
 Anthropology Canteen has one shared application and one shared portable server.

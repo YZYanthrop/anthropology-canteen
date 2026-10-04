@@ -6,7 +6,7 @@ test("product version and provider User-Agents stay aligned", async () => {
   const metadata = JSON.parse(
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );
-  assert.equal(metadata.version, "1.3.4");
+  assert.equal(metadata.version, "1.3.5");
 
   for (const file of [
     "../app/lib/scholar-search.ts",
