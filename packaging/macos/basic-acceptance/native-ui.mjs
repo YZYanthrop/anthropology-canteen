@@ -70,6 +70,20 @@ export function validateOwnedManifest(m, { scratch, home, uid, sourceSHA }) {
   return m;
 }
 
+// Browser/server shutdown is asynchronous. A disappearing command signature
+// is not permission to kill another process; wait read-only for the owned PID
+// to disappear, and still reject any persistent identity mismatch.
+export async function awaitOwnedCommand(pid, needle, inspect, pause = delay) {
+  assert.ok(Number.isSafeInteger(pid) && pid > 1);
+  assert.ok(typeof needle === "string" && needle.length > 0);
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const command = await inspect(pid);
+    if (!command || command.includes(needle)) return command;
+    if (attempt < 39) await pause(100);
+  }
+  throw new Error(`Process identity differs for PID ${pid}; refusing termination`);
+}
+
 async function exists(file) { try { await access(file); return true; } catch (e) { if (e.code === "ENOENT") return false; throw e; } }
 async function run(command, args) { return (await execute(command, args, { timeout: 15000, maxBuffer: 4 * 1024 * 1024 })).stdout.trim(); }
 async function jobLoaded(m) { try { await run("/bin/launchctl", ["print", `gui/${m.uid}/${m.label}`]); return true; } catch (e) { if (/Could not find service|service not found/i.test(e.stderr || e.message)) return false; throw e; } }
@@ -117,7 +131,7 @@ async function main() {
     if (server?.exitCode === null) server.kill("SIGTERM");
     for (const owned of manifest.processes) {
       try {
-        let command = await processCommand(owned.pid);
+        let command = await awaitOwnedCommand(owned.pid, owned.needle, processCommand);
         if (command) {
           assert.ok(command.includes(owned.needle), "PID was reused: refusing termination");
           process.kill(owned.pid, "SIGTERM");

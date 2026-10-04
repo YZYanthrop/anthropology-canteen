@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyBrowserRequest, parseDisabledState, validateOwnedManifest, offlineWorkerSource } from "../packaging/macos/basic-acceptance/native-ui.mjs";
+import { classifyBrowserRequest, parseDisabledState, validateOwnedManifest, offlineWorkerSource, awaitOwnedCommand } from "../packaging/macos/basic-acceptance/native-ui.mjs";
 
 const label = "org.anthropology-canteen.reminder.nativeui0123456789abcdef";
 
@@ -70,4 +70,17 @@ test("offline task payload is executable and records only timestamp/count withou
     assert.deepEqual(rows.map((row) => row.count), [1, 2]);
     assert.ok(rows.every((row) => Object.keys(row).sort().join(",") === "count,executedAt" && !Number.isNaN(Date.parse(row.executedAt))));
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+
+test("cleanup tolerates an exiting PID but never accepts a persistently different process", async () => {
+  const needle = "/tmp/owned/portable-server.mjs";
+  let calls = 0;
+  const transitional = ["(node)", ""];
+  assert.equal(await awaitOwnedCommand(42, needle, async () => transitional[calls++], async () => {}), "");
+  assert.equal(calls, 2);
+  assert.equal(await awaitOwnedCommand(42, needle, async () => `node ${needle}`, async () => {}), `node ${needle}`);
+  calls = 0;
+  await assert.rejects(awaitOwnedCommand(42, needle, async () => { calls++; return "/usr/bin/unrelated"; }, async () => {}), /identity differs.*42.*refusing termination/);
+  assert.equal(calls, 40);
 });
