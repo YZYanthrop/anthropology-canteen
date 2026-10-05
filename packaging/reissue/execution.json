@@ -1,0 +1,8 @@
+{
+  "mode": "build",
+  "productSHA": "self",
+  "artifactRunId": null,
+  "platforms": ["win32-x64", "darwin-arm64", "darwin-x64"],
+  "macSuites": ["black-box", "scheduler", "ui", "native-ui", "migration", "native-smoke"],
+  "sequence": 1
+}

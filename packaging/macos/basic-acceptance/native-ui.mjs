@@ -90,7 +90,7 @@ async function jobLoaded(m) { try { await run("/bin/launchctl", ["print", `gui/$
 async function disabledState(m) { return parseDisabledState(await run("/bin/launchctl", ["print-disabled", `gui/${m.uid}`]), m.label); }
 async function reservePort() { const server = createServer(); await new Promise((yes, no) => { server.once("error", no); server.listen(0, "127.0.0.1", yes); }); const port = server.address().port; await new Promise((yes, no) => server.close((e) => e ? no(e) : yes())); return port; }
 const xml = (s) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-async function hashes(root, relative = "") {
+export async function hashes(root, relative = "") {
   const values = {};
   for (const item of await readdir(path.join(root, relative), { withFileTypes: true })) {
     if (!relative && item.name === "data") continue;
@@ -102,7 +102,7 @@ async function hashes(root, relative = "") {
 }
 
 async function main() {
-  const flags = process.argv.slice(2), cleanupOnly = flags.includes("--cleanup");
+  const flags = process.argv.slice(2), cleanupOnly = flags.includes("--cleanup"), reissue = flags.includes("--reissue");
   const arg = (name) => { const index = flags.indexOf(name); assert.ok(index >= 0 && flags[index + 1], `Missing ${name}`); return flags[index + 1]; };
   const sourceSHA = arg("--product-sha"); assert.match(sourceSHA, /^[0-9a-f]{40}$/);
   const scratch = path.resolve(arg("--scratch")), reportFile = path.resolve(arg("--report"));
@@ -170,8 +170,9 @@ async function main() {
     await run("/bin/launchctl", ["print", `gui/${process.getuid()}`]);
     const packageRoot = await realpath(arg("--package"));
     assert.equal(await exists(path.join(packageRoot, "data")), false);
-    const meta = JSON.parse(await readFile(path.join(packageRoot, "candidate.json"), "utf8"));
-    assert.equal(meta.version, "1.3.4"); assert.equal(meta.sourceCommit, sourceSHA); assert.equal(meta.arch, process.arch); assert.equal(meta.status, "unpublished-candidate");
+    const meta = JSON.parse(await readFile(path.join(packageRoot, reissue ? "release.json" : "candidate.json"), "utf8"));
+    assert.equal(meta.version, "1.3.4"); assert.equal(meta.sourceCommit, sourceSHA); assert.equal(meta.arch, process.arch); assert.equal(meta.status, reissue ? "prepared-for-release" : "unpublished-candidate");
+    if (reissue) assert.equal(meta.releaseRevision, "r1");
     await mkdir(scratch, { recursive: true });
     const workRoot = await mkdtemp(path.join(scratch, "native-ui-"));
     const installationId = "nativeui" + randomBytes(8).toString("hex");

@@ -1,5 +1,14 @@
 # Platform support
 
+## v1.3.4 r1 fresh three-platform acceptance (in progress)
+
+The authorized reissue keeps product version 1.3.4 and schemas 8/2/3. All three new packages will use the same frozen source S;
+old published and internal Mac results are historical only. Native Windows and both Mac architectures are required anew.
+Mac reissue coverage includes the full 73-ID package/A/C/UI/B/D/Keychain gate plus native smoke; Windows has a separate
+required set and native Scheduled Tasks/filesystem/DPAPI checks. Real local UAC cancellation is an additional release gate.
+Every native harness preserves ownership receipts and independently checks cleanup. Fixture failures are not product passes.
+The [execution handoff](handoffs/v1.3.4-r1-execution.md) records actual results; no new package/native result is claimed here.
+
 ## v1.3.4 internal Mac candidate accepted within limited scope
 
 A separate codex/v1.3.4-macos-basic branch repairs only the confirmed disabled-state

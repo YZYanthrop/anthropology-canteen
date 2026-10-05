@@ -1,12 +1,14 @@
 [CmdletBinding()]
 param(
   [string]$OutputDirectory,
-  [switch]$Candidate
+  [switch]$Candidate,
+  [switch]$Reissue
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+if ($Candidate -and $Reissue) { throw 'Candidate and Reissue are mutually exclusive' }
 $NodeVersion = "24.14.0"
 $ScriptDirectory = Split-Path -Parent $PSCommandPath
 $RepositoryRoot = [System.IO.Path]::GetFullPath(
@@ -41,6 +43,10 @@ if ($ProductVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
 
 $RootName = "Anthropology-Canteen-Windows-x64-v$ProductVersion"
 if ($Candidate) { $RootName += '-candidate' }
+if ($Reissue) {
+  if ($ProductVersion -ne '1.3.4') { throw 'Reissue requires product 1.3.4' }
+  $RootName += '-r1'
+}
 $StageRoot = Join-Path $OutputDirectory $RootName
 $ZipPath = Join-Path $OutputDirectory "$RootName.zip"
 $ShaPath = "$ZipPath.sha256"
@@ -219,6 +225,10 @@ try {
     Copy-Item -LiteralPath (Join-Path $RepositoryRoot 'packaging\shared\CANDIDATE-NOTICE.txt') -Destination $StageRoot
     $Manifest = [ordered]@{ version = $ProductVersion; sourceCommit = $SourceCommit; platform = 'win32'; arch = 'x64'; status = 'unpublished-candidate'; fullyVerified = $false }
     Write-Utf8WithoutBom -Path (Join-Path $StageRoot 'candidate.json') -Value ($Manifest | ConvertTo-Json)
+  }
+  if ($Reissue) {
+    & node (Join-Path $RepositoryRoot 'packaging/shared/reissue-manifest.mjs') --stage $StageRoot --platform win32 --arch x64
+    if ($LASTEXITCODE -ne 0) { throw 'Reissue metadata validation failed' }
   }
   Assert-BlankPortableTree -Root $StageRoot
   Compress-Archive -LiteralPath $StageRoot -DestinationPath $ZipPath `

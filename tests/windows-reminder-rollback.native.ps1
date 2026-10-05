@@ -23,7 +23,8 @@ $Roots = @((Join-Path $TestRoot 'old'), (Join-Path $TestRoot 'new'))
 $Events = New-Object System.Collections.Generic.List[string]
 $global:SliceAReadCount = 0
 $global:SliceAFault = ''
-$FixtureTime = (Get-Date).AddMinutes(20).ToString('HH:mm')
+$FixtureTime = (Get-Date).AddHours(12).ToString('HH:mm')
+@{ root=$TestRoot; names=@($TaskName,$OtherTaskName); kind='rollback' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $TestRoot 'owned.json') -Encoding UTF8
 
 # Faults surround the real native cmdlets; no mock substitutes for the task
 # registration, export, enabled state, or restore assertions in this harness.
@@ -83,7 +84,7 @@ function Assert-Original {
 try {
   foreach ($Root in $Roots) {
     New-Item -ItemType Directory -Path (Join-Path $Root 'runtime'), (Join-Path $Root 'tools'), (Join-Path $Root 'data') -Force | Out-Null
-    New-Item -ItemType HardLink -Path (Join-Path $Root 'runtime\node.exe') -Value $NodePath | Out-Null
+    Copy-Item -LiteralPath $NodePath -Destination (Join-Path $Root 'runtime\node.exe')
     [IO.File]::WriteAllText((Join-Path $Root 'reminder-worker.mjs'), 'import { writeFileSync } from "node:fs"; writeFileSync(new URL("worker-ran", import.meta.url), "unexpected invocation");' + "`n")
     foreach ($Script in @('register-windows-reminder.ps1', 'windows-reminder-task-common.ps1')) {
       Copy-Item -LiteralPath (Join-Path $ProductRoot ('tools\' + $Script)) -Destination (Join-Path $Root ('tools\' + $Script))

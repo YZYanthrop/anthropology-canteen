@@ -9,12 +9,14 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { pathToFileURL } from "node:url";
 import { release as osRelease } from "node:os";
 
-const PRODUCT_SHA = "bb78dd9431a61617c3198b087ac556759ef85333";
+
 const execute = promisify(execFile);
 const options = Object.fromEntries(process.argv.slice(2).reduce((pairs, value, index, args) => {
   if (value.startsWith("--")) pairs.push([value.slice(2), args[index + 1]]);
   return pairs;
 }, []));
+const PRODUCT_SHA = options["product-sha"] || "bb78dd9431a61617c3198b087ac556759ef85333";
+assert.match(PRODUCT_SHA, /^[0-9a-f]{40}$/);
 if (!options.source || !options.scratch || !options.report) {
   throw new Error("Usage: node migration.mjs --source RELEASE_CHECKOUT --scratch OWNED_TEMP_PARENT --report REPORT.json [--case EXACT_CASE_ID]");
 }

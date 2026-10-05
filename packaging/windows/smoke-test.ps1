@@ -2,7 +2,9 @@
 param(
   [Parameter(Mandatory = $true)][string]$PackageRoot,
   [Parameter(Mandatory = $true)][string]$ZipPath,
-  [switch]$SkipSchedulerRegistration
+  [switch]$SkipSchedulerRegistration,
+  [string]$ReceiptPath = "",
+  [string]$CleanupReport = ""
 )
 
 Set-StrictMode -Version Latest
@@ -26,6 +28,22 @@ $EntryProcessId = $null
 $WindowsPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $WindowsSmokeTaskName = ""
 $SessionToken = ""
+$SmokeTaskNames = @()
+$SmokePassed = $false
+$FixtureTime = (Get-Date).AddHours(12).ToString("HH:mm")
+if (-not $ReceiptPath) { $ReceiptPath = Join-Path $TemporaryRoot "smoke-owned.json" }
+if (-not $CleanupReport) { $CleanupReport = Join-Path $TemporaryRoot "smoke-cleanup.json" }
+
+function Save-SmokeOwnership {
+  @{ root=$TemporaryRoot; names=@($script:SmokeTaskNames); kind="native-smoke" } | ConvertTo-Json | Set-Content -LiteralPath $ReceiptPath -Encoding UTF8
+}
+
+function Remove-OwnedFolder {
+  param([string]$Path)
+  $Resolved=[IO.Path]::GetFullPath($Path)
+  if (-not $Resolved.StartsWith([IO.Path]::GetFullPath($TemporaryRoot)+"\",[StringComparison]::OrdinalIgnoreCase)) { throw "Refusing removal outside smoke fixture" }
+  Remove-Item -LiteralPath $Resolved -Recurse -Force
+}
 
 function Test-ProcessAlive {
   param([Parameter(Mandatory = $true)][int]$ProcessId)
@@ -35,8 +53,8 @@ function Test-ProcessAlive {
 function Stop-TestProcess {
   if ($null -ne $script:ServerProcess -and
       -not $script:ServerProcess.HasExited) {
-    Stop-Process -Id $script:ServerProcess.Id -Force -ErrorAction SilentlyContinue
-    $script:ServerProcess.WaitForExit(10000) | Out-Null
+    Stop-Process -Id $script:ServerProcess.Id -Force -ErrorAction Stop
+    if (-not $script:ServerProcess.WaitForExit(10000)) { throw "Owned server cleanup timed out" }
   }
   $script:ServerProcess = $null
 }
@@ -108,7 +126,8 @@ function Invoke-PackagedDpapi {
   return (($Output | Out-String).Trim())
 }
 
-New-Item -ItemType Directory -Path $TemporaryRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $TemporaryRoot -ErrorAction Stop | Out-Null
+Save-SmokeOwnership
 try {
   if (Test-Path -LiteralPath (Join-Path $PackageRoot "data")) {
     throw "The blank staging package already contains data."
@@ -203,12 +222,14 @@ try {
 
   if (-not $SkipSchedulerRegistration) {
     $WindowsSmokeTaskName = "Anthropology Canteen Reminder $([guid]::NewGuid().ToString('N').Substring(0, 12))"
+    $SmokeTaskNames += $WindowsSmokeTaskName
+    Save-SmokeOwnership
     & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $RegisterReminder `
       -TaskName $WindowsSmokeTaskName `
       -NodePath $Node `
       -WorkerPath $ReminderWorker `
       -RootPath $ExtractedRoot `
-      -Time "23:59"
+      -Time $FixtureTime
     $RegisterExitCode = $LASTEXITCODE
     $global:LASTEXITCODE = 0
     if ($RegisterExitCode -ne 0) {
@@ -225,7 +246,7 @@ try {
       -NodePath $MovedNode `
       -WorkerPath $MovedWorker `
       -RootPath $MovedPackageRoot `
-      -Time "23:59"
+      -Time $FixtureTime
     $SecondRegisterExitCode = $LASTEXITCODE
     $global:LASTEXITCODE = 0
     if ($SecondRegisterExitCode -ne 0) {
@@ -251,11 +272,12 @@ try {
     $InspectionJson = & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (
       Join-Path $MovedPackageRoot "tools\inspect-windows-reminder.ps1"
     ) -TaskName $WindowsSmokeTaskName -NodePath $MovedNode -WorkerPath $MovedWorker `
-      -RootPath $MovedPackageRoot -Time "23:59"
+      -RootPath $MovedPackageRoot -Time $FixtureTime
     if ($LASTEXITCODE -ne 0 -or ($InspectionJson | ConvertFrom-Json).status -ne "current") {
       throw "The packaged Windows reminder task did not pass the post-update inspection."
     }
     $global:LASTEXITCODE = 0
+    if ((Get-ScheduledTaskInfo -TaskName $WindowsSmokeTaskName).LastRunTime.Year -gt 2000) { throw "Reminder unexpectedly executed during registration/update" }
     & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (
       Join-Path $MovedPackageRoot "tools\unregister-windows-reminder.ps1"
     ) `
@@ -303,6 +325,8 @@ try {
   if (-not (Test-ProcessAlive -ProcessId $EntryProcessId)) {
     throw "The VBS launcher process is not alive."
   }
+  $EntryIdentity = Get-CimInstance Win32_Process -Filter ("ProcessId="+$EntryProcessId)
+  if (-not $EntryIdentity -or ([string]$EntryIdentity.CommandLine).IndexOf($ExtractedRoot,[StringComparison]::OrdinalIgnoreCase) -lt 0) { throw "Launcher PID identity mismatch" }
   Stop-Process -Id $EntryProcessId -Force
   for ($Attempt = 0; $Attempt -lt 40 -and
       (Test-ProcessAlive -ProcessId $EntryProcessId); $Attempt += 1) {
@@ -312,7 +336,7 @@ try {
     throw "The VBS launcher process did not stop."
   }
   $EntryProcessId = $null
-  Remove-Item -LiteralPath (Join-Path $ExtractedRoot "data") -Recurse -Force
+  Remove-OwnedFolder (Join-Path $ExtractedRoot "data")
 
   $Port = Get-Random -Minimum 41000 -Maximum 49999
   $BaseUrl = "http://127.0.0.1:$Port"
@@ -385,7 +409,7 @@ try {
       $Migrated.subscriptions.scholar[0].label -ne "Migration Test Scholar") {
     throw "An already-created blank data file did not retry neighboring-version migration."
   }
-  Remove-Item -LiteralPath $SiblingRoot -Recurse -Force
+  Remove-OwnedFolder $SiblingRoot
   $Blank = $Migrated
   $Blank.states | Add-Member -NotePropertyName "smoke-record" `
     -NotePropertyValue ([pscustomobject]@{ saved = $true }) -Force
@@ -601,7 +625,7 @@ try {
     throw "The packaged reminder worker did not complete its blank offline run."
   }
 
-  Remove-Item -LiteralPath (Join-Path $ExtractedRoot "data") -Recurse -Force
+  Remove-OwnedFolder (Join-Path $ExtractedRoot "data")
   $AutoClosePort = Get-Random -Minimum 51000 -Maximum 59999
   $AutoCloseUrl = "http://127.0.0.1:$AutoClosePort"
   Start-TestServer -Node $Node -Server $Server -Port $AutoClosePort -AutoClose
@@ -631,23 +655,14 @@ try {
   }
   $ServerProcess = $null
 
-  Write-Output "Windows x64 portable smoke test passed."
+  $SmokePassed = $true
 } finally {
-  Stop-TestProcess
-  if (-not [string]::IsNullOrWhiteSpace($WindowsSmokeTaskName)) {
-    try {
-      & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $UnregisterReminder `
-        -TaskName $WindowsSmokeTaskName
-    } catch {
-      # Preserve the original smoke failure; the task may already be absent.
-    }
-    $global:LASTEXITCODE = 0
-  }
-  if ($null -ne $EntryProcessId -and
-      (Test-ProcessAlive -ProcessId $EntryProcessId)) {
-    Stop-Process -Id $EntryProcessId -Force -ErrorAction SilentlyContinue
-  }
-  if (Test-Path -LiteralPath $TemporaryRoot) {
-    Remove-Item -LiteralPath $TemporaryRoot -Recurse -Force
-  }
+  # Independent receipts also let workflow always cleanup recover after a killed harness.
+  & $WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (
+    Join-Path $PSScriptRoot "reissue-acceptance\cleanup.ps1"
+  ) -Manifest $ReceiptPath -Report $CleanupReport
+  $CleanupCode=$LASTEXITCODE
+  $global:LASTEXITCODE=0
+  if ($CleanupCode -ne 0) { throw "Smoke cleanup failed; synthetic evidence retained at $TemporaryRoot" }
 }
+if ($SmokePassed) { Write-Output "Windows x64 portable smoke test and independent cleanup passed." }

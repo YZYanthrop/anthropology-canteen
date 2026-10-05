@@ -1,0 +1,166 @@
+name: v1.3.4 r1 three-platform build and acceptance
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.config.outputs.mode }}
+      product_sha: ${{ steps.config.outputs.product_sha }}
+      matrix: ${{ steps.config.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: acceptance
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - id: config
+        name: Enforce exact branch, source, three-platform and retest scope
+        run: python -B acceptance/packaging/reissue/execution.py --config acceptance/packaging/reissue/execution.json
+
+  shared:
+    needs: prepare
+    if: needs.prepare.outputs.mode == 'build'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.product_sha }}
+          path: product
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.14.0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install locked dependencies
+        working-directory: product
+        run: pnpm install --frozen-lockfile
+      - name: Fresh lint, build, Node, UI, and acceptance-tool regressions
+        run: python -B product/packaging/reissue/verify.py --source product --product-sha '${{ needs.prepare.outputs.product_sha }}' --reports '${{ runner.temp }}/r1-shared-reports'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v1.3.4-r1-shared-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/r1-shared-reports/
+          retention-days: 30
+          if-no-files-found: error
+
+  native:
+    needs: [prepare, shared]
+    if: ${{ always() && needs.prepare.result == 'success' && (needs.shared.result == 'success' || (needs.prepare.outputs.mode == 'retest' && needs.shared.result == 'skipped')) }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: acceptance
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.product_sha }}
+          path: product
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.14.0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Initialize isolated paths on the assigned runner
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          temp=Path(os.environ['RUNNER_TEMP'])
+          values={'R1_PACKAGES':temp/'r1-packages','R1_SCRATCH':temp/'canteen-r1-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}','R1_REPORTS':temp/'r1-reports'}
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as output:
+              for key,value in values.items(): output.write(f'{key}={value}\n')
+      - name: Install locked source dependencies
+        working-directory: product
+        run: pnpm install --frozen-lockfile
+      - name: Record native architecture and browser client
+        shell: bash
+        run: |
+          node -e 'const fs=require("fs"),path=require("path"); if(process.platform!==process.env.EXPECTED_PLATFORM||process.arch!==process.env.EXPECTED_ARCH)throw Error("Wrong native runner"); fs.appendFileSync(process.env.GITHUB_ENV,"ACCEPTANCE_PLAYWRIGHT_MODULE="+path.resolve("product/node_modules/playwright-core/index.mjs")+"\n");'
+        env:
+          EXPECTED_PLATFORM: ${{ matrix.platform }}
+          EXPECTED_ARCH: ${{ matrix.arch }}
+      - name: Build the frozen product source freshly on this native platform
+        if: needs.prepare.outputs.mode == 'build'
+        working-directory: product
+        run: pnpm build
+      - name: Create Windows r1 ZIP from frozen source
+        if: needs.prepare.outputs.mode == 'build' && matrix.platform == 'win32'
+        shell: pwsh
+        run: ./product/packaging/windows/build-portable.ps1 -Reissue -OutputDirectory $env:R1_PACKAGES
+      - name: Create macOS r1 ZIP from frozen source
+        if: needs.prepare.outputs.mode == 'build' && matrix.platform == 'darwin'
+        shell: bash
+        run: bash product/packaging/macos/build-portable.sh '${{ matrix.arch }}' "$R1_PACKAGES" --reissue
+      - name: Preserve exact original final package before acceptance
+        if: needs.prepare.outputs.mode == 'build'
+        uses: actions/upload-artifact@v4
+        with:
+          name: v1.3.4-r1-package-${{ matrix.id }}-${{ needs.prepare.outputs.product_sha }}
+          path: ${{ runner.temp }}/r1-packages/*.zip*
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0
+      - name: Download original package for a targeted harness retest
+        if: needs.prepare.outputs.mode == 'retest'
+        shell: bash
+        run: python -B acceptance/packaging/reissue/execution.py --config acceptance/packaging/reissue/execution.json --download '${{ matrix.id }}' --source product --destination "$R1_PACKAGES" --reports "$R1_REPORTS/artifact"
+      - name: Execute native package and source-fault acceptance
+        id: acceptance
+        continue-on-error: true
+        shell: bash
+        run: python -B acceptance/packaging/reissue/native.py --source product --packages "$R1_PACKAGES" --scratch "$R1_SCRATCH" --reports "$R1_REPORTS" --platform '${{ matrix.id }}'
+      - name: Independently clean and verify manifest-owned OS resources
+        id: cleanup
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: python -B acceptance/packaging/reissue/native.py --cleanup --source product --packages "$R1_PACKAGES" --scratch "$R1_SCRATCH" --reports "$R1_REPORTS" --platform '${{ matrix.id }}'
+      - name: Retain acceptance, source/test identity, logs and cleanup evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v1.3.4-r1-report-${{ matrix.id }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/r1-reports/
+          retention-days: 30
+          if-no-files-found: error
+          include-hidden-files: true
+      - name: Fail on unsuccessful acceptance or incomplete independent cleanup
+        if: always()
+        shell: bash
+        env:
+          ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
+        run: test "$ACCEPTANCE_OUTCOME" = success && test "$CLEANUP_OUTCOME" = success

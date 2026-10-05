@@ -56,6 +56,15 @@
   deploy, sign, notarize, or create a GitHub Release unless the user explicitly
   authorizes that external action.
 
+## Scoped v1.3.4 r1 authorization (2026-10-04)
+
+The user-approved goal in `docs/plans/v1.3.4-three-platform-reissue.md` permits
+one exception after all required fresh three-platform acceptance and archive gates:
+replace only the existing v1.3.4 tag and six release assets, preserving Release
+399786176 where safely supported. Otherwise use v1.3.4-r1 without bypassing
+protection. Release directly from the frozen codex/v1.3.4-reissue branch is
+approved; do not push main. This does not relax any other release tag rule.
+
 ## Release boundaries
 
 - `release/`, `outputs/`, `dist/`, `data/`, dependencies, secrets, and local

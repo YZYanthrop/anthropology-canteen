@@ -1,6 +1,6 @@
 # Current project snapshot
 
-Last updated: 2026-10-04
+Last updated: 2026-10-05
 
 This is the lightweight entry point for a new Codex task. Chat history is not
 required. Read this file and `docs/work/ACTIVE.md` first, then follow the
@@ -32,14 +32,13 @@ document router below.
 
 ## Current work
 
-[三平台统一重新发行 v1.3.4（r1）方案](plans/v1.3.4-three-platform-reissue.md)：**Proposed，批准实施 no**。
-本轮只形成方案和完整原版归档；未构建、推送、改标签或写 Release。
-实时 API：原 Release immutable=false，仓库未启用不可变发布、无规则集；项目不改写标签约定仍有效。
-优先评估保留原发布入口；新三包从同一未来冻结 SHA 全新构建并验收后，才请求一次具体替换/标签授权。
-若不能复用，使用 v1.3.4-r1；程序内仍为 1.3.4。新的推送及云端构建须另行授权。
-[原标签、发布说明和旧六资产完整归档](handoffs/v1.3.4-original-release-archive.md)已校验，独立本地副本保留。
-规划分支 codex/v1.3.4-reissue-plan；旧内部 Mac 修复分支与[有限验收报告](handoffs/v1.3.4-macos-basic-internal.md)保留。
-内部 f1bacdc 的通过不等于新发行通过；新源未冻结，所有新构建和测试待执行。
+[三平台统一重新发行 v1.3.4（r1）](plans/v1.3.4-three-platform-reissue.md)：**In progress，批准实施 yes**。
+新完整目标已授权本任务分支推送、三平台新构建/验收及满足门槛后的公开发行、下载核验与交接。
+codex/v1.3.4-reissue 从 b37863f 分出；当前准备工具，新 S 未冻结，尚未执行新构建/验收或公开写入。
+优先安全暂存并保留原 Release ID，已明确批准一次 v1.3.4 标签例外；不支持时采用已授权的 v1.3.4-r1。
+不推送 main，不关闭保护，不自动删除整页，不扩大产品功能。新产品缺陷须暂停发布报告。
+[完整旧发行归档](handoffs/v1.3.4-original-release-archive.md)双副本保留；原主目录和其他工作区不作为产品基线。
+旧[内部 Mac 有限结果](handoffs/v1.3.4-macos-basic-internal.md)保留作修复依据，不套用到新包；整个版本未标 Verified。
 
 ## Current release
 
@@ -71,3 +70,5 @@ Windows 另一管理员身份、真实任务读取权限拒绝及已有任务取
 Historical release detail remains in the longer project documents, but a new
 implementation task must not read old conversations or all historical sections
 unless the current work actually depends on them.
+
+新包执行记录：[工具准备、冻结与验收进度](handoffs/v1.3.4-r1-execution.md)。

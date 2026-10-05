@@ -2,10 +2,13 @@ name: Portable release artifacts
 
 on:
   push:
+    branches: [codex/v1.3.4-reissue]
+    paths: [packaging/reissue/execution.json]
     tags:
       - "v*.*.*"
       # v1.3.4 uses one explicitly approved pre-tag build; never rebuild on tag push.
       - "!v1.3.4"
+      - "!v1.3.4-r1"
   workflow_dispatch:
     inputs:
       tag:
@@ -36,7 +39,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  reissue:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/codex/v1.3.4-reissue'
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/reissue-v134.yml
+
   validate-tag:
+    if: github.ref != 'refs/heads/codex/v1.3.4-reissue'
     name: Validate immutable release source
     runs-on: ubuntu-latest
     env:

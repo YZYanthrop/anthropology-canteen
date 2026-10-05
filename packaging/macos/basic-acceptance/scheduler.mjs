@@ -13,8 +13,12 @@ import { pathToFileURL } from "node:url";
 
 const STATES = ["loaded", "unloaded", "disabled", "loaded-disabled"];
 const FAULTS = ["none", "marker-write", "settings-write", "post-registration-query", "recovery-obstruction"];
+// Unloaded and disabled definitions are rewritten without bootstrap by design.
+// Their post-write query and persistence failures remain separate required cases.
+const REGISTRATION_STATES = ["loaded", "loaded-disabled", "absent"];
+const faultsFor = (state) => [...FAULTS, ...(process.argv.includes("--include-registration-fault") && REGISTRATION_STATES.includes(state) ? ["registration"] : [])];
 const CASE_IDS = new Set([
-  ...[...STATES, "absent"].flatMap((state) => FAULTS.map((fault) => `A-${state}-${fault}`)),
+  ...[...STATES, "absent"].flatMap((state) => faultsFor(state).map((fault) => `A-${state}-${fault}`)),
   ...["loaded", "loaded-disabled", "disabled", "unloaded", "absent"].map((state) => `C-${state}`),
   "C-native-plist-read-denied", "C-injected-launchctl-query-failure", "C-native-launchctl-query-denied",
   "scheduler-real-calendar-trigger", "environment-keychain", "C-injected-disabled-output-unknown",
@@ -404,7 +408,7 @@ async function checkKeychain() {
 
 async function updateCases() {
   for (const state of [...STATES, "absent"]) {
-    for (const fault of FAULTS) {
+    for (const fault of faultsFor(state)) {
       const id = `A-${state}-${fault}`;
       await caseRun(id, fault === "none" ? "source-native" : "source-injection-native-observer", async () => {
         const job = await fixture(id, state);
@@ -420,7 +424,12 @@ async function updateCases() {
               printCount++;
               if (fault === "post-registration-query" && printCount === 2) { injected = true; throw new Error("Injected post-registration launchctl query error; all other commands are native"); }
             }
-            return run(command, args);
+            const output = await run(command, args);
+            if (fault === "registration" && !injected && command === "/bin/launchctl" && args[0] === "bootstrap") {
+              injected = true;
+              throw new Error("Injected registration acknowledgement failure after native bootstrap");
+            }
+            return output;
           },
           writeMarker: async (file, value) => {
             // Preserve the product's own unnormalized snapshot for comparison

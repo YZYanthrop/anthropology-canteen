@@ -26,7 +26,7 @@ const scenarios = [
 function argsFrom(argv) {
   const args = {};
   for (let index = 0; index < argv.length; index += 2) {
-    assert.ok(["--package", "--scratch", "--report", "--chrome", "--case", "--product-sha"].includes(argv[index]), `Unknown argument: ${argv[index]}`);
+    assert.ok(["--package", "--scratch", "--report", "--chrome", "--case", "--product-sha", "--package-mode", "--platform"].includes(argv[index]), `Unknown argument: ${argv[index]}`);
     assert.ok(argv[index + 1], `Missing value: ${argv[index]}`);
     args[argv[index].slice(2)] = argv[index + 1];
   }
@@ -36,6 +36,10 @@ function argsFrom(argv) {
 }
 
 const args = argsFrom(process.argv.slice(2));
+const nativePlatform = args.platform || "darwin";
+assert.ok(["darwin", "win32"].includes(nativePlatform));
+const reissue = args["package-mode"] === "r1";
+assert.ok(!args["package-mode"] || reissue, "Unknown package mode");
 const PRODUCT_SHA = args["product-sha"];
 assert.match(PRODUCT_SHA, /^[0-9a-f]{40}$/);
 const selectedScenarios = args.case ? scenarios.filter(({ id }) => id === args.case) : scenarios;
@@ -84,7 +88,7 @@ function syntheticData() {
 
 function syntheticStatus(scenario) {
   return {
-    version: 1, platform: "darwin", sessionToken: "synthetic-ui-session",
+    version: 1, platform: nativePlatform, sessionToken: "synthetic-ui-session",
     config: {
       enabled: true, provider: "custom", sender: "sender@example.invalid", recipient: "reader@example.invalid",
       host: "smtp.example.invalid", port: 465, security: "tls", username: "sender@example.invalid", format: "concise",
@@ -303,19 +307,20 @@ async function exercise(scenario, baseUrl) {
 try {
   await mkdir(path.dirname(reportPath), { recursive: true });
   let chrome;
-  const choices = [args.chrome, process.env.ACCEPTANCE_CHROME_PATH, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].filter(Boolean);
+  const choices = [args.chrome, process.env.ACCEPTANCE_CHROME_PATH, ...(nativePlatform === "win32" ? ["C:/Program Files/Google/Chrome/Application/chrome.exe", "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"] : []), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].filter(Boolean);
   for (const choice of choices) { if (await exists(choice)) { chrome = choice; break; } }
-  if (process.platform !== "darwin" || !chrome) {
-    report.cases = selectedScenarios.map(({ id }) => ({ id, category: CATEGORY, status: "pending", details: process.platform !== "darwin" ? "Native macOS runner unavailable" : "Google Chrome executable unavailable" }));
+  if (process.platform !== nativePlatform || !chrome) {
+    report.cases = selectedScenarios.map(({ id }) => ({ id, category: CATEGORY, status: "pending", details: process.platform !== nativePlatform ? "Requested native runner unavailable" : "Google Chrome executable unavailable" }));
   } else {
     const packageRoot = await realpath(args.package);
     assert.equal(await exists(path.join(packageRoot, "data")), false, "UI input must be a fresh candidate ZIP extraction without data");
-    const release = JSON.parse(await readFile(path.join(packageRoot, "candidate.json"), "utf8"));
+    const release = JSON.parse(await readFile(path.join(packageRoot, reissue ? "release.json" : "candidate.json"), "utf8"));
     assert.equal(release.sourceCommit, PRODUCT_SHA);
     assert.equal(release.version, "1.3.4");
-    assert.equal(release.status, "unpublished-candidate");
+    assert.equal(release.status, reissue ? "prepared-for-release" : "unpublished-candidate");
+    if (reissue) assert.equal(release.releaseRevision, "r1");
     assert.equal(release.fullyVerified, false);
-    assert.equal(release.platform, "darwin");
+    assert.equal(release.platform, nativePlatform);
     assert.equal(release.arch, process.arch);
     report.environment.release = release;
     report.environment.chromePath = chrome;
@@ -329,7 +334,7 @@ try {
     const env = { ...process.env, PORT: String(port) };
     for (const name of ["OPENALEX_API_KEY", "SEMANTIC_SCHOLAR_API_KEY", "NODE_OPTIONS"]) delete env[name];
     logStream = createWriteStream(path.join(path.dirname(reportPath), "ui-candidate-server.log"));
-    child = spawn(path.join(productRoot, "runtime/bin/node"), [path.join(productRoot, "portable-server.mjs")], { cwd: productRoot, env, stdio: ["ignore", "pipe", "pipe"] });
+    child = spawn(path.join(productRoot, nativePlatform === "win32" ? "runtime/node.exe" : "runtime/bin/node"), [path.join(productRoot, "portable-server.mjs")], { cwd: productRoot, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.pipe(logStream, { end: false });
     child.stderr.pipe(logStream, { end: false });
     child.once("exit", (code, signal) => { serverExit = { code, signal }; });

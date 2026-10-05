@@ -1,12 +1,22 @@
 # 版本与发布流程
 
-## v1.3.4 三平台重新发行提案（尚未批准实施）
+## v1.3.4 r1 的限定重新发行（已批准，进行中）
 
-[方案](plans/v1.3.4-three-platform-reissue.md)状态 Proposed；[完整原发行归档](handoffs/v1.3.4-original-release-archive.md)已完成。
-2026-10-04 实时 API 的 Release immutable=false，仓库不可变设置关闭且规则集为空；下文历史“不可变”是项目约定。
-本轮未改变该有效约定。原页复用须在新三包验收后明确批准一次标签例外；保护不允许时采用 v1.3.4-r1，程序仍1.3.4。
-新三平台必须同一未来冻结 SHA 全新构建和验收，不沿用旧有限发布例外或内部 Mac 包；新的外部构建/推送须另行授权。
-拟议版本/修订映射、冻结和发布字节约定列在方案，尚未修改打包器、工作流、AGENTS 或正式发布对象。
+[完整目标与门槛](plans/v1.3.4-three-platform-reissue.md)已授权分支推送、三平台新构建和验收，以及门槛满足后的公开修订发行。
+这项一次性例外仅针对 v1.3.4：优先保留 Release 399786176，旧对象核对无变化后安全暂存、标签改到冻结 S、替换六资产再公开。
+若保护或暂存能力不允许，则采用已授权 v1.3.4-r1 新标签/Release 和旧页引导，保留原版；不关闭保护或删除整页。
+产品始终 1.3.4，修订 r1，格式 8/2/3。允许从独立 codex/v1.3.4-reissue 发行，不合并或推送 main。
+
+portable-release.yml 的限定分支 push + packaging/reissue/execution.json 路径调用 reissue-v134.yml；首次运行不依赖 main 合并。
+构建配置只能 build/self、全三平台和完整必需验收；代码与测试首次同 S。原生 Windows x64、macos-15 arm64、macos-15-intel x64
+各自从 S 新构建，Node 24.14.0 / pnpm 11.9.0 / frozen-lockfile。先保存各自原 ZIP+sidecar，再执行验收和独立清理。
+后续 retest 必须指定原 S/run，核验原 Actions artifact 的来源及传输摘要，复用原 ZIP；定向绿色 job 不等于整个门槛通过。
+工作流仅 contents/actions read；不改标签或 Release。v1.3.4 与 v1.3.4-r1 标签排除重复构建。
+
+三个新 ZIP/根目录均带 v1.3.4-r1，release.json 记录 version=1.3.4、releaseRevision=r1、artifactVersion=1.3.4-r1、sourceCommit/platform/arch。
+prepared-for-release / fullyVerified=false 描述制作时状态，公开发布后仍保留这组已验收字节；是否公开由 GitHub 及外部发行清单证明。
+不重封装验收后的包，不把旧 Windows 或内部 Mac 结果套用到新包。尚未完成的新包验收均为待验证。
+原发行已[双副本完整归档](handoffs/v1.3.4-original-release-archive.md)，新的执行进度见[交接](handoffs/v1.3.4-r1-execution.md)。
 
 ## v1.3.4 未发布 Mac 候选与基本可用验收
 
