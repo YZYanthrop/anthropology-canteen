@@ -178,6 +178,8 @@ export function schedulerCommandError({
   stderr = "",
   operation = "操作",
   windowsPermissionHint = false,
+  command = "",
+  args = [],
 } = {}) {
   const raw = [stderr, stdout, error?.message, error?.code]
     .filter(Boolean)
@@ -233,6 +235,21 @@ export function schedulerCommandError({
     permissionError.userMessage = WINDOWS_SCHEDULER_PERMISSION_MESSAGE;
     return permissionError;
   }
+  // Classify the exact queried service before shortening diagnostics for display.
+  // A generic Bad request, another identity, or mixed permission/error output is
+  // not evidence that the owned service is absent.
+  const nativeDiagnostic = String(stderr || stdout).trim().split(/\r?\n/)
+    .map((line) => line.trim()).join("\n");
+  const missingService = nativeDiagnostic.match(
+    /^(?:Bad request\.\n)?Could not find service "([^"\r\n]+)" in domain for user gui:\s*(\d+)$/i,
+  );
+  if (command === "/bin/launchctl" && args.length === 2 && args[0] === "print" &&
+      missingService && args[1] === `gui/${missingService[2]}/${missingService[1]}`) {
+    const missingError = new Error("macOS 后台提醒任务不存在。");
+    missingError.code = "SCHEDULER_TASK_MISSING";
+    missingError.userMessage = missingError.message;
+    return missingError;
+  }
   const detail = cleanSchedulerDiagnostic(stderr || stdout || error?.message);
   const exitCode = Number.isInteger(error?.code) ? `（退出码 ${error.code}）` : "";
   const message = detail
@@ -253,6 +270,8 @@ function run(command, args, options = {}) {
           stdout,
           stderr,
           ...options,
+          command,
+          args,
         }));
         return;
       }
@@ -420,7 +439,10 @@ async function macJobLoaded(uid, label, runCommand) {
     await runCommand("/bin/launchctl", ["print", `gui/${uid}/${label}`]);
     return true;
   } catch (error) {
-    if (/Could not find service|service not found/i.test(String(error.message))) return false;
+    if (error.code === "SCHEDULER_TASK_MISSING") return false;
+    // Keep compatibility with injected/native adapters returning raw diagnostics;
+    // classified product failures must never fall back to matching display text.
+    if (!error.userMessage && /Could not find service|service not found/i.test(String(error.message))) return false;
     throw error;
   }
 }

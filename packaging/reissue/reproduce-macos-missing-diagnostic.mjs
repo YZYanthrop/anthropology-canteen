@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getSchedulerStatus, installScheduler, schedulerCommandError } from "../../reminder-scheduler.mjs";
+import { getSchedulerStatus, installScheduler, schedulerCommandError, launchdLabel } from "../../reminder-scheduler.mjs";
 
 const source = fileURLToPath(new URL("../../", import.meta.url));
 const reports = resolve(source, "outputs/r1-execution/macos-missing-diagnostic");
@@ -15,16 +15,17 @@ const sourceSHA = execFileSync("git", ["rev-parse", "HEAD"], { cwd: source, enco
 const productDiff = execFileSync("git", ["diff", "--", "reminder-scheduler.mjs"], { cwd: source, encoding: "utf8", windowsHide: true });
 assert.equal(productDiff, "", "Only reproduce against unchanged committed product source");
 const config = { installationId: "r1diagnostic0000000000000000000000", schedule: { time: "23:59" } };
+const label = launchdLabel(config);
 const cases = [];
 for (const multiline of [false, true]) {
   const root = join(scratch, multiline ? "native-multiline" : "single-line-control");
   await mkdir(root);
   const commands = [];
-  const raw = `${multiline ? "Bad request.\n" : ""}Could not find service "synthetic-owned-label" in domain for user gui: 501`;
+  const raw = `${multiline ? "Bad request.\n" : ""}Could not find service "${label}" in domain for user gui: 501`;
   const runCommand = async (command, args) => {
     commands.push({ command, args: args.map((value) => value.replaceAll(scratch, "<synthetic-root>")) });
     assert.equal(command, "/bin/launchctl", "No unexpected command can run");
-    if (args[0] === "print") throw schedulerCommandError({ error: Object.assign(new Error("synthetic native exit"), { code: 113 }), stderr: raw });
+    if (args[0] === "print") throw schedulerCommandError({ command, args, error: Object.assign(new Error("synthetic native exit"), { code: 113 }), stderr: raw });
     if (args[0] === "print-disabled") return "disabled services = { }";
     // Stop before mutation even if classification succeeds. No command is executed.
     if (args[0] === "bootstrap") throw Object.assign(new Error("Synthetic bootstrap barrier reached"), { code: "REPRO_BOOTSTRAP_BARRIER" });
@@ -35,7 +36,7 @@ for (const multiline of [false, true]) {
   let installError;
   try { await installScheduler(root, config, options); }
   catch (error) { installError = { code: error.code, message: error.message }; }
-  const wrapped = schedulerCommandError({ error: Object.assign(new Error("synthetic native exit"), { code: 113 }), stderr: raw });
+  const wrapped = schedulerCommandError({ command: "/bin/launchctl", args: ["print", `gui/501/${label}`], error: Object.assign(new Error("synthetic native exit"), { code: 113 }), stderr: raw });
   cases.push({ multiline, raw, wrapped: { code: wrapped.code, message: wrapped.message }, status, bootstrapReached: commands.some(({ args }) => args[0] === "bootstrap"), installError, commands });
 }
 assert.equal(cases[0].status.status, "missing", "Single-line control must reach missing");

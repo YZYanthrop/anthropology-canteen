@@ -11,6 +11,18 @@ no disabled override. The existing snapshot/restore transaction remains unchange
 The version-preserving internal candidate f1bacdc passed the two-architecture limited basic-usability acceptance; see the [report](handoffs/v1.3.4-macos-basic-internal.md). This does not change the published bb78dd9 assets.
 
 
+## v1.3.4 r1 missing-service diagnostic classification
+
+The scheduler command wrapper classifies the exact queried `launchctl print gui/UID/label`
+missing-service diagnostic before shortening the user-facing message. It accepts the
+native optional `Bad request.` prefix but requires a matching UID/label and no additional
+permission or unknown diagnostic. `SCHEDULER_TASK_MISSING` remains machine-readable;
+other wrapped failures cannot fall back to matching their display text. Legacy injected
+adapters with raw diagnostics remain compatible. First installation and restoration of
+an absent task therefore keep the same transactional and no-worker-execution behavior.
+This limited repair was explicitly approved on 2026-10-06; fresh package/native results
+remain pending until a new frozen source and all three packages are verified.
+
 ## One product, multiple packaging layers
 
 Anthropology Canteen has one shared application and one shared portable server.
