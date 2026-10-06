@@ -1,6 +1,6 @@
 # Current project snapshot
 
-Last updated: 2026-10-05
+Last updated: 2026-10-06
 
 This is the lightweight entry point for a new Codex task. Chat history is not
 required. Read this file and `docs/work/ACTIVE.md` first, then follow the
@@ -32,13 +32,14 @@ document router below.
 
 ## Current work
 
-[三平台统一重新发行 v1.3.4（r1）](plans/v1.3.4-three-platform-reissue.md)：**In progress，批准实施 yes**。
-新完整目标已授权本任务分支推送、三平台新构建/验收及满足门槛后的公开发行、下载核验与交接。
-codex/v1.3.4-reissue 从 b37863f 分出；当前准备工具，新 S 未冻结，尚未执行新构建/验收或公开写入。
-优先安全暂存并保留原 Release ID，已明确批准一次 v1.3.4 标签例外；不支持时采用已授权的 v1.3.4-r1。
-不推送 main，不关闭保护，不自动删除整页，不扩大产品功能。新产品缺陷须暂停发布报告。
-[完整旧发行归档](handoffs/v1.3.4-original-release-archive.md)双副本保留；原主目录和其他工作区不作为产品基线。
-旧[内部 Mac 有限结果](handoffs/v1.3.4-macos-basic-internal.md)保留作修复依据，不套用到新包；整个版本未标 Verified。
+[三平台统一重新发行 v1.3.4（r1）](plans/v1.3.4-three-platform-reissue.md)：**In progress，批准实施 yes，未 Verified**。
+完整目标的分支推送、构建/验收及门槛后发布授权保留；新产品缺陷须停止发布并报告，不能自行扩大修复。
+产品/首轮测试 S 为 `946cc16aae10e2ffda6fb8104d9576b21b317756`，分支 codex/v1.3.4-reissue 已推送。
+[首轮三平台 Actions](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/37321169428)已结束失败：共享 lint/build、Node170/UI39 通过，三包均新构建；两 Mac 原包首次注册缺陷阻断发布。
+arm64 的73项集合通过，x64为72/73并有资料读取超时；两者额外 native smoke 均失败。Windows 黑盒状态超时，后续原生项及真实 UAC 待验证。
+[执行记录与新包摘要](handoffs/v1.3.4-r1-execution.md) / [新缺陷复现](handoffs/v1.3.4-r1-macos-missing-task-defect.md)。
+旧 Release、标签、六资产和 main 未变；[完整旧发行归档](handoffs/v1.3.4-original-release-archive.md)双副本重新校验通过。
+不能把失败首轮或旧内部包通过结果转移给未来修复包；新产品 S 需要三平台重建和新验收。
 
 ## Current release
 

@@ -15,7 +15,7 @@ portable-release.yml 的限定分支 push + packaging/reissue/execution.json 路
 
 三个新 ZIP/根目录均带 v1.3.4-r1，release.json 记录 version=1.3.4、releaseRevision=r1、artifactVersion=1.3.4-r1、sourceCommit/platform/arch。
 prepared-for-release / fullyVerified=false 描述制作时状态，公开发布后仍保留这组已验收字节；是否公开由 GitHub 及外部发行清单证明。
-不重封装验收后的包，不把旧 Windows 或内部 Mac 结果套用到新包。尚未完成的新包验收均为待验证。
+不重封装验收后的包，不把旧 Windows 或内部 Mac 结果套用到新包。首轮 946cc16 / Actions37321169428 已构建三包，但两 Mac 原包新产品缺陷阻断发布，Intel/Windows另有请求超时；未到达项为待验证。修复产品须新 S 和三平台新包完整验收，不能以原包/旧源码通过数作替代。
 原发行已[双副本完整归档](handoffs/v1.3.4-original-release-archive.md)，新的执行进度见[交接](handoffs/v1.3.4-r1-execution.md)。
 
 ## v1.3.4 未发布 Mac 候选与基本可用验收

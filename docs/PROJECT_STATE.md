@@ -2,11 +2,11 @@
 
 ## v1.3.4 三平台修订发行执行中
 
-2026-10-05：[完整重新发行目标](plans/v1.3.4-three-platform-reissue.md)已获明确授权，In progress，未 Verified。
-工作区 codex/v1.3.4-reissue 从 b37863f 延续，产品 1.3.4 / 修订 r1。正在完成打包与验收工具，S 尚未冻结。
-三平台必须全新同源构建与验收；原内部候选与旧发行通过结果不计入新包。
-已批准门槛满足后的标签一次性例外、保留原 Release 的安全暂存替换，以及不支持时的 v1.3.4-r1 备用路线。
-不推送 main、不绕过保护、不删除整页。原发行与双份完整归档保留；[执行交接](handoffs/v1.3.4-r1-execution.md)列进度和待验证项。
+2026-10-06：完整目标授权保留，In progress，未 Verified。产品 S=946cc16aae10e2ffda6fb8104d9576b21b317756 已推送，三平台新包已构建。
+首轮 Actions37321169428 失败：共享 lint/build、Node170/UI39通过；两 Mac 原包默认命令路径首次注册失败，暂停发布。
+arm64的73项集合通过，Intel72/73另有资料读取超时；Windows状态请求超时，后续原生/UAC未执行。不能以源码测试通过覆盖原包失败。
+[执行报告](handoffs/v1.3.4-r1-execution.md) / [新产品缺陷与复现](handoffs/v1.3.4-r1-macos-missing-task-defect.md)。修复需另行明确批准，新产品SHA需三平台新构建和验收。
+2026-10-05 14:19 UTC重新核对旧标签/Release/六资产/main未变，双份归档完整。未执行公开操作。
 
 ## v1.3.4 macOS basic-usability repair
 

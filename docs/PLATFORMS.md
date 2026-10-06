@@ -7,7 +7,7 @@ old published and internal Mac results are historical only. Native Windows and b
 Mac reissue coverage includes the full 73-ID package/A/C/UI/B/D/Keychain gate plus native smoke; Windows has a separate
 required set and native Scheduled Tasks/filesystem/DPAPI checks. Real local UAC cancellation is an additional release gate.
 Every native harness preserves ownership receipts and independently checks cleanup. Fixture failures are not product passes.
-The [execution handoff](handoffs/v1.3.4-r1-execution.md) records actual results; no new package/native result is claimed here.
+The [execution handoff](handoffs/v1.3.4-r1-execution.md) now records run 37321169428 from S=946cc16: all three packages built, shared checks passed, but both unmodified Mac packages failed first scheduler installation through the default diagnostic wrapper. The 73-case source/native suite cannot waive that separate failure. Intel and Windows also have unresolved black-box request timeouts; publication is stopped and Windows downstream native/UAC checks remain pending. No published asset changed.
 
 ## v1.3.4 internal Mac candidate accepted within limited scope
 
