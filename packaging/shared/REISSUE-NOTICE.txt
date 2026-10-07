@@ -5,7 +5,8 @@ Product version remains 1.3.4. Exact source, platform and architecture are in re
 This marker does not claim this copy is already published or the entire version Verified.
 
 本修订纳入 macOS launchctl enabled/disabled 状态识别修复；停用状态无法可靠核对时如实报错，
-更新与失败恢复保持原任务定义和状态。主数据/提醒状态/设置格式保持 8/2/3。
+更新与失败恢复保持原任务定义和状态。同时修复系统多行“任务不存在”诊断被截断导致首次注册失败的问题；
+权限错误和未知诊断仍停止操作。主数据/提醒状态/设置格式保持 8/2/3。
 三个平台使用同一冻结来源。实际新包验收与公开状态以对应 r1 发布记录为准。
 
 有限验收不覆盖：Finder 双击/Gatekeeper 人工安全弹窗、真实登录/注销、睡眠唤醒、整机重启、

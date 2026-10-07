@@ -1,6 +1,6 @@
 # Current project snapshot
 
-Last updated: 2026-10-06
+Last updated: 2026-10-07
 
 This is the lightweight entry point for a new Codex task. Chat history is not
 required. Read this file and `docs/work/ACTIVE.md` first, then follow the
@@ -33,7 +33,7 @@ document router below.
 ## Current work
 
 [三平台统一重新发行 v1.3.4（r1）](plans/v1.3.4-three-platform-reissue.md)：**In progress，批准实施 yes，未 Verified**。
-完整目标授权保留；2026-10-06用户追加批准仅修复多行缺失任务诊断。已补回归并完成本地修复，受影响101项通过；新S三平台构建/验收尚待执行。其他新产品缺陷仍先报告。
+完整目标授权保留；2026-10-06用户追加批准仅修复多行缺失任务诊断。已补回归并完成本地修复，受影响103项通过、工具10项通过；sequence=2将冻结新S并全新构建/验收三平台。其他新产品缺陷仍先报告。
 产品/首轮测试 S 为 `946cc16aae10e2ffda6fb8104d9576b21b317756`，分支 codex/v1.3.4-reissue 已推送。
 [首轮三平台 Actions](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/37321169428)已结束失败：共享 lint/build、Node170/UI39 通过，三包均新构建；两 Mac 原包首次注册缺陷阻断发布。
 arm64 的73项集合通过，x64为72/73并有资料读取超时；两者额外 native smoke 均失败。Windows 黑盒状态超时，后续原生项及真实 UAC 待验证。

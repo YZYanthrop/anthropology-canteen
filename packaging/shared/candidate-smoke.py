@@ -27,6 +27,114 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
+def request_timeout(path):
+    # Readiness is a cheap socket probe. Business calls include the product's
+    # 15 s lock budget; Windows scheduler inspection also starts PowerShell.
+    # These are finite acceptance budgets, not a performance certification.
+    if path == "/api/runtime-status":
+        return 2
+    return 60 if path == "/api/reminders/status" else 30
+
+
+@contextmanager
+def traced_request(opener, base, path, token, body, events, phase, *, timeout=None, clock=time.monotonic):
+    budget = request_timeout(path) if timeout is None else timeout
+    started = clock()
+    event = {"phase": phase, "path": path, "method": "PATCH" if body is not None else "GET",
+             "timeoutSeconds": budget, "status": "running"}
+    events.append(dict(event))
+    try:
+        headers = {"X-Anthropology-Canteen-Session": token}
+        payload = None
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+            payload = json.dumps(body).encode()
+        req = urllib.request.Request(base + path, data=payload, headers=headers, method=event["method"])
+        with opener.open(req, timeout=budget) as response:
+            yield response
+        event["status"] = "pass"
+    except Exception as error:
+        event.update(status="fail", errorType=type(error).__name__, error=str(error))
+        raise
+    finally:
+        event["elapsedSeconds"] = round(clock() - started, 3)
+        events.append(event)
+
+
+def wait_for_initialized(process, root, request, prior_tokens, events, *, phase="startup", timeout=60,
+                         clock=time.monotonic, sleep=time.sleep):
+    # runtime-status can respond before startup migration/settings completes.
+    # The PID file is written after refreshRuntimeSettings, so require this
+    # exact child PID before treating the socket and its session as ready.
+    started = clock()
+    pid_file = root / "data/anthropology-canteen-server.pid"
+    event = {"phase": phase, "childPID": process.pid, "timeoutSeconds": timeout, "status": "running"}
+    events.append(dict(event))
+    try:
+        while clock() - started < timeout:
+            require(process.poll() is None, "Portable server exited before initialization (exit " + str(process.returncode) + ")")
+            try:
+                observed_pid = pid_file.read_text(encoding="utf-8-sig").strip()
+            except FileNotFoundError:
+                observed_pid = None
+            event["observedPID"] = observed_pid
+            if observed_pid == str(process.pid):
+                remaining = timeout - (clock() - started)
+                require(remaining > 0, "Portable server initialization timed out")
+                try:
+                    with request("/api/runtime-status", timeout=min(2, remaining)) as response:
+                        status = json.load(response)
+                except OSError:
+                    status = None
+                if status is not None:
+                    require(status.get("app") == "anthropology-canteen" and
+                            isinstance(status.get("packageRoot"), str) and
+                            Path(status["packageRoot"]).resolve() == root.resolve(), "Portable server package identity mismatch")
+                    token = status.get("sessionToken")
+                    require(isinstance(token, str) and token and token not in prior_tokens,
+                            "Portable server session is absent or reused from an earlier process")
+                    require(process.poll() is None and pid_file.read_text(encoding="utf-8-sig").strip() == str(process.pid),
+                            "Portable server process identity changed during initialization")
+                    event.update(status="pass", packageRoot=str(root), sessionSHA256=hashlib.sha256(token.encode()).hexdigest())
+                    return token
+            remaining = timeout - (clock() - started)
+            if remaining > 0:
+                sleep(min(0.1, remaining))
+        raise RuntimeError("Portable server initialization timed out; retain lock/PID evidence")
+    except Exception as error:
+        event.update(status="fail", errorType=type(error).__name__, error=str(error))
+        raise
+    finally:
+        event["elapsedSeconds"] = round(clock() - started, 3)
+        events.append(event)
+
+
+class RequestTimeline(list):
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+
+    def append(self, event):
+        super().append(event)
+        self.path.write_text(json.dumps(self, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def record_failure_state(root, process, events, phase):
+    locks = []
+    try:
+        for lock in (root / "data").glob("*.lock"):
+            owner = lock / "owner"
+            try:
+                value = owner.read_text(encoding="utf-8")
+            except OSError as error:
+                value = type(error).__name__
+            locks.append({"name": lock.name, "owner": value})
+        events.append({"phase": phase, "status": "failure-evidence", "childPID": process.pid,
+                       "exitCode": process.poll(), "locksBeforeShutdown": locks})
+    except OSError as error:
+        events.append({"phase": phase, "status": "evidence-incomplete", "error": str(error)})
+
+
 @contextmanager
 def inspection_workspace(report):
     # Retain only synthetic failure material; never copy the complete runtime or
@@ -41,7 +149,7 @@ def inspection_workspace(report):
             evidence.mkdir(parents=True, exist_ok=True)
             files = []
             for source in workspace.rglob("*"):
-                if source.is_file() and (source.name == "server.log" or "data" in source.relative_to(workspace).parts):
+                if source.is_file() and (source.name == "request-timeline.json" or source.name.startswith("server-round-") or source.name == "server.log" or "data" in source.relative_to(workspace).parts):
                     relative = source.relative_to(workspace)
                     target = evidence / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -70,6 +178,7 @@ def main():
     require(not args.release or args.version == "1.3.4", "Release exception is scoped to v1.3.4")
     require(re.fullmatch(r"[0-9a-f]{40}", args.source_sha), "Invalid source commit")
     checks = []
+    events = []
     sidecar = Path(str(args.zip) + ".sha256").read_text(encoding="utf-8-sig").strip()
     require(re.fullmatch(r"[0-9a-fA-F]{64}\s+\*?" + re.escape(args.zip.name), sidecar), "Invalid sidecar filename/format")
     if args.reissue:
@@ -146,15 +255,12 @@ def main():
             base = "http://127.0.0.1:" + str(port)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             token = ""
+            prior_tokens = set()
+            events = RequestTimeline(destination / "request-timeline.json")
+            phase = "startup"
 
-            def request(path, body=None):
-                headers = {"X-Anthropology-Canteen-Session": token}
-                payload = None
-                if body is not None:
-                    headers["Content-Type"] = "application/json"
-                    payload = json.dumps(body).encode()
-                req = urllib.request.Request(base + path, data=payload, headers=headers, method="PATCH" if body is not None else "GET")
-                return opener.open(req, timeout=5)
+            def request(path, body=None, *, timeout=None):
+                return traced_request(opener, base, path, token, body, events, phase, timeout=timeout)
 
             old_files = {}
             for round_number in range(6 if args.reissue else 2):
@@ -221,24 +327,13 @@ def main():
                             file.write_text(json.dumps(value), encoding="utf-8")
                             old_files[file] = file.read_bytes()
                 env = dict(os.environ, PORT=str(port))
-                with open(destination / "server.log", "ab") as log:
+                token = ""
+                phase = "round-" + str(round_number)
+                with open(destination / ("server-round-" + str(round_number) + ".log"), "ab") as log:
                     process = subprocess.Popen([str(node), str(root / "portable-server.mjs")], cwd=root, env=env, stdout=log, stderr=log, creationflags=flags)
                     try:
-                        for attempt in range(120):
-                            if process.poll() is not None:
-                                detail = (destination / "server.log").read_text(encoding="utf-8", errors="replace")[-4000:]
-                                detail = detail.replace(str(destination), "<temporary-candidate>")
-                                raise RuntimeError("Portable server exited before readiness (exit " + str(process.returncode) + "): " + detail)
-                            try:
-                                with request("/api/runtime-status") as response:
-                                    status = json.load(response)
-                                token = status["sessionToken"]
-                                require(status["app"] == "anthropology-canteen", "Wrong server")
-                                break
-                            except (OSError, KeyError):
-                                time.sleep(0.25)
-                        else:
-                            raise RuntimeError("Portable server readiness timed out")
+                        token = wait_for_initialized(process, root, request, prior_tokens, events, phase=phase + ":startup")
+                        prior_tokens.add(token)
                         with request("/api/local-data") as response:
                             data = json.load(response)
                         require(data["version"] == 8, "Wrong data schema")
@@ -282,6 +377,9 @@ def main():
                             require(not (root / "data/anthropology-canteen-reminder-secret.json").exists(), "Ambiguous source copied credentials")
                         for file, original in old_files.items():
                             require(file.read_bytes() == original, "Old source or protected current data modified")
+                    except Exception:
+                        record_failure_state(root, process, events, phase)
+                        raise
                     finally:
                         if process.poll() is None:
                             process.terminate()
@@ -290,6 +388,7 @@ def main():
                             except subprocess.TimeoutExpired:
                                 process.kill()
                                 process.wait(timeout=10)
+                        events.append({"phase": phase + ":shutdown", "childPID": process.pid, "exitCode": process.returncode})
             if args.reissue:
                 explicit_root = destination / "explicit-import" / original_root.name
                 shutil.copytree(original_root, explicit_root, ignore=lambda _path, names: ["data"] if "data" in names else [])
@@ -305,7 +404,7 @@ def main():
     if args.reissue:
         with args.zip.open("rb") as handle:
             require(hashlib.file_digest(handle, "sha256").hexdigest() == digest, "Final ZIP bytes changed during acceptance")
-    report = {"evidenceCategory": "archive-inspection" if args.inspect_only else "unchanged-final-zip-black-box", "nativeRuntimeExecuted": not args.inspect_only, "releaseRevision": "r1" if args.reissue else None, "packageSHA256": digest if args.reissue else None, "sourceCommit": args.source_sha, "package": args.zip.name, "platform": args.platform, "arch": args.arch, "status": "limited-checks-passed", "checks": checks, "fullyVerified": False, "notCovered": ["OS launcher interaction", "Native scheduler/credential/recovery cases are separate acceptance reports", "Windows alternate administrator, task-read ACL denial and real UAC require separate native evidence", "Mail delivery and live providers"]}
+    report = {"evidenceCategory": "archive-inspection" if args.inspect_only else "unchanged-final-zip-black-box", "nativeRuntimeExecuted": not args.inspect_only, "releaseRevision": "r1" if args.reissue else None, "packageSHA256": digest if args.reissue else None, "sourceCommit": args.source_sha, "package": args.zip.name, "platform": args.platform, "arch": args.arch, "status": "limited-checks-passed", "checks": checks, "requestTimeline": events, "fullyVerified": False, "notCovered": ["OS launcher interaction", "Native scheduler/credential/recovery cases are separate acceptance reports", "Windows alternate administrator, task-read ACL denial and real UAC require separate native evidence", "Mail delivery and live providers"]}
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False))

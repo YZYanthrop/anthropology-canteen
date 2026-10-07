@@ -238,7 +238,8 @@ export function schedulerCommandError({
   // Classify the exact queried service before shortening diagnostics for display.
   // A generic Bad request, another identity, or mixed permission/error output is
   // not evidence that the owned service is absent.
-  const nativeDiagnostic = String(stderr || stdout).trim().split(/\r?\n/)
+  const nativeDiagnostic = [stderr, stdout].map((value) => String(value).trim())
+    .filter(Boolean).join("\n").split(/\r?\n/)
     .map((line) => line.trim()).join("\n");
   const missingService = nativeDiagnostic.match(
     /^(?:Bad request\.\n)?Could not find service "([^"\r\n]+)" in domain for user gui:\s*(\d+)$/i,

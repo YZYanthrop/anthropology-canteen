@@ -80,3 +80,14 @@ for (const stderr of ["Bad request.", `Permission denied\n${missing}`]) {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 }
+
+test("conflicting stdout and stderr cannot hide an unknown or permission failure", () => {
+  for (const [stderr, stdout] of [[missing, "Permission denied"], ["Unknown failure", missing]]) {
+    const error = schedulerCommandError({ command: "/bin/launchctl", args: ["print", `gui/501/${label}`], error: { code: 113 }, stderr, stdout });
+    assert.equal(error.code, "SCHEDULER_COMMAND_FAILED");
+  }
+});
+test("a complete missing diagnostic on stdout is classified when stderr is empty", () => {
+  const error = schedulerCommandError({ command: "/bin/launchctl", args: ["print", `gui/501/${label}`], error: { code: 113 }, stdout: missing });
+  assert.equal(error.code, "SCHEDULER_TASK_MISSING");
+});

@@ -1,5 +1,8 @@
 """Offline r1 inspector regressions; synthetic ZIPs contain no runnable product."""
 import hashlib
+import importlib.util
+import io
+from unittest.mock import Mock
 import json
 from pathlib import Path
 import subprocess
@@ -94,6 +97,109 @@ class ReissueInspectorTests(unittest.TestCase):
             archive = self.fixture(Path(tmp), "win32", "x64")
             self.assertNotEqual(self.inspect(archive, "win32", "x64", sha="abc123")[0].returncode, 0)
             self.assertNotEqual(self.inspect(archive, "win32", "arm64")[0].returncode, 0)
+
+
+class SmokeLifecycleTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location("candidate_smoke", HERE / "candidate-smoke.py")
+        cls.smoke = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.smoke)
+
+    def fixture(self, root, token="session-one"):
+        process = Mock(pid=1234)
+        process.poll.return_value = None
+        status = {"app": "anthropology-canteen", "packageRoot": str(root), "sessionToken": token}
+        request = Mock(side_effect=lambda *args, **kwargs: io.BytesIO(json.dumps(status).encode()))
+        return process, status, request
+
+    def test_runtime_socket_is_not_readiness_before_current_pid_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "data").mkdir()
+            pid_file = root / "data/anthropology-canteen-server.pid"
+            pid_file.write_text("1111")  # A prior round's PID cannot satisfy startup.
+            process, _, request = self.fixture(root)
+            now = [0.0]
+            def sleep(seconds):
+                self.assertFalse(request.called)
+                now[0] += seconds
+                pid_file.write_text(str(process.pid))
+            events = []
+            token = self.smoke.wait_for_initialized(process, root, request, set(), events,
+                clock=lambda: now[0], sleep=sleep, timeout=1)
+            self.assertEqual(token, "session-one")
+            self.assertEqual(request.call_count, 1)
+            self.assertEqual(events[-1]["status"], "pass")
+            self.assertGreater(events[-1]["elapsedSeconds"], 0)
+            self.assertNotIn("session-one", json.dumps(events))
+
+    def test_wrong_root_or_reused_session_is_not_accepted_or_retried(self):
+        for defect in ("root", "session"):
+            with self.subTest(defect=defect), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "data").mkdir()
+                (root / "data/anthropology-canteen-server.pid").write_text("1234")
+                process, status, request = self.fixture(root)
+                if defect == "root":
+                    status["packageRoot"] = str(root / "different-copy")
+                with self.assertRaisesRegex(RuntimeError, "identity|session"):
+                    self.smoke.wait_for_initialized(process, root, request,
+                        {"session-one"} if defect == "session" else set(), [], timeout=1)
+                self.assertEqual(request.call_count, 1)
+
+    def test_dead_child_and_initialization_deadline_remain_failures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            process, _, request = self.fixture(root)
+            process.poll.return_value = 9
+            with self.assertRaisesRegex(RuntimeError, "exited"):
+                self.smoke.wait_for_initialized(process, root, request, set(), [], timeout=1)
+            process.poll.return_value = None
+            now = [0.0]
+            def sleep(seconds):
+                now[0] += seconds
+            events = []
+            with self.assertRaisesRegex(RuntimeError, "initialization timed out"):
+                self.smoke.wait_for_initialized(process, root, request, set(), events,
+                    clock=lambda: now[0], sleep=sleep, timeout=0.5)
+            self.assertLessEqual(now[0], 0.5)
+            self.assertFalse(request.called)
+            self.assertEqual(events[-1]["status"], "fail")
+
+    def test_probe_and_business_budgets_and_failure_timing_are_explicit(self):
+        self.assertEqual(self.smoke.request_timeout("/api/runtime-status"), 2)
+        self.assertEqual(self.smoke.request_timeout("/api/local-data"), 30)
+        self.assertEqual(self.smoke.request_timeout("/api/reminders/status"), 60)
+        opener = Mock()
+        opener.open.side_effect = TimeoutError("synthetic timeout")
+        events = []
+        times = iter([10.0, 40.0])
+        with self.assertRaises(TimeoutError):
+            with self.smoke.traced_request(opener, "http://127.0.0.1:1", "/api/local-data",
+                    "private-session", None, events, "round-3", clock=lambda: next(times)):
+                self.fail("A timed-out request must not produce a response")
+        self.assertEqual(opener.open.call_count, 1)
+        self.assertEqual(opener.open.call_args.kwargs["timeout"], 30)
+        self.assertEqual(events[-1]["status"], "fail")
+        self.assertEqual(events[-1]["phase"], "round-3")
+        self.assertEqual(events[-1]["elapsedSeconds"], 30)
+        self.assertNotIn("private-session", json.dumps(events))
+
+    def test_request_trace_covers_response_body_and_closes_response(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.read.side_effect = TimeoutError("body timed out")
+        opener = Mock()
+        opener.open.return_value = response
+        events = []
+        with self.assertRaises(TimeoutError):
+            with self.smoke.traced_request(opener, "http://127.0.0.1:1", "/api/local-data",
+                    "session", None, events, "round-0") as received:
+                received.read()
+        self.assertEqual(events[-1]["status"], "fail")
+        response.__exit__.assert_called_once()
 
 
 if __name__ == "__main__":
