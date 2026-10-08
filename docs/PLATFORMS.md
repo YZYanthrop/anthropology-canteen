@@ -2,6 +2,8 @@
 
 ## v1.3.4 r1 fresh three-platform acceptance (in progress)
 
+2026-10-08: S2=9d17e4d now passes fresh shared checks, both Mac 73-case suites plus complete original-ZIP smoke at T4=49eb880, and Windows 40 automated gates including 32 migration tests at T5=e523256. Raw reports and cleanup were audited. Real local UAC remains pending; no publication or full Verified claim. See the [current matrix](handoffs/v1.3.4-r1-verification.md). Earlier failure descriptions below are historical.
+
 The authorized reissue keeps product version 1.3.4 and schemas 8/2/3. All three new packages will use the same frozen source S;
 old published and internal Mac results are historical only. Native Windows and both Mac architectures are required anew.
 Mac reissue coverage includes the full 73-ID package/A/C/UI/B/D/Keychain gate plus native smoke; Windows has a separate

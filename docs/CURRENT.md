@@ -33,11 +33,11 @@ document router below.
 ## Current work
 
 [三平台统一重新发行 v1.3.4（r1）](plans/v1.3.4-three-platform-reissue.md)：**In progress，批准实施 yes，未 Verified**。
-完整目标授权及限定产品修复批准保留；新冻结产品S2=`9d17e4dd7480b571febbad52a2ef5db8a85930b1`。
-[第二轮37632101351](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/37632101351)：共享lint/build、Node186/UI39通过；两Mac各73必需项和独立清理通过；日志复核发现native smoke在启动器循环提前退出但返回0，原先通过结论撤回，须修工具重验。首次注册步骤已执行，但不能覆盖后续缺失项。
-Windows原包黑盒/native smoke通过；T3定向重验37717588483已结束，A/C/定时及清理未再报失败，迁移集合6项因源码测试dist缺失失败，已补同原包字节准备及回归。sequence=5仅Windows原包重验；两Mac第四轮作业success，详细报告下载审核中，不凭绿灯提前恢复通过结论。S2/ZIP均不变。
-[执行证据与摘要](handoffs/v1.3.4-r1-execution.md)。真实UAC已准备、尚待用户配合；所有必需门槛满足前不发布、不标Verified。
-原Release/tag/六资产/main未改，双份[完整旧发行归档](handoffs/v1.3.4-original-release-archive.md)保留；其他工作区和旧主目录未提交修改均保留。
+完整目标授权及限定产品修复批准保留；冻结产品S2=`9d17e4dd7480b571febbad52a2ef5db8a85930b1`，产品1.3.4/r1、格式8/2/3。
+共享lint/build、Node186/UI39通过；两个Mac各73项及T4原包8阶段smoke/独立清理通过；Windows T5自动40项（含迁移32/32）及清理通过，原始报告已回收逐项核验。
+[验收矩阵](handoffs/v1.3.4-r1-verification.md) / [完整执行与失败历史](handoffs/v1.3.4-r1-execution.md)。T4=49eb880、T5=e523256只修工具，三个原ZIP字节不变。
+**剩余门槛：真实本地UAC新建取消、旧任务注册、更新取消和清理。** 唯一离线场景已准备、未弹窗，等待用户配合；门槛完成前不发布、不标Verified。
+原Release/tag/六资产/main未改，双份[旧发行归档](handoffs/v1.3.4-original-release-archive.md)于2026-10-08再次完整核验；其他工作区和旧主目录未提交修改保留。
 
 ## Current release
 
