@@ -36,6 +36,21 @@ class GateTests(unittest.TestCase):
             self.assertIn("Refusing cleanup outside unique fixture roots", result.stderr)
             self.assertFalse(report.exists())
 
+    def test_retest_restores_only_original_package_dist_and_never_overwrites(self):
+        with tempfile.TemporaryDirectory() as root:
+            source=Path(root)/"source";package=Path(root)/"package"
+            (package/"dist/server").mkdir(parents=True);source.mkdir()
+            original=b"synthetic compiled module"
+            (package/"dist/server/index.js").write_bytes(original)
+            result=harness.provide_source_dist(source,package)
+            self.assertTrue(result["copiedFromOriginalPackage"])
+            self.assertEqual((source/"dist/server/index.js").read_bytes(),original)
+            self.assertFalse(harness.provide_source_dist(source,package)["copiedFromOriginalPackage"])
+            (source/"dist/server/index.js").write_bytes(b"unrelated existing bytes")
+            with self.assertRaises(Exception):harness.provide_source_dist(source,package)
+            self.assertEqual((source/"dist/server/index.js").read_bytes(),b"unrelated existing bytes")
+            self.assertEqual((package/"dist/server/index.js").read_bytes(),original)
+
     def test_windows_timeout_terminates_owned_child_tree(self):
         with tempfile.TemporaryDirectory() as root:
             with patch.object(harness.subprocess, "Popen") as launch, patch.object(harness.subprocess, "run") as terminate:

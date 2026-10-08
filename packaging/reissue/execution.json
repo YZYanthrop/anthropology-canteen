@@ -3,11 +3,8 @@
   "productSHA": "9d17e4dd7480b571febbad52a2ef5db8a85930b1",
   "artifactRunId": "37632101351",
   "platforms": [
-    "darwin-arm64",
-    "darwin-x64"
+    "win32-x64"
   ],
-  "macSuites": [
-    "native-smoke"
-  ],
-  "sequence": 4
+  "macSuites": [],
+  "sequence": 5
 }

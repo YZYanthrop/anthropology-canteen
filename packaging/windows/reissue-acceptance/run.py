@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shutil
 import subprocess
 import sys
 import uuid
@@ -41,6 +42,25 @@ def command(args, log, timeout=180):
             child.wait(timeout=15)
             output.write("\nHARNESS TIMEOUT; separate cleanup receipts remain required.\n")
             return 124
+
+
+def provide_source_dist(source, package):
+    """Seed ignored test prerequisites from the original ZIP, never rebuild it."""
+    original, target = package / "dist", source / "dist"
+    require((original / "server/index.js").is_file(), "Original ZIP lacks compiled server")
+    copied = not target.exists()
+    if copied:
+        shutil.copytree(original, target)
+    digests = {}
+    for path in sorted(original.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(original)
+        require((target / relative).is_file() and (target / relative).read_bytes() == path.read_bytes(),
+                "Existing source dist differs from original ZIP; refuse overwrite: " + str(relative))
+        digests[relative.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return {"copiedFromOriginalPackage": copied, "fileCount": len(digests), "sha256ByRelativePath": digests,
+            "rebuild": False, "scope": "Ignored source-test dist only; original ZIP unchanged"}
 
 
 def cleanup(source, scratch, reports):
@@ -131,6 +151,7 @@ def main():
         add("windows-helper.rollback-and-status", "source-injection-native-observer", code, details)
         code = command([*prefix, source / "tests/windows-reminder-status.native.ps1"], reports / "inspection-synthetic.log", 60)
         add("windows-inspection.synthetic-contract", "synthetic-inspection-not-native", code, "Nine explicitly synthetic flags/query cases; native state observations are recorded separately")
+        save(reports / "source-dist-provenance.json", provide_source_dist(source, package))
         code = command([node, "--test", "--test-reporter=tap", source / "tests/migration-recovery.test.mjs", source / "tests/migration-discovery.test.mjs", source / "tests/reminder-migration.test.mjs"], reports / "migration-source-native.log", 600)
         tap = (reports / "migration-source-native.log").read_text(encoding="utf-8", errors="replace")
         if not re.search(r"# fail 0\b", tap) or not re.search(r"# skipped 0\b", tap):
