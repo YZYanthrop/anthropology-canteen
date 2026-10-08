@@ -22,7 +22,7 @@ def main():
         checks += [("tools-"+str(index),[sys.executable,"-B",path]) for index,path in enumerate([
             "packaging/reissue/test_execution.py", "packaging/macos/basic-acceptance/test_harness.py",
             "packaging/macos/basic-acceptance/test_reissue.py", "packaging/macos/acceptance-v134/test_harness.py",
-            "packaging/windows/reissue-acceptance/test_harness.py", "packaging/macos/test_smoke_cleanup.py"])]
+            "packaging/windows/reissue-acceptance/test_harness.py", "packaging/macos/test_smoke_cleanup.py", "packaging/macos/test_smoke_completion.py"])]
         # New shared smoke tests are named consistently; fail if none were supplied.
         shared_tests=sorted((source/"packaging/shared").glob("test_*.py"))
         if not shared_tests: raise ValueError("Missing r1 shared package regression tests")

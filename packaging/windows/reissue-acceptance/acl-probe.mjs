@@ -13,10 +13,10 @@ const exec=promisify(execFile), source=resolve(opts.source), reportPath=resolve(
 const {setWindowsFixtureAccess}=await import(pathToFileURL(join(source,"tests/helpers/windows-files.mjs")));
 const report={label:opts.label, node:process.version, executable:process.execPath, checks:[], cleanup:false};
 const root=await mkdtemp(join(tmpdir(),"canteen-discovery-acl-probe-")), file=join(root,"synthetic.json");
-let rootDenied=false,fileDenied=false;
+let rootDenied=false,fileDenied=false,fileCreated=false;
 try {
-  report.privileges=(await exec("whoami.exe",["/priv","/fo","csv"],{windowsHide:true,timeout:15000})).stdout;
-  await writeFile(file,'{"synthetic":true}');
+  await writeFile(file,'{"synthetic":true}');fileCreated=true;
+  report.privileges=(await exec(join(process.env.SystemRoot,"System32","whoami.exe"),["/priv","/fo","csv"],{windowsHide:true,timeout:15000})).stdout;
   for(const [mode,target,operation] of [["DenyList",root,()=>readdir(root)],["DenyRead",file,()=>readFile(file)]]) {
     if(mode==="DenyList") rootDenied=true; else fileDenied=true;
     await setWindowsFixtureAccess(root,target,mode);
@@ -34,8 +34,8 @@ finally {
   try {
     if(rootDenied) await setWindowsFixtureAccess(root,root,"AllowList");
     if(fileDenied) await setWindowsFixtureAccess(root,file,"AllowRead");
-    assert.equal(await readFile(file,"utf8"),'{"synthetic":true}');
-    assert.deepEqual(await readdir(root),["synthetic.json"]);
+    if(fileCreated) assert.equal(await readFile(file,"utf8"),'{"synthetic":true}');
+    assert.deepEqual(await readdir(root),fileCreated?["synthetic.json"]:[]);
     await rm(root,{recursive:true});report.cleanup=true;
   } catch(error) { report.cleanupError=error.stack;report.syntheticRoot=root;process.exitCode=1; }
   await mkdir(dirname(reportPath),{recursive:true});await writeFile(reportPath,JSON.stringify(report,null,2)+"\n");

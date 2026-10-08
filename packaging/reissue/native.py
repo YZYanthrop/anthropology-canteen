@@ -58,10 +58,17 @@ def main():
                 if suites:
                     phase("macos-acceptance",[sys.executable,"-B",basic,"--reissue","--arch",target["arch"],"--candidate",archive,*common,"--suites",*suites],2400)
                 if "native-smoke" in config["macSuites"]:
+                    require(phase("smoke-tool-regressions",[sys.executable,"-B",acceptance/"packaging/macos/test_smoke_completion.py"],120)==0,"Smoke completion regressions failed")
                     spec=importlib.util.spec_from_file_location("zip_helper",acceptance/"packaging/macos/acceptance-v134/run.py")
                     helper=importlib.util.module_from_spec(spec); spec.loader.exec_module(helper)
                     extracted=helper.extract_zip(archive,scratch.parent/(scratch.name+"-smoke-archive"))
                     phase("native-smoke",["bash",acceptance/"packaging/macos/smoke-test.sh",extracted,archive,target["arch"],reports/"native-smoke"],480)
+                    spec=importlib.util.spec_from_file_location("smoke_result",acceptance/"packaging/macos/smoke_result.py")
+                    completion=importlib.util.module_from_spec(spec);spec.loader.exec_module(completion)
+                    receipt=json.loads((reports/"native-smoke/smoke-result.json").read_text())
+                    completion.validate(receipt,sha,target["arch"],before)
+                    require(receipt.get("testSHA")==os.environ.get("GITHUB_SHA") and receipt.get("runID")==os.environ.get("GITHUB_RUN_ID"),"Native smoke completion belongs to another test/run")
+                    result["nativeSmokeCompletion"]=receipt
             require(digest(archive)==before,"Final package bytes changed during acceptance")
             checkout(source,sha)
     except Exception as error:

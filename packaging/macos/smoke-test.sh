@@ -27,6 +27,8 @@ MANIFEST="$REPORTS/smoke-owned.json"
 TEMP_ROOT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/anthropology-canteen-smoke.XXXXXX")"
 TEMP_ROOT="$(cd "$TEMP_ROOT" && /bin/pwd -P)"
 TEMP_BASE="$(/usr/bin/dirname "$TEMP_ROOT")"
+SMOKE_COMPLETED="false"
+SMOKE_CHECKS=""
 SERVER_PID=""
 SSE_PID=""
 ENTRY_PID=""
@@ -70,6 +72,10 @@ cleanup() {
   local original_exit=$?
   trap - EXIT INT TERM
   set +e
+  if [[ "$original_exit" -eq 0 && "$SMOKE_COMPLETED" != "true" ]]; then
+    echo "Native smoke ended before all required checks; rejecting an apparent zero exit." >&2
+    original_exit=1
+  fi
   # Keep logs in the report artifact; no credential values or full package copy.
   /usr/bin/find "$TEMP_ROOT" -maxdepth 1 -name '*.log' -type f -exec /bin/cp {} "$REPORTS/" \; 2>/dev/null
   if [[ "$original_exit" -ne 0 ]]; then
@@ -162,6 +168,7 @@ SERVER="$EXTRACTED_ROOT/portable-server.mjs"
 [[ -x "$EXTRACTED_ROOT/Anthropology Canteen.command" ]] || fail "ZIP did not preserve launcher execute permission"
 [[ "$($NODE -p 'process.arch')" == "$EXPECTED_NODE_ARCH" ]] || fail "extracted runtime architecture mismatch"
 [[ "$($NODE --version)" == "v24.14.0" ]] || fail "extracted runtime version mismatch"
+SMOKE_CHECKS="${SMOKE_CHECKS:+$SMOKE_CHECKS,}archive-runtime-privacy"
 
 KEYCHAIN_HELPER="$EXTRACTED_ROOT/tools/anthropology-canteen-keychain"
 [[ -x "$KEYCHAIN_HELPER" ]] || fail "ZIP did not include an executable Keychain helper"
@@ -176,6 +183,7 @@ KEYCHAIN_READ="$("$KEYCHAIN_HELPER" get "$KEYCHAIN_SERVICE" "$KEYCHAIN_ACCOUNT")
 if "$KEYCHAIN_HELPER" get "$KEYCHAIN_SERVICE" "$KEYCHAIN_ACCOUNT" >/dev/null 2>&1; then
   fail "the packaged Keychain helper did not delete the test credential"
 fi
+SMOKE_CHECKS="${SMOKE_CHECKS:+$SMOKE_CHECKS,}keychain-roundtrip"
 
 [[ ! -e "$LAUNCHD_PLIST" ]] || fail "unique test plist already exists"
 QUERY_RESULT=0
@@ -221,6 +229,7 @@ if /bin/launchctl print "gui/$USER_UID/$LAUNCHD_LABEL" >/dev/null 2>&1; then
   fail "the packaged LaunchAgent remained loaded after uninstall"
 fi
 # Keep the owned identity for independent end-of-run cleanup verification.
+SMOKE_CHECKS="${SMOKE_CHECKS:+$SMOKE_CHECKS,}launchagent-install-remove"
 
 KEYCHAIN_ACCOUNT="$INSTALLATION_ID"
 claim_keychain_account "$KEYCHAIN_ACCOUNT"
@@ -261,6 +270,7 @@ ROOT="$EXTRACTED_ROOT" "$NODE" --input-type=module -e '
   /usr/bin/shasum -a 256 -c "$(basename "$ZIP_PATH").sha256"
 )
 
+SMOKE_CHECKS="${SMOKE_CHECKS:+$SMOKE_CHECKS,}offline-worker"
 ENTRY_PORT="$((31000 + RANDOM % 9000))"
 ENTRY_URL="http://127.0.0.1:$ENTRY_PORT"
 PID_FILE="$EXTRACTED_ROOT/data/anthropology-canteen-server.pid"
@@ -268,7 +278,8 @@ if ! ANTHROPOLOGY_CANTEEN_SKIP_OPEN=1 PORT="$ENTRY_PORT" "$EXTRACTED_ROOT/Anthro
   if [[ -f "$PID_FILE" ]]; then ENTRY_PID="$(/bin/cat "$PID_FILE")"; fi
   fail "the extracted user launcher returned an error"
 fi
-for ((attempt = 0; attempt < 20 && ! -f "$PID_FILE"; attempt += 1)); do
+for ((attempt = 0; attempt < 20; attempt += 1)); do
+  [[ -f "$PID_FILE" ]] && break
   /bin/sleep 1
 done
 [[ -f "$PID_FILE" ]] || fail "the user launcher did not create its PID file"
@@ -288,6 +299,7 @@ wait_ready "$ENTRY_URL" || fail "the extracted user launcher did not start the s
 wait_stopped "$ENTRY_PID" || fail "the user launcher background process did not stop safely"
 ENTRY_PID=""
 [[ ! -e "$PID_FILE" ]] || fail "the user launcher PID file was not cleaned up"
+SMOKE_CHECKS="${SMOKE_CHECKS:+$SMOKE_CHECKS,}launcher"
 /bin/rm -rf "$EXTRACTED_ROOT/data"
 
 PORT="$((41000 + RANDOM % 10000))"
@@ -325,6 +337,7 @@ wait_ready "$BASE_URL" || fail "portable server did not restart"
   if (!data.states["smoke-record"]?.saved) throw new Error("data did not persist across restart");
 ' "$BASE_URL"
 stop_server
+SMOKE_CHECKS="${SMOKE_CHECKS:+$SMOKE_CHECKS,}server-persistence"
 
 /bin/mkdir -p "$TEMP_ROOT/old-data"
 /bin/cat >"$TEMP_ROOT/old-data/anthropology-canteen-data.json" <<'JSON'
@@ -345,6 +358,7 @@ JSON
 ' "$EXTRACTED_ROOT"
 
 /bin/rm -rf "$EXTRACTED_ROOT/data"
+SMOKE_CHECKS="${SMOKE_CHECKS:+$SMOKE_CHECKS,}import"
 AUTO_PORT="$((51000 + RANDOM % 9000))"
 AUTO_URL="http://127.0.0.1:$AUTO_PORT"
 PORT="$AUTO_PORT" "$NODE" "$SERVER" --auto-close >"$TEMP_ROOT/server-auto-close.log" 2>&1 &
@@ -365,6 +379,9 @@ for ((attempt = 0; attempt < 20; attempt += 1)); do
     SERVER_PID=""
     CLOSE_ELAPSED="$(( $(/bin/date +%s) - CLOSE_STARTED ))"
     [[ "$CLOSE_ELAPSED" -ge 6 && "$CLOSE_ELAPSED" -le 15 ]] || fail "SSE shutdown was not approximately eight seconds"
+    SMOKE_CHECKS="${SMOKE_CHECKS:+$SMOKE_CHECKS,}sse-autoclose"
+    SMOKE_CHECKS="$SMOKE_CHECKS" python3 "$SCRIPT_ROOT/smoke_result.py" "$EXTRACTED_ROOT" "$ZIP_PATH" "$TARGET_ARCH" "$REPORTS/smoke-result.json"
+    SMOKE_COMPLETED="true"
     echo "macOS portable smoke test passed for $TARGET_ARCH."
     exit 0
   fi
