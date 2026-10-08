@@ -1,19 +1,10 @@
 {
-  "mode": "build",
-  "productSHA": "self",
-  "artifactRunId": null,
+  "mode": "retest",
+  "productSHA": "9d17e4dd7480b571febbad52a2ef5db8a85930b1",
+  "artifactRunId": "37632101351",
   "platforms": [
-    "win32-x64",
-    "darwin-arm64",
-    "darwin-x64"
+    "win32-x64"
   ],
-  "macSuites": [
-    "black-box",
-    "scheduler",
-    "ui",
-    "native-ui",
-    "migration",
-    "native-smoke"
-  ],
-  "sequence": 2
+  "macSuites": [],
+  "sequence": 3
 }

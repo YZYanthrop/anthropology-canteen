@@ -21,7 +21,7 @@ STATES = ["current", "task-disabled", "daily-disabled", "logon-disabled", "absen
 FAULTS = ["none", "marker-write", "settings-write", "recovery-obstruction"]
 REQUIRED = {f"A-native-{state}-{fault}" for state in STATES for fault in FAULTS} | {
     "windows-real-calendar-trigger", "windows-scheduler.final-cleanup", "windows-independent.final-cleanup", "package.black-box-upgrade", "package.native-smoke",
-    "windows-helper.rollback-and-status", "windows-inspection.synthetic-contract", "windows-migration.source-and-native-files",
+    "windows-helper.rollback-and-status", "windows-inspection.synthetic-contract", "windows-filesystem.acl-preconditions", "windows-migration.source-and-native-files",
     "B-process-interruption", "migration-interruption.final-cleanup", "C-windows-native-api-ui-disabled", "windows-native-ui.final-cleanup",
 } | {"C-ui-" + state for state in ["current", "disabled", "unloaded", "missing", "query-failed", "stale", "recovery-required"]}
 
@@ -112,6 +112,9 @@ def main():
         node = package / "runtime/node.exe"
         for name in ["portable-server.mjs", "reminder-scheduler.mjs", "reminder-utils.mjs", "reminder-worker.mjs", "tools/register-windows-reminder.ps1", "tools/windows-reminder-task-common.ps1"]:
             require((package / name).read_bytes() == (source / name).read_bytes(), "Source/package mismatch: " + name)
+        code = command([node, HERE / "acl-probe.mjs", "--source", source, "--report", reports / "acl-preconditions.json", "--label", "direct-python-packaged-node", "--require-denial", "yes"], reports / "acl-preconditions.log", 60)
+        add("windows-filesystem.acl-preconditions", "harness-native-precondition", code, "Direct filesystem reads must fail under the same SID denial and succeed again after ACL restoration; see acl-preconditions.json")
+        require(code == 0, "Real filesystem denial was not established; stop before OS task mutation")
         shell = "powershell.exe"
         prefix = [shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]
         code = command([*prefix, TOOLS / "windows/smoke-test.ps1", "-PackageRoot", package, "-ZipPath", archive, "-ReceiptPath", reports / "smoke-owned.json", "-CleanupReport", reports / "smoke-cleanup.json"], reports / "native-smoke.log", 600)

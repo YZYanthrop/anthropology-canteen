@@ -48,6 +48,7 @@ try {
         await fixture(oldRoot); await fixture(newRoot);
         const config = { installationId: randomUUID(), enabled: true, schedule: { time: `${String(later.getHours()).padStart(2,"0")}:${String(later.getMinutes()).padStart(2,"0")}` } };
         const name = await remember(config);
+        assert.equal((await native(name)).exists, false, "validate owned root and absent identity before any task mutation");
         const settings = join(newRoot, "data/anthropology-canteen-settings.json"), marker = join(newRoot, "data/anthropology-canteen-reminder-scheduler.json");
         const originals = { settings: JSON.stringify({ version: 3, reminders: config }), marker: JSON.stringify({ synthetic: "original-marker" }) };
         await writeFile(settings, originals.settings); await writeFile(marker, originals.marker);

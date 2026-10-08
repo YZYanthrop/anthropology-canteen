@@ -96,12 +96,8 @@ jobs:
       - name: Initialize isolated paths on the assigned runner
         shell: python
         run: |
-          import os
-          from pathlib import Path
-          temp=Path(os.environ['RUNNER_TEMP'])
-          values={'R1_PACKAGES':temp/'r1-packages','R1_SCRATCH':temp/'canteen-r1-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}','R1_REPORTS':temp/'r1-reports'}
-          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as output:
-              for key,value in values.items(): output.write(f'{key}={value}\n')
+          import subprocess, sys
+          subprocess.run([sys.executable, "-B", "acceptance/packaging/reissue/paths.py", "${{ matrix.id }}"], check=True)
       - name: Install locked source dependencies
         working-directory: product
         run: pnpm install --frozen-lockfile
@@ -137,17 +133,27 @@ jobs:
         if: needs.prepare.outputs.mode == 'retest'
         shell: bash
         run: python -B acceptance/packaging/reissue/execution.py --config acceptance/packaging/reissue/execution.json --download '${{ matrix.id }}' --source product --destination "$R1_PACKAGES" --reports "$R1_REPORTS/artifact"
+      - name: Diagnose Windows Git Bash ACL inheritance on synthetic files
+        id: acl_diagnostic
+        if: matrix.platform == 'win32'
+        continue-on-error: true
+        shell: bash
+        run: node acceptance/packaging/windows/reissue-acceptance/acl-probe.mjs --source product --report "$R1_REPORTS/acl-bash-diagnostic.json" --label git-bash-setup-node --require-denial no
       - name: Execute native package and source-fault acceptance
         id: acceptance
         continue-on-error: true
-        shell: bash
-        run: python -B acceptance/packaging/reissue/native.py --source product --packages "$R1_PACKAGES" --scratch "$R1_SCRATCH" --reports "$R1_REPORTS" --platform '${{ matrix.id }}'
+        shell: python
+        run: |
+          import os, subprocess, sys
+          subprocess.run([sys.executable, "-B", "acceptance/packaging/reissue/native.py", "--source", "product", "--packages", os.environ["R1_PACKAGES"], "--scratch", os.environ["R1_SCRATCH"], "--reports", os.environ["R1_REPORTS"], "--platform", "${{ matrix.id }}"], check=True)
       - name: Independently clean and verify manifest-owned OS resources
         id: cleanup
         if: always()
         continue-on-error: true
-        shell: bash
-        run: python -B acceptance/packaging/reissue/native.py --cleanup --source product --packages "$R1_PACKAGES" --scratch "$R1_SCRATCH" --reports "$R1_REPORTS" --platform '${{ matrix.id }}'
+        shell: python
+        run: |
+          import os, subprocess, sys
+          subprocess.run([sys.executable, "-B", "acceptance/packaging/reissue/native.py", "--cleanup", "--source", "product", "--packages", os.environ["R1_PACKAGES"], "--scratch", os.environ["R1_SCRATCH"], "--reports", os.environ["R1_REPORTS"], "--platform", "${{ matrix.id }}"], check=True)
       - name: Retain acceptance, source/test identity, logs and cleanup evidence
         uses: actions/upload-artifact@v4
         if: always()
@@ -163,4 +169,5 @@ jobs:
         env:
           ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}
           CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
-        run: test "$ACCEPTANCE_OUTCOME" = success && test "$CLEANUP_OUTCOME" = success
+          ACL_DIAGNOSTIC_OUTCOME: ${{ steps.acl_diagnostic.outcome }}
+        run: test "$ACCEPTANCE_OUTCOME" = success && test "$CLEANUP_OUTCOME" = success && test "$ACL_DIAGNOSTIC_OUTCOME" != failure

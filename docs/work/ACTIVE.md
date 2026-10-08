@@ -1,19 +1,17 @@
 # Active work packet
 
-Last updated: 2026-10-07
+Last updated: 2026-10-08
 
-- Status: In progress；限定缺陷已本地修复，准备新S三平台构建验收，未 Verified
-- Approved: 完整目标的准备/工具/分支推送/三平台构建验收及门槛后发布仍有效；2026-10-06已追加批准仅修复多行缺失任务诊断，其他产品缺陷仍先报告
-- Target: 三平台统一重新发行 v1.3.4（r1），公开下载复核通过及交接完成
-- Branch/worktree: codex/v1.3.4-reissue / macos-v135-fix；产品 S 与首轮 T=`946cc16aae10e2ffda6fb8104d9576b21b317756`
-- Plan: [范围、门槛与发布路线](../plans/v1.3.4-three-platform-reissue.md)
-- Run: [37321169428](https://github.com/YZYanthrop/anthropology-canteen/actions/runs/37321169428)，已结束 failure；三包已构建，共享170/39通过
-- Blocker: 两 Mac 原包首次任务注册失败；[默认诊断包装缺陷与复现](../handoffs/v1.3.4-r1-macos-missing-task-defect.md)
-- Other failures: Intel 黑盒资料读取超时、Windows 提醒状态超时，尚未判定根因；Windows 后续原生/UAC 未执行
-- Evidence: [执行记录、各平台结果、包摘要和清理](../handoffs/v1.3.4-r1-execution.md)；[原发行双份归档](../handoffs/v1.3.4-original-release-archive.md)
-- Next: 完成103项受影响回归、10项启动工具回归；sequence=2 / build-self将冻结新 S，按已有授权三平台重建与完整验收，不套用旧结果
-- Public state: Release399786176 / 原tag→bb78dd9 / 六资产 / main 未变；原页或 r1 备用路线均须全部必需门槛后才执行
-- Forbidden: main 推送、签名、公证、保护绕过、其他版本改写、未经批准的新产品修复；不把已知失败豁免
+- Status: In progress，未 Verified；完成公开发行和公开下载核验才结束目标
+- Approved: 完整目标准备/工具/分支推送/三平台构建验收及门槛后发布；另批准仅修复Mac多行缺失任务诊断，其他产品缺陷仍先报告
+- Plan: [统一重新发行](../plans/v1.3.4-three-platform-reissue.md)
+- Branch/worktree: codex/v1.3.4-reissue / macos-v135-fix
+- Frozen product S2: 9d17e4dd7480b571febbad52a2ef5db8a85930b1；产品1.3.4/r1、格式8/2/3
+- Run37632101351: 共享lint/build/Node186/UI39通过，两Mac各73项+原包native smoke+独立清理通过；Windows原包黑盒/native smoke通过但后续工具目录/ACL失败
+- Next: sequence=3定向重验同S2原Windows ZIP；只修工具不改产品，测试T另记。新目录/直接Python/ACL前置探针；不掩盖旧清理失败
+- UAC: S2唯一离线场景已准备，尚未弹窗，等待用户配合；新建取消、旧任务注册和更新取消及清理仍待验证
+- Evidence: [准确摘要、历史失败和重验范围](../handoffs/v1.3.4-r1-execution.md) / [原发行归档](../handoffs/v1.3.4-original-release-archive.md)
+- Public: 旧Release399786176/tag→bb78dd9/六资产/main未变；全部必需门槛后方可按原页或r1备用路线执行
+- Forbidden: main推送、签名、公证、保护绕过、其他版本改写、未经批准的新产品修复；不豁免失败和泄漏
 
-产品1.3.4、格式8/2/3；只用合成资料/临时任务/测试凭据，无真实邮箱或发信。
-其他工作区、历史分支和原主目录五项未提交文档保留。真实 UAC 尚未弹窗；新产品阻断解除后先准备场景再通知用户。
+只用合成资料/临时任务/测试凭据，不连接真实邮箱、不发信；保留其他工作区和旧主目录五项未提交文档。

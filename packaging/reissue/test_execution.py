@@ -50,6 +50,24 @@ class ExecutionTests(unittest.TestCase):
         for values in [[],[item,item],[{**item,"expired":True}],[{**item,"digest":None}],
                        [{**item,"workflow_run":{**item["workflow_run"],"head_sha":T}}]]:
             with self.subTest(values=values),self.assertRaises(ValueError): x.choose_artifact(values,"darwin-x64",S,"123")
+    def test_windows_scratch_uses_os_temp_and_independent_steps_share_it(self):
+        workflow=(Path(__file__).resolve().parents[2]/".github/workflows/reissue-v134.yml").read_text()
+        self.assertIn("acceptance/packaging/reissue/paths.py",workflow)
+        for name in ["Execute native package and source-fault acceptance", "Independently clean and verify manifest-owned OS resources"]:
+            step=workflow.split("- name: "+name,1)[1].split("      - name:",1)[0]
+            self.assertIn("shell: python",step)
+            self.assertNotIn("shell: bash",step)
+        spec=importlib.util.spec_from_file_location("paths",Path(__file__).with_name("paths.py"))
+        paths=importlib.util.module_from_spec(spec);spec.loader.exec_module(paths)
+        runner=Path("runner-temp");native=Path("system-temp")
+        win=paths.runner_paths(runner,native,"win32-x64","123","1")
+        self.assertEqual(win["R1_SCRATCH"],native/"canteen-r1-123-1-win32-x64")
+        self.assertEqual(win["R1_REPORTS"],runner/"r1-reports")
+        mac=paths.runner_paths(runner,native,"darwin-arm64","123","1")
+        self.assertEqual(mac["R1_SCRATCH"],runner/"canteen-r1-123-1-darwin-arm64")
+        for identity in [("win32-x64","../123","1"),("win32-x64","123",""),("arbitrary","123","1")]:
+            with self.assertRaises(ValueError): paths.runner_paths(runner,native,*identity)
+
     def test_workflow_never_grants_publication_or_rebuilds_final_tags(self):
         root=Path(__file__).resolve().parents[2]
         entry=(root/".github/workflows/portable-release.yml").read_text()
