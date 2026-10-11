@@ -1,5 +1,15 @@
 # Anthropology Canteen project state
 
+## v1.3.4 r1 已公开，有限验收完成
+
+2026-10-08：原Release399786176已重新公开；三平台同源 `9d17e4dd7480b571febbad52a2ef5db8a85930b1`，v1.3.4标签对象 `94b12bbfd071437f431bdbf8198867dfb84c691a`。
+共享186/39、Mac各73+完整8阶段smoke、Windows40/迁移32、真实UAC及清理通过；六个公开下载逐字节复核通过。
+产品1.3.4/r1，格式8/2/3，未整体Verified；[最终发行交接](handoffs/v1.3.4-r1-release.md)记录全部对象、验证和限制。
+一次性标签/六资产替换例外已执行完毕，其他版本仍禁止改写；main未合并或推送，修订分支保留。
+Finder/Gatekeeper、登录注销/睡眠/重启、无法安全隔离ACL、另一管理员身份、签名公证和真实邮件未覆盖；Mac空override和历史失败不抹除。
+以下阶段性状态及旧版结论为历史记录，以各自日期和本节为准。
+
+
 ## v1.3.4 三平台修订发行执行中
 
 2026-10-08：产品S2=9d17e4dd7480b571febbad52a2ef5db8a85930b1；三平台自动验收已通过，原始证据见[逐项矩阵](handoffs/v1.3.4-r1-verification.md)。限定产品修复已批准完成，Mac73+T4完整原包smoke、WindowsT5的40项/迁移32项和清理通过。真实本地UAC取消仍待用户配合，不公开、不标整体Verified。旧发行与双归档保留，main未变。下文首轮失败为历史记录。
@@ -31,7 +41,7 @@ historical lack of macOS evidence below, not the release warning or Windows pend
 No product or release asset changed. The acceptance branch is intentionally retained unmerged;
 final reports are local commits. Any product fix requires a separately approved task/version.
 
-## Current release
+## Historical original release (2026-09-30)
 
 v1.3.4 已发布，但未全部 Verified；用户明确接受本次验证例外。
 不可变标签 v1.3.4 指向 `bb78dd9431a61617c3198b087ac556759ef85333`，三个最终包的 release.json 同源。

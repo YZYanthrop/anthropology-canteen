@@ -1,5 +1,14 @@
 # Platform support
 
+## v1.3.4 r1 released with limited acceptance
+
+2026-10-08：原Release399786176已重新公开；三平台同源 `9d17e4dd7480b571febbad52a2ef5db8a85930b1`，v1.3.4标签对象 `94b12bbfd071437f431bdbf8198867dfb84c691a`。
+共享186/39、Mac各73+完整8阶段smoke、Windows40/迁移32、真实UAC及清理通过；六个公开下载逐字节复核通过。
+产品1.3.4/r1，格式8/2/3，未整体Verified；[最终发行交接](handoffs/v1.3.4-r1-release.md)记录全部对象、验证和限制。
+一次性标签/六资产替换例外已执行完毕，其他版本仍禁止改写；main未合并或推送，修订分支保留。
+Finder/Gatekeeper、登录注销/睡眠/重启、无法安全隔离ACL、另一管理员身份、签名公证和真实邮件未覆盖；Mac空override和历史失败不抹除。
+以下阶段性状态及旧版结论为历史记录，以各自日期和本节为准。
+
 ## v1.3.4 r1 fresh three-platform acceptance (in progress)
 
 2026-10-08: S2=9d17e4d now passes fresh shared checks, both Mac 73-case suites plus complete original-ZIP smoke at T4=49eb880, and Windows 40 automated gates including 32 migration tests at T5=e523256. Raw reports and cleanup were audited. Real local UAC remains pending; no publication or full Verified claim. See the [current matrix](handoffs/v1.3.4-r1-verification.md). Earlier failure descriptions below are historical.
@@ -34,7 +43,7 @@ Each retest runner retained 12 enabled overrides after its jobs/plists/processes
 the first run's override cleanup claim is unreliable. Product files and release assets are unchanged.
 The acceptance branch is intentionally retained unmerged; final reports are committed locally only.
 
-## Support matrix
+## Historical original-release support matrix
 
 v1.3.4 已发布，但未全部 Verified；用户明确接受本次验证例外。
 不可变标签 v1.3.4 指向 `bb78dd9431a61617c3198b087ac556759ef85333`，三个最终包的 release.json 同源。
